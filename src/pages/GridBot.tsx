@@ -98,10 +98,11 @@ export const GridBot: React.FC = () => {
     try {
       const tickers = await fetchBookTickers(market);
       const arr = Array.isArray(tickers) ? tickers : [];
-      const ticker = arr.find((t: any) => t.symbol === s.symbol);
+      const normalizedSym = normalizeSymbol(s.symbol, market);
+      const ticker = arr.find((t: any) => t.symbol === normalizedSym);
 
       if (!ticker) {
-        addLog({ message: `No ticker data found for ${s.symbol}` });
+        addLog({ message: `No ticker data found for ${normalizedSym}` });
         return null;
       }
 
@@ -405,13 +406,23 @@ export const GridBot: React.FC = () => {
           <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">Piyasa</label>
           <div className="flex gap-2">
             <button
-              onClick={() => !isRunning && state.setField('isSpot', true)}
+              onClick={() => {
+                if (!isRunning) {
+                  state.setField('isSpot', true);
+                  state.setField('symbol', normalizeSymbol(state.symbol, 'spot'));
+                }
+              }}
               className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'} ${isRunning ? 'opacity-50 pointer-events-none' : ''}`}
             >
               Spot
             </button>
             <button
-              onClick={() => !isRunning && state.setField('isSpot', false)}
+              onClick={() => {
+                if (!isRunning) {
+                  state.setField('isSpot', false);
+                  state.setField('symbol', normalizeSymbol(state.symbol, 'perps'));
+                }
+              }}
               className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${!state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'} ${isRunning ? 'opacity-50 pointer-events-none' : ''}`}
             >
               Perps

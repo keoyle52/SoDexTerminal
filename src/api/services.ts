@@ -177,8 +177,9 @@ export async function cancelAllOrders(symbol?: string, market: 'spot' | 'perps' 
   const orders = await fetchOpenOrders(market);
   const results: any[] = [];
   const ordersArray = Array.isArray(orders) ? orders : [];
+  const normalizedFilter = symbol ? normalizeSymbol(symbol, market) : undefined;
   for (const order of ordersArray) {
-    if (symbol && order.symbol !== symbol) continue;
+    if (normalizedFilter && order.symbol !== normalizedFilter) continue;
     try {
       const r = await cancelOrder(order.orderId ?? order.id, order.symbol, market);
       results.push(r);
