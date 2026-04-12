@@ -70,16 +70,10 @@ export const VolumeBot: React.FC = () => {
       let min = parseFloat(s.minAmount);
       let max = parseFloat(s.maxAmount);
 
-      // Budget mode: cap quantity so trade value doesn't exceed remaining budget
+      // Budget mode: cap quantity so each trade's notional value doesn't exceed budget
+      // Budget is reusable capital - it doesn't deplete, it limits per-trade size
       if (hasBudget) {
-        const remaining = budgetVal - s.totalVolume;
-        if (remaining <= 0) {
-          runningRef.current = false;
-          s.setField('status', 'STOPPED');
-          s.addLog({ time: new Date().toLocaleTimeString(), message: `Bütçe tükendi ($${budgetVal.toFixed(2)}). Bot durdu.` });
-          return;
-        }
-        const maxQtyByBudget = remaining / midPrice;
+        const maxQtyByBudget = budgetVal / midPrice;
         max = Math.min(max, maxQtyByBudget);
         min = Math.min(min, max);
       }
@@ -320,7 +314,7 @@ export const VolumeBot: React.FC = () => {
               value={state.budget}
               onChange={(e) => state.setField('budget', e.target.value)}
               placeholder="200"
-              hint="0 = limitsiz. Kullanılacak toplam $ hacim"
+              hint="0 = limitsiz. İşlem başına kullanılacak max sermaye"
               icon={<Wallet size={14} />}
             />
             <Input
@@ -334,8 +328,8 @@ export const VolumeBot: React.FC = () => {
             />
             {parseFloat(state.budget) > 0 && parseFloat(state.maxSpend) > 0 && (
               <div className="text-[10px] text-text-muted bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-2">
-                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, toplam ${state.budget} hacim üretirken fee harcamasını max ${state.maxSpend} ile sınırlar.
-                LIMIT emirleri (BUY+SELL çifti) kullanarak spread kaybı sıfırlanır, sadece fee ödenir.
+                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, hesabınızdan en fazla ${state.budget} sermaye kullanarak hacim üretir.
+                Toplam fee harcaması ${state.maxSpend} ile sınırlıdır. LIMIT emirleri (BUY+SELL çifti) ile spread kaybı sıfırlanır, sadece fee ödenir.
               </div>
             )}
           </div>
@@ -416,8 +410,8 @@ export const VolumeBot: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {parseFloat(state.budget) > 0 && (
               <StatCard
-                label="Kalan Bütçe"
-                value={<NumberDisplay value={Math.max(0, parseFloat(state.budget) - state.totalVolume)} prefix="$" />}
+                label="İşlem Başına Max"
+                value={<NumberDisplay value={parseFloat(state.budget)} prefix="$" />}
                 icon={<Wallet size={16} />}
               />
             )}
@@ -451,24 +445,6 @@ export const VolumeBot: React.FC = () => {
               <div
                 className="h-full bg-gradient-to-r from-primary to-primary-soft rounded-full transition-all duration-500"
                 style={{ width: `${Math.min((state.totalVolume / parseFloat(state.maxVolumeTarget)) * 100, 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Budget Progress */}
-        {parseFloat(state.budget) > 0 && (
-          <div className="glass-card p-4">
-            <div className="flex justify-between text-xs mb-2">
-              <span className="text-text-secondary">Bütçe Kullanımı</span>
-              <span className="text-text-primary font-mono tabular-nums">
-                ${state.totalVolume.toFixed(2)} / ${state.budget}
-              </span>
-            </div>
-            <div className="h-2 bg-background rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-primary to-primary-soft rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((state.totalVolume / parseFloat(state.budget)) * 100, 100)}%` }}
               />
             </div>
           </div>
