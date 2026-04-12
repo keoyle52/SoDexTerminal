@@ -587,7 +587,7 @@ export interface FeeRateInfo {
 export async function fetchFeeRate(market: 'spot' | 'perps' = 'perps'): Promise<FeeRateInfo> {
   const normalizeFeeRate = (raw: number): number => {
     const abs = Math.abs(raw);
-    // Convert percent-like values (e.g. 0.04 for 0.04%) to ratio.
+    // Convert percent-like values (e.g. 0.04 meaning 0.04%) to ratio (0.0004).
     return abs > 0.01 ? raw / 100 : raw;
   };
 
