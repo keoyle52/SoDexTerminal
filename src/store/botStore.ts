@@ -8,10 +8,13 @@ interface VolumeBotState {
   maxVolumeTarget: string;
   spreadTolerance: string;
   isSpot: boolean;
+  budget: string;
+  maxSpend: string;
   status: 'STOPPED' | 'RUNNING' | 'ERROR';
   totalVolume: number;
   tradesCount: number;
   totalFee: number;
+  totalSpent: number;
   avgSpread: number;
   logs: any[];
   setField: (field: keyof VolumeBotState, value: any) => void;
@@ -50,10 +53,13 @@ export const useBotStore = create<BotStoreState>((set) => ({
     maxVolumeTarget: '10000',
     spreadTolerance: '50', // %50
     isSpot: true,
+    budget: '0',
+    maxSpend: '0',
     status: 'STOPPED',
     totalVolume: 0,
     tradesCount: 0,
     totalFee: 0,
+    totalSpent: 0,
     avgSpread: 0,
     logs: [],
     setField: (field, value) =>
@@ -72,6 +78,7 @@ export const useBotStore = create<BotStoreState>((set) => ({
           totalVolume: 0,
           tradesCount: 0,
           totalFee: 0,
+          totalSpent: 0,
           avgSpread: 0,
           logs: [],
           status: 'STOPPED'
