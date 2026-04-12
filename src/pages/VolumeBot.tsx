@@ -80,15 +80,16 @@ function classifyError(err: unknown): string {
  * Extract fill information from a placeOrder response (some exchanges embed it).
  * Returns undefined if the response does not contain reliable fill data.
  */
-function extractInlineFill(res: unknown): { filledQty: number; avgFillPrice: number; status: string } | undefined {
+function extractInlineFill(res: unknown): { filledQty: number; avgFillPrice: number; status: string; totalFee: number } | undefined {
   const payload = res as Record<string, unknown> | null;
   if (!payload || typeof payload !== 'object') return undefined;
   const status = String(payload.status ?? payload.orderStatus ?? '');
   const filledQty = parseFloat(String(payload.filledQty ?? payload.executedQty ?? payload.filled_qty ?? payload.cumQty ?? '0')) || 0;
   const avgFillPrice = parseFloat(String(payload.avgFillPrice ?? payload.avgPrice ?? payload.avg_price ?? '0')) || 0;
+  const totalFee = parseFloat(String(payload.fee ?? payload.filledFee ?? payload.commission ?? payload.totalFee ?? '0')) || 0;
   // Only trust inline fill if the status is explicit or we have both filled qty and price
   if ((status && !['OPEN', 'NEW', ''].includes(status.toUpperCase())) || (filledQty > 0 && avgFillPrice > 0)) {
-    return { filledQty, avgFillPrice, status: status || (filledQty > 0 ? 'FILLED' : 'OPEN') };
+    return { filledQty, avgFillPrice, status: status || (filledQty > 0 ? 'FILLED' : 'OPEN'), totalFee };
   }
   return undefined;
 }
@@ -220,13 +221,13 @@ export const VolumeBot: React.FC = () => {
         let buyFill = extractInlineFill(buyResult);
         if (!buyFill && buyOrderId) {
           const st = await fetchOrderStatus(buyOrderId, s.symbol, market);
-          if (st) buyFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status };
+            if (st) buyFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status, totalFee: st.totalFee };
         }
 
         let sellFill = extractInlineFill(sellResult);
         if (!sellFill && sellOrderId) {
           const st = await fetchOrderStatus(sellOrderId, s.symbol, market);
-          if (st) sellFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status };
+            if (st) sellFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status, totalFee: st.totalFee };
         }
 
         // If we couldn't verify either order, increment failure counter
@@ -271,7 +272,9 @@ export const VolumeBot: React.FC = () => {
         const filledSides = (filledQtyBuy > 0 ? 1 : 0) + (filledQtySell > 0 ? 1 : 0);
         const filledQtyAvg = filledSides > 0 ? (filledQtyBuy + filledQtySell) / filledSides : 0;
         const takerFeeRate = feeRateRef.current.takerFee;
-        const fee = (buyVol * takerFeeRate) + (sellVol * takerFeeRate);
+        const buyFee = buyFill?.totalFee && buyFill.totalFee > 0 ? buyFill.totalFee : buyVol * takerFeeRate;
+        const sellFee = sellFill?.totalFee && sellFill.totalFee > 0 ? sellFill.totalFee : sellVol * takerFeeRate;
+        const fee = buyFee + sellFee;
 
         const freshState = useBotStore.getState().volumeBot;
         const prevCount = freshState.tradesCount;
@@ -339,7 +342,7 @@ export const VolumeBot: React.FC = () => {
         let fill = extractInlineFill(result);
         if (!fill && orderId) {
           const st = await fetchOrderStatus(orderId, s.symbol, market);
-          if (st) fill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status };
+          if (st) fill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status, totalFee: st.totalFee };
         }
 
         if (!fill) {
@@ -374,7 +377,7 @@ export const VolumeBot: React.FC = () => {
         consecutiveUnverifiedRef.current = 0;
 
         const vol = fill.filledQty * fill.avgFillPrice;
-        const fee = vol * feeRateRef.current.takerFee;
+        const fee = fill.totalFee > 0 ? fill.totalFee : vol * feeRateRef.current.takerFee;
 
         const freshState = useBotStore.getState().volumeBot;
         const prevCount = freshState.tradesCount;
@@ -507,7 +510,6 @@ export const VolumeBot: React.FC = () => {
   const volumeTargetValue = parsePositiveLimit(state.maxVolumeTarget);
   const spendUsageRatio = spendLimitValue !== null ? Math.min((state.totalSpent / spendLimitValue) * 100, 100) : 0;
   const volumeProgressRatio = volumeTargetValue !== null ? Math.min((state.totalVolume / volumeTargetValue) * 100, 100) : 0;
-
   return (
     <div className="flex h-[calc(100vh-52px)]">
       <ConfirmModal
@@ -530,8 +532,8 @@ export const VolumeBot: React.FC = () => {
           value={state.isSpot ? 'spot' : 'perps'}
           options={[
             { value: 'spot', label: 'Spot' },
-            { value: 'perps', label: 'Perps (otomatik 10x)' },
-          ]}
+              { value: 'perps', label: 'Perps (otomatik 10x)' },
+            ]}
           onChange={(e) => {
             const nextMarket = e.target.value === 'spot' ? 'spot' : 'perps';
             state.setField('isSpot', nextMarket === 'spot');
