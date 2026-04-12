@@ -251,6 +251,9 @@ export interface OrderStatusResult {
 
 /**
  * Fetch the current status and fill information for a specific order.
+ * The `symbol` parameter is forwarded as a query param for exchanges that
+ * shard order storage by market; it is harmless for exchanges where `orderId`
+ * is globally unique.
  * Returns null if the endpoint is unavailable or the response has an unexpected
  * format — callers must treat null as "unverifiable" and must NOT count volume.
  */

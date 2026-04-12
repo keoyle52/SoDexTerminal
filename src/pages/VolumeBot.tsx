@@ -15,6 +15,8 @@ import { Button } from '../components/common/Button';
 const DEFAULT_INTERVAL_SEC = 10;
 /** Stop bot after this many consecutive attempts where no fill could be verified. */
 const MAX_CONSECUTIVE_UNVERIFIED = 5;
+/** How long to wait (ms) after placing an order before querying its fill status. */
+const FILL_VERIFICATION_DELAY_MS = 800;
 
 function getLeverage(isSpot: boolean, leverage: string): number {
   return isSpot ? 1 : (parseInt(leverage) || 1);
@@ -187,7 +189,7 @@ export const VolumeBot: React.FC = () => {
         });
 
         // Allow the exchange a moment to process IOC orders before querying status
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, FILL_VERIFICATION_DELAY_MS));
 
         // Resolve fill data: prefer inline response, fall back to API status query
         let buyFill = extractInlineFill(buyResult);
@@ -241,19 +243,19 @@ export const VolumeBot: React.FC = () => {
 
         const filledQtyBuy = buyFill?.filledQty ?? 0;
         const filledQtySell = sellFill?.filledQty ?? 0;
-        const filledQtyAvg = (filledQtyBuy + filledQtySell) / (filledQtyBuy > 0 && filledQtySell > 0 ? 2 : 1);
+        const filledSides = (filledQtyBuy > 0 ? 1 : 0) + (filledQtySell > 0 ? 1 : 0);
+        const filledQtyAvg = filledSides > 0 ? (filledQtyBuy + filledQtySell) / filledSides : 0;
         const fee = filledQtyAvg * midPrice * (feeRateRef.current.makerFee + feeRateRef.current.takerFee);
 
         const freshState = useBotStore.getState().volumeBot;
         const prevCount = freshState.tradesCount;
         const prevSpread = freshState.avgSpread;
-        const tradeSides = (filledQtyBuy > 0 ? 1 : 0) + (filledQtySell > 0 ? 1 : 0);
 
         freshState.setField('totalVolume', freshState.totalVolume + totalFillVol);
-        freshState.setField('tradesCount', prevCount + tradeSides);
+        freshState.setField('tradesCount', prevCount + filledSides);
         freshState.setField('totalFee', freshState.totalFee + fee);
         freshState.setField('totalSpent', freshState.totalSpent + fee);
-        freshState.setField('avgSpread', prevSpread + (spread - prevSpread) / (prevCount + tradeSides));
+        freshState.setField('avgSpread', prevSpread + (spread - prevSpread) / (prevCount + filledSides));
 
         freshState.addLog({
           time: new Date().toLocaleTimeString(),
@@ -289,7 +291,7 @@ export const VolumeBot: React.FC = () => {
         });
 
         // Wait briefly for market order to settle
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, FILL_VERIFICATION_DELAY_MS));
 
         // Try inline fill first, then query API
         let fill = extractInlineFill(result);
