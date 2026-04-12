@@ -8,6 +8,7 @@ import {
   cancelAllOrders,
   fetchBookTickers,
   fetchOpenOrders,
+  normalizeSymbol,
 } from '../api/services';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
