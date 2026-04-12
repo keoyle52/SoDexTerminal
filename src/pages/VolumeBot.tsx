@@ -226,7 +226,7 @@ export const VolumeBot: React.FC = () => {
       feeRateRef.current = feeRate;
       state.addLog({
         time: new Date().toLocaleTimeString(),
-        message: `Bot started — Fee oranları (${market}): maker ${(feeRate.makerFee * 100).toFixed(4)}%, taker ${(feeRate.takerFee * 100).toFixed(4)}%`,
+        message: `Bot başlatıldı — Fee oranları (${market}): maker ${(feeRate.makerFee * 100).toFixed(4)}%, taker ${(feeRate.takerFee * 100).toFixed(4)}%`,
       });
 
       await executeTrade();
