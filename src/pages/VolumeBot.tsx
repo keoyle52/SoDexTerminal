@@ -22,6 +22,7 @@ import { Button } from '../components/common/Button';
 
 const DEFAULT_INTERVAL_SEC = 10;
 const PERPS_LEVERAGE = 10;
+const PERPS_MARGIN_MODE_CROSS: 1 | 2 = 2;
 const MAX_QUANTITY_PRECISION = 12;
 const ROUND_TRIP_SIDES = 2;
 const MIN_FEE_RATE = 0.00000001;
@@ -409,7 +410,7 @@ export const VolumeBot: React.FC = () => {
     (async () => {
       if (market === 'perps') {
         try {
-          await updatePerpsLeverage(state.symbol, PERPS_LEVERAGE, 2);
+          await updatePerpsLeverage(state.symbol, PERPS_LEVERAGE, PERPS_MARGIN_MODE_CROSS);
           state.addLog({
             time: new Date().toLocaleTimeString(),
             message: `[PERPS] ${normalizeSymbol(state.symbol, 'perps')}: Kaldıraç ${PERPS_LEVERAGE}x (CROSS) olarak ayarlandı`,

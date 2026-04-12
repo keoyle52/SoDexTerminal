@@ -484,8 +484,8 @@ export async function updatePerpsLeverage(
     marginMode,
   };
 
-  const res: any = await withRetry(() => perpsClient.post('/trade/leverage', payload));
-  const data = res?.data ?? res ?? {};
+  const res = await withRetry(() => perpsClient.post('/trade/leverage', payload));
+  const data = (res as { data?: unknown } | null)?.data ?? res ?? {};
   assertNoBodyError(data);
 }
 
