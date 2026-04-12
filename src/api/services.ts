@@ -5,6 +5,25 @@ import { ethers } from 'ethers';
 
 // ---------- helpers ----------
 
+/**
+ * Normalize a trading symbol for the target market.
+ * SoDEX perps API uses "BTC-USD" format, spot API uses "BTC-USDC" format.
+ * This helper converts between the two so users don't get 404 errors
+ * when using spot-style symbols on perps endpoints or vice versa.
+ */
+export function normalizeSymbol(symbol: string, market: 'spot' | 'perps'): string {
+  if (!symbol) return symbol;
+  if (market === 'perps') {
+    // Convert spot-style "-USDC" to perps-style "-USD"
+    return symbol.replace(/-USDC$/, '-USD');
+  }
+  // Convert perps-style "-USD" to spot-style "-USDC" (only if it ends with -USD, not -USDC)
+  if (symbol.endsWith('-USD') && !symbol.endsWith('-USDC')) {
+    return symbol + 'C';
+  }
+  return symbol;
+}
+
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -63,7 +82,8 @@ export async function fetchBookTickers(market: 'spot' | 'perps' = 'perps') {
 
 export async function fetchOrderbook(symbol: string, market: 'spot' | 'perps' = 'perps', limit = 20) {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get(`/markets/${symbol}/orderbook`, { params: { limit } }));
+  const sym = normalizeSymbol(symbol, market);
+  const res: any = await withRetry(() => client.get(`/markets/${sym}/orderbook`, { params: { limit } }));
   return res?.data ?? res ?? { bids: [], asks: [] };
 }
 
@@ -74,7 +94,8 @@ export async function fetchKlines(
   market: 'spot' | 'perps' = 'perps',
 ) {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get(`/markets/${symbol}/klines`, { params: { interval, limit } }));
+  const sym = normalizeSymbol(symbol, market);
+  const res: any = await withRetry(() => client.get(`/markets/${sym}/klines`, { params: { interval, limit } }));
   return res?.data ?? res ?? [];
 }
 
@@ -140,13 +161,15 @@ export interface PlaceOrderParams {
 
 export async function placeOrder(params: PlaceOrderParams, market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.post('/trade/orders', params));
+  const normalizedParams = { ...params, symbol: normalizeSymbol(params.symbol, market) };
+  const res: any = await withRetry(() => client.post('/trade/orders', normalizedParams));
   return res?.data ?? res ?? {};
 }
 
 export async function cancelOrder(orderId: string, symbol: string, market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.post('/trade/orders/cancel', { orderId, symbol }));
+  const sym = normalizeSymbol(symbol, market);
+  const res: any = await withRetry(() => client.post('/trade/orders/cancel', { orderId, symbol: sym }));
   return res?.data ?? res ?? {};
 }
 
@@ -154,8 +177,9 @@ export async function cancelAllOrders(symbol?: string, market: 'spot' | 'perps' 
   const orders = await fetchOpenOrders(market);
   const results: any[] = [];
   const ordersArray = Array.isArray(orders) ? orders : [];
+  const normalizedFilter = symbol ? normalizeSymbol(symbol, market) : undefined;
   for (const order of ordersArray) {
-    if (symbol && order.symbol !== symbol) continue;
+    if (normalizedFilter && order.symbol !== normalizedFilter) continue;
     try {
       const r = await cancelOrder(order.orderId ?? order.id, order.symbol, market);
       results.push(r);

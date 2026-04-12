@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { Play, Square, BarChart3, Hash, DollarSign, Activity, Wallet, ShieldAlert, TrendingUp } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { placeOrder, fetchOrderbook, fetchFeeRate } from '../api/services';
+import { placeOrder, fetchOrderbook, fetchFeeRate, normalizeSymbol } from '../api/services';
 import type { FeeRateInfo } from '../api/services';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -284,7 +284,8 @@ export const VolumeBot: React.FC = () => {
           type="text"
           value={state.symbol}
           onChange={(e) => state.setField('symbol', e.target.value)}
-          placeholder="BTC-USDC"
+          placeholder={state.isSpot ? 'BTC-USDC' : 'BTC-USD'}
+          hint={state.isSpot ? 'Spot format: BTC-USDC' : 'Perps format: BTC-USD'}
         />
 
         <div className="grid grid-cols-2 gap-3">
@@ -364,13 +365,19 @@ export const VolumeBot: React.FC = () => {
           <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">Piyasa</label>
           <div className="flex gap-2">
             <button
-              onClick={() => state.setField('isSpot', true)}
+              onClick={() => {
+                state.setField('isSpot', true);
+                state.setField('symbol', normalizeSymbol(state.symbol, 'spot'));
+              }}
               className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'}`}
             >
               Spot
             </button>
             <button
-              onClick={() => state.setField('isSpot', false)}
+              onClick={() => {
+                state.setField('isSpot', false);
+                state.setField('symbol', normalizeSymbol(state.symbol, 'perps'));
+              }}
               className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${!state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'}`}
             >
               Perps
