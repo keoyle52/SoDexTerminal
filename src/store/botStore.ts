@@ -8,6 +8,7 @@ interface VolumeBotState {
   maxVolumeTarget: string;
   spreadTolerance: string;
   isSpot: boolean;
+  leverage: string;
   budget: string;
   maxSpend: string;
   status: 'STOPPED' | 'RUNNING' | 'ERROR';
@@ -53,6 +54,7 @@ export const useBotStore = create<BotStoreState>((set) => ({
     maxVolumeTarget: '10000',
     spreadTolerance: '50', // %50
     isSpot: true,
+    leverage: '1',
     budget: '0',
     maxSpend: '0',
     status: 'STOPPED',

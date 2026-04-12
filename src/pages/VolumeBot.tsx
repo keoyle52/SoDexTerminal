@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Play, Square, BarChart3, Hash, DollarSign, Activity, Wallet, ShieldAlert } from 'lucide-react';
+import { Play, Square, BarChart3, Hash, DollarSign, Activity, Wallet, ShieldAlert, TrendingUp } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { placeOrder, fetchOrderbook } from '../api/services';
@@ -44,6 +44,8 @@ export const VolumeBot: React.FC = () => {
 
     const market = s.isSpot ? 'spot' : 'perps';
     const budgetVal = parseFloat(s.budget);
+    const leverageVal = s.isSpot ? 1 : Math.max(1, parseInt(s.leverage) || 1);
+    const effectiveBudget = budgetVal * leverageVal;
     const hasBudget = budgetVal > 0;
 
     try {
@@ -70,10 +72,10 @@ export const VolumeBot: React.FC = () => {
       let min = parseFloat(s.minAmount);
       let max = parseFloat(s.maxAmount);
 
-      // Budget mode: cap quantity so each trade's notional value doesn't exceed budget
-      // Budget is reusable capital - it doesn't deplete, it limits per-trade size
+      // Budget mode: cap quantity so each trade's notional value doesn't exceed effective budget
+      // With leverage: effectiveBudget = budget × leverage (e.g., $200 × 10x = $2000 position)
       if (hasBudget) {
-        const maxQtyByBudget = budgetVal / midPrice;
+        const maxQtyByBudget = effectiveBudget / midPrice;
         max = Math.min(max, maxQtyByBudget);
         min = Math.min(min, max);
       }
@@ -242,7 +244,7 @@ export const VolumeBot: React.FC = () => {
       <ConfirmModal
         isOpen={showConfirm}
         title="Volume Bot'u Başlat"
-        message={`${state.symbol} için Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}\nMiktar aralığı: ${state.minAmount} – ${state.maxAmount}\nAralık: ${state.intervalSec}s${parseFloat(state.budget) > 0 ? `\nBütçe: $${state.budget}` : ''}${parseFloat(state.maxSpend) > 0 ? `\nMax Harcama: $${state.maxSpend}` : ''}`}
+        message={`${state.symbol} için Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}${!state.isSpot && parseInt(state.leverage) > 1 ? `\nKaldıraç: ${state.leverage}x` : ''}\nMiktar aralığı: ${state.minAmount} – ${state.maxAmount}\nAralık: ${state.intervalSec}s${parseFloat(state.budget) > 0 ? `\nBütçe: $${state.budget}${!state.isSpot && parseInt(state.leverage) > 1 ? ` × ${state.leverage}x = $${(parseFloat(state.budget) * parseInt(state.leverage)).toFixed(0)} efektif` : ''}` : ''}${parseFloat(state.maxSpend) > 0 ? `\nMax Harcama: $${state.maxSpend}` : ''}`}
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -327,7 +329,7 @@ export const VolumeBot: React.FC = () => {
             />
             {parseFloat(state.budget) > 0 && parseFloat(state.maxSpend) > 0 && (
               <div className="text-[10px] text-text-muted bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-2">
-                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, hesabınızdan en fazla ${state.budget} sermaye kullanarak hacim üretir.
+                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, hesabınızdan en fazla ${state.budget} sermaye kullanarak{!state.isSpot && parseInt(state.leverage) > 1 ? ` ${state.leverage}x kaldıraçla ($${(parseFloat(state.budget) * Math.max(1, parseInt(state.leverage) || 1)).toFixed(0)} efektif)` : ''} hacim üretir.
                 Toplam fee harcaması ${state.maxSpend} ile sınırlıdır. LIMIT emirleri (BUY+SELL çifti) ile spread kaybı sıfırlanır, sadece fee ödenir.
               </div>
             )}
@@ -352,6 +354,19 @@ export const VolumeBot: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Leverage (only for Perps) */}
+        {!state.isSpot && (
+          <Input
+            label="Kaldıraç (x)"
+            type="number"
+            value={state.leverage}
+            onChange={(e) => state.setField('leverage', e.target.value)}
+            placeholder="10"
+            hint={`$${parseFloat(state.budget) > 0 ? (parseFloat(state.budget) * Math.max(1, parseInt(state.leverage) || 1)).toFixed(0) : '0'} efektif pozisyon`}
+            icon={<TrendingUp size={14} />}
+          />
+        )}
 
         <div className="mt-auto pt-4 border-t border-border">
           {state.status !== 'RUNNING' ? (
