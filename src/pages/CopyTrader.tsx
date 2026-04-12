@@ -1,8 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { Play, Square, Users, TrendingUp, CheckCircle2, Eye } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmModal } from '../components/common/ConfirmModal';
+import { StatCard } from '../components/common/Card';
+import { Input, Select } from '../components/common/Input';
+import { Button } from '../components/common/Button';
 import { useSettingsStore } from '../store/settingsStore';
 import {
   fetchAccountOrders,
@@ -79,7 +83,6 @@ export const CopyTrader: React.FC = () => {
         await new Promise((r) => setTimeout(r, delayMs));
       }
 
-      // If bot was stopped while waiting on delay, abort
       if (!isRunningRef.current) return;
 
       const params: PlaceOrderParams = {
@@ -177,7 +180,7 @@ export const CopyTrader: React.FC = () => {
       }, 0);
       setPnl(totalPnl);
     } catch {
-      // Silently handle - positions are supplementary info
+      // Silently handle
     }
   }, []);
 
@@ -187,7 +190,6 @@ export const CopyTrader: React.FC = () => {
       return;
     }
 
-    // Snapshot known orders on first poll to avoid copying old orders
     knownOrderIdsRef.current = new Set();
     setTargetOrders([]);
     setLastDetected(null);
@@ -205,7 +207,6 @@ export const CopyTrader: React.FC = () => {
           ? ['spot']
           : ['perps'];
 
-    // Do an initial poll to seed known order IDs (don't copy existing orders)
     const seedKnownOrders = async () => {
       for (const m of markets) {
         try {
@@ -243,7 +244,6 @@ export const CopyTrader: React.FC = () => {
     toast('Copy Trader durduruldu.', { icon: '⏹️' });
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isRunningRef.current = false;
@@ -266,9 +266,10 @@ export const CopyTrader: React.FC = () => {
     totalAttempts > 0 ? (successCount / totalAttempts) * 100 : 100;
   const pnlTrend: 'up' | 'down' | 'neutral' =
     pnl > 0 ? 'up' : pnl < 0 ? 'down' : 'neutral';
+  const isRunning = status === 'RUNNING';
 
   return (
-    <div className="flex h-[calc(100vh-48px)]">
+    <div className="flex h-[calc(100vh-52px)]">
       <ConfirmModal
         isOpen={showConfirm}
         title="Copy Trader Başlat"
@@ -278,127 +279,119 @@ export const CopyTrader: React.FC = () => {
       />
 
       {/* Settings Panel */}
-      <div className="w-80 border-r border-border bg-surface p-4 flex flex-col gap-4 overflow-y-auto">
-        <h2 className="font-semibold mb-2">Copy Trader Ayarları</h2>
+      <div className="w-80 border-r border-border bg-surface/30 backdrop-blur-sm p-5 flex flex-col gap-5 overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-sm">Ayarlar</h2>
+          <StatusBadge status={status} />
+        </div>
 
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Hedef Cüzdan (Adres)</label>
-          <input
-            type="text"
-            value={targetAddress}
-            onChange={(e) => setTargetAddress(e.target.value)}
-            placeholder="0x..."
-            disabled={status === 'RUNNING'}
-            className="w-full bg-surface border border-border rounded px-3 py-2 text-sm disabled:opacity-50"
+        <Input
+          label="Hedef Cüzdan"
+          type="text"
+          value={targetAddress}
+          onChange={(e) => setTargetAddress(e.target.value)}
+          placeholder="0x..."
+          disabled={isRunning}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Kopya Oranı (%)"
+            type="number"
+            value={copyRatio}
+            onChange={(e) => setCopyRatio(e.target.value)}
+            disabled={isRunning}
+          />
+          <Input
+            label="Max Boyut (USDC)"
+            type="number"
+            value={maxSize}
+            onChange={(e) => setMaxSize(e.target.value)}
+            disabled={isRunning}
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Kopya Oranı (%)</label>
-            <input
-              type="number"
-              value={copyRatio}
-              onChange={(e) => setCopyRatio(e.target.value)}
-              disabled={status === 'RUNNING'}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Max Boyut (USDC)</label>
-            <input
-              type="number"
-              value={maxSize}
-              onChange={(e) => setMaxSize(e.target.value)}
-              disabled={status === 'RUNNING'}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums disabled:opacity-50"
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Select
+            label="Market"
+            value={marketType}
+            onChange={(e) => setMarketType(e.target.value as 'BOTH' | 'SPOT' | 'PERPS')}
+            disabled={isRunning}
+            options={[
+              { value: 'BOTH', label: 'Her İkisi' },
+              { value: 'SPOT', label: 'Sadece Spot' },
+              { value: 'PERPS', label: 'Sadece Perps' },
+            ]}
+          />
+          <Input
+            label="Gecikme (ms)"
+            type="number"
+            value={delay}
+            onChange={(e) => setDelay(e.target.value)}
+            disabled={isRunning}
+          />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Market</label>
-            <select
-              value={marketType}
-              onChange={(e) => setMarketType(e.target.value as 'BOTH' | 'SPOT' | 'PERPS')}
-              disabled={status === 'RUNNING'}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm outline-none disabled:opacity-50"
-            >
-              <option value="BOTH">Her İkisi</option>
-              <option value="SPOT">Sadece Spot</option>
-              <option value="PERPS">Sadece Perps</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Gecikme (ms)</label>
-            <input
-              type="number"
-              value={delay}
-              onChange={(e) => setDelay(e.target.value)}
-              disabled={status === 'RUNNING'}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums disabled:opacity-50"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-2">
-          {status !== 'RUNNING' ? (
-            <button
-              onClick={handleStart}
-              className="w-full py-2 bg-primary text-black font-medium rounded hover:bg-primary/90 transition-colors"
-            >
+        <div className="mt-auto pt-4 border-t border-border">
+          {!isRunning ? (
+            <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={handleStart}>
               Başlat
-            </button>
+            </Button>
           ) : (
-            <button
-              onClick={stopBot}
-              className="w-full py-2 bg-danger/10 text-danger border border-danger/30 font-medium rounded hover:bg-danger/20 transition-colors"
-            >
+            <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={stopBot}>
               Durdur
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
+      {/* Split Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Hedef Cüzdan Panel */}
-        <div className="w-1/2 border-r border-border p-6 overflow-y-auto">
-          <h3 className="font-medium text-text-secondary mb-4">Hedef Cüzdan Analizi</h3>
+        {/* Left - Target Wallet */}
+        <div className="w-1/2 border-r border-border p-6 flex flex-col gap-4 overflow-hidden">
+          <div className="flex items-center gap-2">
+            <Eye size={16} className="text-primary" />
+            <h3 className="text-sm font-semibold">Hedef Cüzdan Analizi</h3>
+          </div>
+
           {targetAddress ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-surface border border-border rounded flex gap-4">
-                <div className="flex-1">
-                  <span className="text-xs text-text-secondary block">Tespit Edilen Emirler</span>
-                  <NumberDisplay value={targetOrders.length} decimals={0} className="text-xl" />
+            <>
+              <div className="grid grid-cols-2 gap-3 shrink-0">
+                <div className="stat-card !p-3">
+                  <div className="text-[10px] text-text-muted uppercase mb-1">Tespit Edilen</div>
+                  <NumberDisplay value={targetOrders.length} decimals={0} className="text-lg font-semibold" />
                 </div>
-                <div className="flex-1">
-                  <span className="text-xs text-text-secondary block">Son Tespit</span>
+                <div className="stat-card !p-3">
+                  <div className="text-[10px] text-text-muted uppercase mb-1">Son Tespit</div>
                   {lastDetected ? (
-                    <span className="text-sm font-mono">
-                      {lastDetected.side === 1 ? '🟢 BUY' : '🔴 SELL'}{' '}
-                      {lastDetected.symbol} x{parseFloat(lastDetected.quantity).toFixed(4)}
+                    <span className="text-xs font-mono">
+                      <span className={lastDetected.side === 1 ? 'text-success' : 'text-danger'}>
+                        {lastDetected.side === 1 ? 'BUY' : 'SELL'}
+                      </span>{' '}
+                      {lastDetected.symbol}
                     </span>
                   ) : (
-                    <span className="text-sm text-text-secondary">—</span>
+                    <span className="text-xs text-text-muted">—</span>
                   )}
                 </div>
               </div>
-              <div className="border border-border rounded bg-surface">
-                <div className="px-4 py-2 border-b border-border text-sm font-medium">
-                  Son İşlemleri ({targetOrders.length})
+
+              <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
+                <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Son İşlemleri</span>
+                  <span className="badge badge-neutral">{targetOrders.length}</span>
                 </div>
                 {targetOrders.length > 0 ? (
-                  <div className="max-h-80 overflow-y-auto divide-y divide-border">
+                  <div className="flex-1 overflow-y-auto divide-y divide-border/30">
                     {[...targetOrders].reverse().slice(0, 50).map((order, i) => (
-                      <div key={getOrderId(order) || i} className="px-4 py-2 text-xs flex justify-between items-center">
-                        <span className="font-mono">
-                          <span className={order.side === 1 ? 'text-success' : 'text-danger'}>
+                      <div key={getOrderId(order) || i} className="px-4 py-2 text-xs flex justify-between items-center hover:bg-surface-hover/30 transition-colors">
+                        <span className="font-mono flex items-center gap-2">
+                          <span className={`badge ${order.side === 1 ? 'badge-success' : 'badge-danger'}`}>
                             {order.side === 1 ? 'BUY' : 'SELL'}
-                          </span>{' '}
+                          </span>
                           {order.symbol}
                         </span>
-                        <span className="text-text-secondary tabular-nums">
+                        <span className="text-text-muted tabular-nums font-mono">
                           {parseFloat(order.quantity).toFixed(4)}
                           {order.price ? ` @ ${order.price}` : ' MKT'}
                         </span>
@@ -406,72 +399,80 @@ export const CopyTrader: React.FC = () => {
                     ))}
                   </div>
                 ) : (
-                  <div className="p-4 text-xs text-text-secondary text-center">
-                    {status === 'RUNNING' ? 'Emirler izleniyor...' : 'API verisi bekleniyor...'}
+                  <div className="flex-1 flex items-center justify-center text-text-muted text-xs">
+                    {isRunning ? 'Emirler izleniyor...' : 'API verisi bekleniyor...'}
                   </div>
                 )}
               </div>
-            </div>
+            </>
           ) : (
-            <div className="text-center text-text-secondary text-sm pt-10">
-              İzlemek için bir hedef cüzdan adresi giriniz.
+            <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
+              <div className="text-center">
+                <Users size={32} className="mx-auto mb-3 opacity-30" />
+                <p>İzlemek için bir hedef cüzdan adresi girin.</p>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Kendi İşlemlerim Panel */}
-        <div className="w-1/2 p-6 overflow-y-auto flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium text-text-secondary">Kopyalanan İşlemler</h3>
-            <StatusBadge status={status} />
+        {/* Right - My Copies */}
+        <div className="w-1/2 p-6 flex flex-col gap-4 overflow-hidden">
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-primary" />
+            <h3 className="text-sm font-semibold">Kopyalanan İşlemler</h3>
           </div>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="p-4 bg-surface border border-border rounded">
-              <div className="text-xs text-text-secondary mb-1">Kendi PnL&apos;im</div>
-              <NumberDisplay
-                value={pnl}
-                prefix={pnl >= 0 ? '+$' : '$'}
-                trend={pnlTrend}
-                className="text-xl"
-              />
-            </div>
-            <div className="p-4 bg-surface border border-border rounded">
-              <div className="text-xs text-text-secondary mb-1">Başarı Oranı</div>
-              <NumberDisplay value={successRate} suffix="%" className="text-xl" />
-            </div>
+
+          <div className="grid grid-cols-2 gap-3 shrink-0">
+            <StatCard
+              label="PnL"
+              value={
+                <NumberDisplay
+                  value={Math.abs(pnl)}
+                  prefix={pnl >= 0 ? '+$' : '-$'}
+                  trend={pnlTrend}
+                />
+              }
+              icon={<TrendingUp size={14} />}
+              trend={pnlTrend}
+            />
+            <StatCard
+              label="Başarı Oranı"
+              value={<NumberDisplay value={successRate} suffix="%" />}
+              icon={<CheckCircle2 size={14} />}
+            />
           </div>
-          <div className="flex-1 border border-border rounded bg-surface flex flex-col min-h-0">
-            <div className="px-4 py-2 border-b border-border text-sm font-medium flex justify-between">
-              <span>Log Kayıtları</span>
+
+          <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
+            <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Log Kayıtları</span>
               {copyLogs.length > 0 && (
-                <span className="text-xs text-text-secondary">
+                <span className="text-[10px] text-text-muted">
                   {successCount}/{totalAttempts} başarılı
                 </span>
               )}
             </div>
             {copyLogs.length > 0 ? (
-              <div className="flex-1 overflow-y-auto divide-y divide-border">
+              <div className="flex-1 overflow-y-auto">
                 {copyLogs.map((log, i) => (
-                  <div key={`${log.timestamp}-${i}`} className="px-4 py-2 text-xs flex items-center gap-3">
-                    <span className="text-text-secondary shrink-0 tabular-nums">{log.timestamp}</span>
-                    <span className={log.side === 'BUY' ? 'text-success' : 'text-danger'}>
+                  <div key={`${log.timestamp}-${i}`} className="px-4 py-2 text-xs flex items-center gap-3 hover:bg-surface-hover/30 transition-colors animate-fade-in border-b border-border/20">
+                    <span className="text-text-muted shrink-0 tabular-nums font-mono w-14">{log.timestamp}</span>
+                    <span className={`badge ${log.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>
                       {log.side}
                     </span>
-                    <span className="font-mono">{log.symbol}</span>
-                    <span className="tabular-nums text-text-secondary">{log.amount}</span>
-                    <span className="text-text-secondary">{log.market}</span>
+                    <span className="font-mono font-medium truncate">{log.symbol}</span>
+                    <span className="tabular-nums text-text-secondary font-mono">{log.amount}</span>
                     <span className="ml-auto">
                       {log.status === 'SUCCESS' ? (
-                        <span className="text-success">✓</span>
+                        <span className="badge badge-success">✓</span>
                       ) : (
-                        <span className="text-danger" title={log.error}>✗</span>
+                        <span className="badge badge-danger" title={log.error}>✗</span>
                       )}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="p-4 text-xs text-text-secondary text-center">
+              <div className="flex-1 flex items-center justify-center text-text-muted text-xs">
                 Henüz bir işlem kopyalanmadı.
               </div>
             )}

@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { Play, Square, BarChart3, Hash, DollarSign, Activity } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { placeOrder, fetchOrderbook } from '../api/services';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmModal } from '../components/common/ConfirmModal';
+import { StatCard } from '../components/common/Card';
+import { Input } from '../components/common/Input';
+import { Button } from '../components/common/Button';
 
 const FEE_RATE = 0.001;
 const DEFAULT_INTERVAL_SEC = 10;
@@ -113,7 +117,6 @@ export const VolumeBot: React.FC = () => {
     state.setField('status', 'RUNNING');
     state.addLog({ time: new Date().toLocaleTimeString(), message: 'Bot started' });
 
-    // Run first trade immediately, then schedule subsequent ones
     (async () => {
       await executeTrade();
       scheduleNextRef.current();
@@ -149,7 +152,7 @@ export const VolumeBot: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-[calc(100vh-48px)]">
+    <div className="flex h-[calc(100vh-52px)]">
       <ConfirmModal
         isOpen={showConfirm}
         title="Volume Bot'u Başlat"
@@ -159,107 +162,184 @@ export const VolumeBot: React.FC = () => {
       />
 
       {/* Settings Panel */}
-      <div className="w-80 border-r border-border bg-surface p-4 flex flex-col gap-4 overflow-y-auto">
-        <h2 className="font-semibold mb-2">Volume Bot Ayarları</h2>
-        
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Sembol</label>
-          <input 
-            type="text" 
-            value={state.symbol} 
-            onChange={(e) => state.setField('symbol', e.target.value)} 
-            className="w-full bg-surface border border-border rounded px-3 py-2 text-sm" 
-          />
-        </div>
-        
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <label className="block text-xs text-text-secondary mb-1">Min Miktar</label>
-            <input 
-              type="number" 
-              value={state.minAmount} 
-              onChange={(e) => state.setField('minAmount', e.target.value)} 
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums" 
-            />
-          </div>
-          <div className="flex-1">
-            <label className="block text-xs text-text-secondary mb-1">Max Miktar</label>
-            <input 
-              type="number" 
-              value={state.maxAmount} 
-              onChange={(e) => state.setField('maxAmount', e.target.value)} 
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums" 
-            />
-          </div>
+      <div className="w-80 border-r border-border bg-surface/30 backdrop-blur-sm p-5 flex flex-col gap-5 overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-sm">Ayarlar</h2>
+          <StatusBadge status={state.status} />
         </div>
 
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">İşlem Aralığı (sn)</label>
-          <input 
-            type="number" 
-            value={state.intervalSec} 
-            onChange={(e) => state.setField('intervalSec', e.target.value)} 
-            className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums" 
+        <Input
+          label="Sembol"
+          type="text"
+          value={state.symbol}
+          onChange={(e) => state.setField('symbol', e.target.value)}
+          placeholder="BTC-USDC"
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Min Miktar"
+            type="number"
+            value={state.minAmount}
+            onChange={(e) => state.setField('minAmount', e.target.value)}
+          />
+          <Input
+            label="Max Miktar"
+            type="number"
+            value={state.maxAmount}
+            onChange={(e) => state.setField('maxAmount', e.target.value)}
           />
         </div>
 
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-2">
-          {state.status !== 'RUNNING' ? (
-            <button 
-              onClick={startBot} 
-              className="w-full py-2 bg-primary text-black font-medium rounded hover:bg-primary/90 transition-colors"
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Aralık (sn)"
+            type="number"
+            value={state.intervalSec}
+            onChange={(e) => state.setField('intervalSec', e.target.value)}
+          />
+          <Input
+            label="Max Hacim"
+            type="number"
+            value={state.maxVolumeTarget}
+            onChange={(e) => state.setField('maxVolumeTarget', e.target.value)}
+            hint="0 = limitsiz"
+          />
+        </div>
+
+        <Input
+          label="Spread Toleransı (%)"
+          type="number"
+          value={state.spreadTolerance}
+          onChange={(e) => state.setField('spreadTolerance', e.target.value)}
+          hint="0 = sınırsız"
+        />
+
+        {/* Market Toggle */}
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">Piyasa</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => state.setField('isSpot', true)}
+              className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'}`}
             >
-              Başlat
+              Spot
             </button>
+            <button
+              onClick={() => state.setField('isSpot', false)}
+              className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${!state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'}`}
+            >
+              Perps
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-auto pt-4 border-t border-border">
+          {state.status !== 'RUNNING' ? (
+            <Button
+              variant="primary"
+              fullWidth
+              size="lg"
+              icon={<Play size={16} />}
+              onClick={startBot}
+            >
+              Bot&apos;u Başlat
+            </Button>
           ) : (
-            <button 
-              onClick={stopBot} 
-              className="w-full py-2 bg-danger/10 text-danger border border-danger/30 font-medium rounded hover:bg-danger/20 transition-colors"
+            <Button
+              variant="danger"
+              fullWidth
+              size="lg"
+              icon={<Square size={16} />}
+              onClick={stopBot}
             >
               Durdur
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
       {/* Live Status Panel */}
-      <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Canlı Durum</h2>
-          <StatusBadge status={state.status} />
-        </div>
-
+      <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
+        {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">Üretilen Hacim</div>
-            <div className="text-xl"><NumberDisplay value={state.totalVolume} suffix=" USDC" /></div>
-          </div>
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">İşlem Sayısı</div>
-            <div className="text-xl"><NumberDisplay value={state.tradesCount} decimals={0} /></div>
-          </div>
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">Ödenen Fee</div>
-            <div className="text-xl"><NumberDisplay value={state.totalFee} prefix="$" /></div>
-          </div>
+          <StatCard
+            label="Üretilen Hacim"
+            value={<NumberDisplay value={state.totalVolume} suffix=" USDC" />}
+            icon={<BarChart3 size={16} />}
+          />
+          <StatCard
+            label="İşlem Sayısı"
+            value={<NumberDisplay value={state.tradesCount} decimals={0} />}
+            icon={<Hash size={16} />}
+          />
+          <StatCard
+            label="Ödenen Fee"
+            value={<NumberDisplay value={state.totalFee} prefix="$" />}
+            icon={<DollarSign size={16} />}
+          />
+          <StatCard
+            label="Ort. Spread"
+            value={<NumberDisplay value={state.avgSpread} suffix="%" />}
+            icon={<Activity size={16} />}
+          />
         </div>
 
-        <div className="flex-1 bg-surface border border-border rounded flex flex-col overflow-hidden">
-          <div className="px-4 py-2 border-b border-border text-sm font-medium">Log Kayıtları</div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+        {/* Volume Progress */}
+        {parseFloat(state.maxVolumeTarget) > 0 && (
+          <div className="glass-card p-4">
+            <div className="flex justify-between text-xs mb-2">
+              <span className="text-text-secondary">Hacim İlerlemesi</span>
+              <span className="text-text-primary font-mono tabular-nums">
+                {((state.totalVolume / parseFloat(state.maxVolumeTarget)) * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-2 bg-background rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-primary to-primary-soft rounded-full transition-all duration-500"
+                style={{ width: `${Math.min((state.totalVolume / parseFloat(state.maxVolumeTarget)) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Log Panel */}
+        <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Log Kayıtları</span>
+            <span className="text-[10px] text-text-muted">{state.logs.length} kayıt</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
             {state.logs.map((log, i) => (
-              <div key={i} className="text-xs flex items-center gap-4 py-1 border-b border-border/50 font-mono">
-                <span className="text-text-secondary w-20">{log.time}</span>
-                {log.symbol && <span className="w-20 font-medium">{log.symbol}</span>}
+              <div
+                key={i}
+                className="text-xs flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-hover/50 transition-colors font-mono animate-fade-in"
+              >
+                <span className="text-text-muted w-16 shrink-0 tabular-nums">{log.time}</span>
+                {log.symbol && <span className="w-20 font-medium text-text-primary">{log.symbol}</span>}
                 {log.side && (
-                  <span className={log.side === 'BUY' ? 'text-success w-10' : 'text-danger w-10'}>{log.side}</span>
+                  <span className={`badge ${log.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{log.side}</span>
                 )}
-                {log.amount && <span className="w-16"><NumberDisplay value={log.amount} decimals={4} /></span>}
-                {log.message && <span className="text-text-secondary">{log.message}</span>}
+                {log.amount && (
+                  <span className="tabular-nums text-text-secondary">
+                    <NumberDisplay value={log.amount} decimals={4} />
+                  </span>
+                )}
+                {log.price && (
+                  <span className="tabular-nums text-text-muted">
+                    @ <NumberDisplay value={log.price} />
+                  </span>
+                )}
+                {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
               </div>
             ))}
             {state.logs.length === 0 && (
-              <div className="text-center text-text-secondary pt-8 text-sm">Bot log kayıtları burada görünecektir.</div>
+              <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
+                <div className="text-center">
+                  <Activity size={32} className="mx-auto mb-3 opacity-30" />
+                  <p>Bot log kayıtları burada görünecektir.</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
