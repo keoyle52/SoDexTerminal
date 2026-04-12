@@ -77,6 +77,15 @@ export const DcaBot: React.FC = () => {
       setExecutedOrders((prev) => {
         const newCount = prev + 1;
         setAvgPrice((prevAvg) => prevAvg + (fillPrice - prevAvg) / newCount);
+
+        // Check max orders inside the same state update to avoid race condition
+        const maxOrd = parseInt(maxOrders);
+        if (maxOrd > 0 && newCount >= maxOrd) {
+          runningRef.current = false;
+          setStatus('STOPPED');
+          addLog({ time: new Date().toLocaleTimeString(), message: `Maksimum siparis sayisina (${maxOrd}) ulasildi. Bot durdu.` });
+        }
+
         return newCount;
       });
       setTotalInvested((p) => p + vol);
@@ -88,19 +97,6 @@ export const DcaBot: React.FC = () => {
         price: fillPrice,
         message: `DCA emri tamamlandi`,
       });
-
-      // Check max orders
-      const maxOrd = parseInt(maxOrders);
-      if (maxOrd > 0) {
-        setExecutedOrders((prev) => {
-          if (prev >= maxOrd) {
-            runningRef.current = false;
-            setStatus('STOPPED');
-            addLog({ time: new Date().toLocaleTimeString(), message: `Maksimum siparis sayisina (${maxOrd}) ulasildi. Bot durdu.` });
-          }
-          return prev;
-        });
-      }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Bilinmeyen hata';
       addLog({ time: new Date().toLocaleTimeString(), message: `HATA: ${msg}` });

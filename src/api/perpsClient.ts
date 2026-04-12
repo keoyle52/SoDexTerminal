@@ -23,6 +23,7 @@ perpsClient.interceptors.request.use(async (config) => {
       config.headers['X-API-Sign'] = signature;
     } catch (error) {
       console.error('Signing failed:', error);
+      return Promise.reject(error);
     }
   }
 

@@ -16,9 +16,20 @@ class WebSocketService {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  switchNetwork(isTestnet: boolean): void {
+    if (this.isTestnet !== isTestnet) {
+      this.disconnect();
+      this.reconnectAttempts = 0;
+      this.connect(isTestnet);
+    }
+  }
+
   connect(isTestnet: boolean): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      return;
+      if (this.isTestnet === isTestnet) return;
+      // Network changed while connected — disconnect and reconnect
+      this.disconnect();
+      this.reconnectAttempts = 0;
     }
 
     this.isTestnet = isTestnet;

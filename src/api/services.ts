@@ -5,6 +5,18 @@ import { ethers } from 'ethers';
 
 // ---------- helpers ----------
 
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxRetries - 1) throw err;
+      await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+    }
+  }
+  throw new Error('Unreachable');
+}
+
 function getEvmAddress(): string {
   const { privateKey } = useSettingsStore.getState();
   if (!privateKey) return '';
@@ -25,31 +37,31 @@ function getClient(market: 'spot' | 'perps') {
 
 export async function fetchSymbols(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.get('/markets/symbols');
+  const res: any = await withRetry(() => client.get('/markets/symbols'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchTickers(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.get('/markets/tickers');
+  const res: any = await withRetry(() => client.get('/markets/tickers'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchMiniTickers(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.get('/markets/miniTickers');
+  const res: any = await withRetry(() => client.get('/markets/miniTickers'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchBookTickers(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.get('/markets/bookTickers');
+  const res: any = await withRetry(() => client.get('/markets/bookTickers'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchOrderbook(symbol: string, market: 'spot' | 'perps' = 'perps', limit = 20) {
   const client = getClient(market);
-  const res: any = await client.get(`/markets/${symbol}/orderbook`, { params: { limit } });
+  const res: any = await withRetry(() => client.get(`/markets/${symbol}/orderbook`, { params: { limit } }));
   return res?.data ?? res ?? { bids: [], asks: [] };
 }
 
@@ -60,23 +72,23 @@ export async function fetchKlines(
   market: 'spot' | 'perps' = 'perps',
 ) {
   const client = getClient(market);
-  const res: any = await client.get(`/markets/${symbol}/klines`, { params: { interval, limit } });
+  const res: any = await withRetry(() => client.get(`/markets/${symbol}/klines`, { params: { interval, limit } }));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchCoins(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.get('/markets/coins');
+  const res: any = await withRetry(() => client.get('/markets/coins'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchMarkPrices() {
-  const res: any = await perpsClient.get('/markets/mark-prices');
+  const res: any = await withRetry(() => perpsClient.get('/markets/mark-prices'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchFundingRates() {
-  const res: any = await perpsClient.get('/markets/funding-rates');
+  const res: any = await withRetry(() => perpsClient.get('/markets/funding-rates'));
   return res?.data ?? res ?? [];
 }
 
@@ -86,7 +98,7 @@ export async function fetchAccountInfo(market: 'spot' | 'perps' = 'perps') {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await client.get(`/accounts/${address}`);
+  const res: any = await withRetry(() => client.get(`/accounts/${address}`));
   return res?.data ?? res ?? {};
 }
 
@@ -94,14 +106,14 @@ export async function fetchBalances(market: 'spot' | 'perps' = 'perps') {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await client.get(`/accounts/${address}/balances`);
+  const res: any = await withRetry(() => client.get(`/accounts/${address}/balances`));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchPositions() {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
-  const res: any = await perpsClient.get(`/accounts/${address}/positions`);
+  const res: any = await withRetry(() => perpsClient.get(`/accounts/${address}/positions`));
   return res?.data ?? res ?? [];
 }
 
@@ -109,7 +121,7 @@ export async function fetchOpenOrders(market: 'spot' | 'perps' = 'perps') {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await client.get(`/accounts/${address}/orders/open`);
+  const res: any = await withRetry(() => client.get(`/accounts/${address}/orders/open`));
   return res?.data ?? res ?? [];
 }
 
@@ -126,13 +138,13 @@ export interface PlaceOrderParams {
 
 export async function placeOrder(params: PlaceOrderParams, market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.post('/trade/orders', params);
+  const res: any = await withRetry(() => client.post('/trade/orders', params));
   return res?.data ?? res ?? {};
 }
 
 export async function cancelOrder(orderId: string, symbol: string, market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await client.post('/trade/orders/cancel', { orderId, symbol });
+  const res: any = await withRetry(() => client.post('/trade/orders/cancel', { orderId, symbol }));
   return res?.data ?? res ?? {};
 }
 
@@ -161,6 +173,6 @@ export async function fetchAccountOrders(
   const addr = address || getEvmAddress();
   if (!addr) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await client.get(`/accounts/${addr}/orders`);
+  const res: any = await withRetry(() => client.get(`/accounts/${addr}/orders`));
   return res?.data ?? res ?? [];
 }
