@@ -42,7 +42,6 @@ export const ScheduleCancel: React.FC = () => {
 
     const scope = cancelScope;
     let totalCancelled = 0;
-    let hadError = false;
 
     try {
       if (scope === 'all' || scope === 'perps') {
@@ -63,7 +62,6 @@ export const ScheduleCancel: React.FC = () => {
         status: 'success',
       });
     } catch (err: any) {
-      hadError = true;
       const errMsg = err?.message || 'Bilinmeyen hata';
       toast.error(`❌ İptal başarısız: ${errMsg}`);
       addHistory({

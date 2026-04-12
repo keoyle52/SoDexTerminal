@@ -17,10 +17,6 @@ export const VolumeBot: React.FC = () => {
   const runningRef = useRef(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const getMarket = useCallback((): 'spot' | 'perps' => {
-    return state.isSpot ? 'spot' : 'perps';
-  }, [state.isSpot]);
-
   const executeTrade = useCallback(async () => {
     if (!runningRef.current) return;
     const { volumeBot: s } = useBotStore.getState();
@@ -96,14 +92,18 @@ export const VolumeBot: React.FC = () => {
     }
   }, []);
 
-  const scheduleNext = useCallback(() => {
-    if (!runningRef.current) return;
-    const { volumeBot: s } = useBotStore.getState();
-    const interval = Math.max(1, parseInt(s.intervalSec) || DEFAULT_INTERVAL_SEC) * 1000;
-    timerRef.current = setTimeout(async () => {
-      await executeTrade();
-      scheduleNext();
-    }, interval);
+  const scheduleNextRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    scheduleNextRef.current = () => {
+      if (!runningRef.current) return;
+      const { volumeBot: s } = useBotStore.getState();
+      const interval = Math.max(1, parseInt(s.intervalSec) || DEFAULT_INTERVAL_SEC) * 1000;
+      timerRef.current = setTimeout(async () => {
+        await executeTrade();
+        scheduleNextRef.current();
+      }, interval);
+    };
   }, [executeTrade]);
 
   const doStart = useCallback(() => {
@@ -116,9 +116,9 @@ export const VolumeBot: React.FC = () => {
     // Run first trade immediately, then schedule subsequent ones
     (async () => {
       await executeTrade();
-      scheduleNext();
+      scheduleNextRef.current();
     })();
-  }, [state, executeTrade, scheduleNext]);
+  }, [state, executeTrade]);
 
   const startBot = useCallback(() => {
     if (confirmOrders) {
