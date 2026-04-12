@@ -117,17 +117,17 @@ export const VolumeBot: React.FC = () => {
 
         // Place BUY
         const buyResult = await placeOrder(
-          { symbol: s.symbol, side: 1, type: 1, quantity: qty, price: limitPrice, timeInForce: 3 },
+          { symbol: s.symbol, side: 1, type: 1, quantity: qty, price: limitPrice, timeInForce: 3 }, // side:1=BUY, type:1=LIMIT, timeInForce:3=IOC
           market,
         );
-        // Place SELL
+        // Place SELL at same price to self-match for volume
         const sellResult = await placeOrder(
-          { symbol: s.symbol, side: 2, type: 1, quantity: qty, price: limitPrice, timeInForce: 3 },
+          { symbol: s.symbol, side: 2, type: 1, quantity: qty, price: limitPrice, timeInForce: 3 }, // side:2=SELL, type:1=LIMIT, timeInForce:3=IOC
           market,
         );
 
         const vol = quantity * midPrice * 2; // Both sides create volume
-        const fee = vol * FEE_RATE;
+        const fee = quantity * midPrice * FEE_RATE * 2; // Fee on each side separately
 
         const freshState = useBotStore.getState().volumeBot;
         const prevCount = freshState.tradesCount;
@@ -146,7 +146,7 @@ export const VolumeBot: React.FC = () => {
           amount: quantity,
           price: midPrice,
           fee,
-          orderId: (buyResult?.orderId ?? buyResult?.id) + ' / ' + (sellResult?.orderId ?? sellResult?.id),
+          orderId: `${buyResult?.orderId ?? buyResult?.id ?? 'N/A'} / ${sellResult?.orderId ?? sellResult?.id ?? 'N/A'}`,
         });
       } else {
         // Classic mode: single market order
@@ -334,8 +334,8 @@ export const VolumeBot: React.FC = () => {
             />
             {parseFloat(state.budget) > 0 && parseFloat(state.maxSpend) > 0 && (
               <div className="text-[10px] text-text-muted bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-2">
-                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, ${state.budget} bütçe ile max ${state.maxSpend} harcayarak hacim üretecek.
-                LIMIT emirleri kullanarak spread kaybı minimuma indirilir.
+                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, toplam ${state.budget} hacim üretirken fee harcamasını max ${state.maxSpend} ile sınırlar.
+                LIMIT emirleri (BUY+SELL çifti) kullanarak spread kaybı sıfırlanır, sadece fee ödenir.
               </div>
             )}
           </div>
