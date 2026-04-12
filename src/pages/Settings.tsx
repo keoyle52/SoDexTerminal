@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { spotClient } from '../api/spotClient';
+import { wsService } from '../api/websocket';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
 import { Key, Shield, Settings2, Info, Wifi, Unplug, Globe, Bell, Hash } from 'lucide-react';
@@ -117,7 +118,10 @@ export const Settings: React.FC = () => {
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => store.setIsTestnet(false)}
+                    onClick={() => {
+                      store.setIsTestnet(false);
+                      wsService.switchNetwork(false);
+                    }}
                     className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
                       !store.isTestnet
                         ? 'border-primary bg-primary/10 text-primary'
@@ -127,7 +131,10 @@ export const Settings: React.FC = () => {
                     Mainnet
                   </button>
                   <button
-                    onClick={() => store.setIsTestnet(true)}
+                    onClick={() => {
+                      store.setIsTestnet(true);
+                      wsService.switchNetwork(true);
+                    }}
                     className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
                       store.isTestnet
                         ? 'border-primary bg-primary/10 text-primary'

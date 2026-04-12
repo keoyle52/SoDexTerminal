@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Play, Square, Users, TrendingUp, CheckCircle2, Eye } from 'lucide-react';
+import { ethers } from 'ethers';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmModal } from '../components/common/ConfirmModal';
@@ -192,6 +193,10 @@ export const CopyTrader: React.FC = () => {
   const startBot = useCallback(() => {
     if (!targetAddress.trim()) {
       toast.error('Hedef cüzdan adresi giriniz.');
+      return;
+    }
+    if (!ethers.isAddress(targetAddress.trim())) {
+      toast.error('Geçersiz Ethereum adresi formatı.');
       return;
     }
 

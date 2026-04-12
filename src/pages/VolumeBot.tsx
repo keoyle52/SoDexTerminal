@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Play, Square, BarChart3, Hash, DollarSign, Activity } from 'lucide-react';
+import { Play, Square, BarChart3, Hash, DollarSign, Activity, Wallet, ShieldAlert, TrendingUp } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { placeOrder, fetchOrderbook } from '../api/services';
+import { placeOrder, fetchOrderbook, fetchFeeRate } from '../api/services';
+import type { FeeRateInfo } from '../api/services';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmModal } from '../components/common/ConfirmModal';
@@ -11,14 +12,18 @@ import { StatCard } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 
-const FEE_RATE = 0.001;
 const DEFAULT_INTERVAL_SEC = 10;
+
+function getLeverage(isSpot: boolean, leverage: string): number {
+  return isSpot ? 1 : (parseInt(leverage) || 1);
+}
 
 export const VolumeBot: React.FC = () => {
   const { volumeBot: state } = useBotStore();
   const { confirmOrders } = useSettingsStore();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runningRef = useRef(false);
+  const feeRateRef = useRef<FeeRateInfo>({ makerFee: 0.00012, takerFee: 0.0004 });
   const [showConfirm, setShowConfirm] = useState(false);
 
   const executeTrade = useCallback(async () => {
@@ -29,11 +34,24 @@ export const VolumeBot: React.FC = () => {
     if (maxVol > 0 && s.totalVolume >= maxVol) {
       runningRef.current = false;
       s.setField('status', 'STOPPED');
-      s.addLog({ time: new Date().toLocaleTimeString(), message: `Max volume target (${maxVol}) reached. Bot stopped.` });
+      s.addLog({ time: new Date().toLocaleTimeString(), message: `Hedef hacme (${maxVol}) ulaşıldı. Bot durdu.` });
+      return;
+    }
+
+    // Budget guard: stop if max spend limit reached
+    const maxSpendLimit = parseFloat(s.maxSpend);
+    if (maxSpendLimit > 0 && s.totalSpent >= maxSpendLimit) {
+      runningRef.current = false;
+      s.setField('status', 'STOPPED');
+      s.addLog({ time: new Date().toLocaleTimeString(), message: `Max harcama limiti ($${maxSpendLimit.toFixed(2)}) aşıldı. Bot durdu.` });
       return;
     }
 
     const market = s.isSpot ? 'spot' : 'perps';
+    const budgetVal = parseFloat(s.budget);
+    const leverageVal = getLeverage(s.isSpot, s.leverage);
+    const effectiveBudget = budgetVal * leverageVal;
+    const hasBudget = budgetVal > 0;
 
     try {
       const orderbook = await fetchOrderbook(s.symbol, market, 5);
@@ -41,57 +59,141 @@ export const VolumeBot: React.FC = () => {
       const bestAsk = orderbook?.asks?.[0]?.[0] ?? orderbook?.asks?.[0]?.price;
 
       if (!bestBid || !bestAsk) {
-        s.addLog({ time: new Date().toLocaleTimeString(), message: `No orderbook data for ${s.symbol}` });
+        s.addLog({ time: new Date().toLocaleTimeString(), message: `${s.symbol} için emir defteri verisi bulunamadı` });
         return;
       }
 
       const bidPrice = parseFloat(bestBid);
       const askPrice = parseFloat(bestAsk);
       const midPrice = (bidPrice + askPrice) / 2;
+
+      if (midPrice <= 0) {
+        s.addLog({ time: new Date().toLocaleTimeString(), message: `${s.symbol} için geçersiz fiyat. Atlanıyor.` });
+        return;
+      }
+
       const spread = ((askPrice - bidPrice) / midPrice) * 100;
 
       const spreadTol = parseFloat(s.spreadTolerance);
       if (spreadTol > 0 && spread > spreadTol) {
-        s.addLog({ time: new Date().toLocaleTimeString(), message: `Spread too wide (${spread.toFixed(2)}% > ${spreadTol}%). Skipping.` });
+        s.addLog({ time: new Date().toLocaleTimeString(), message: `Spread çok geniş (${spread.toFixed(2)}% > ${spreadTol}%). Atlanıyor.` });
         return;
       }
 
-      const min = parseFloat(s.minAmount);
-      const max = parseFloat(s.maxAmount);
+      let min = parseFloat(s.minAmount);
+      let max = parseFloat(s.maxAmount);
+
+      // Budget mode: cap quantity so each trade's notional value doesn't exceed effective budget
+      // With leverage: effectiveBudget = budget × leverage (e.g., $200 × 10x = $2000 position)
+      if (hasBudget) {
+        const maxQtyByBudget = effectiveBudget / midPrice;
+        max = Math.min(max, maxQtyByBudget);
+        min = Math.min(min, max);
+      }
+
+      // Budget mode with maxSpend: cap quantity so fee doesn't push us over max spend
+      if (maxSpendLimit > 0) {
+        const spendRemaining = maxSpendLimit - s.totalSpent;
+        if (spendRemaining <= 0) {
+          runningRef.current = false;
+          s.setField('status', 'STOPPED');
+          s.addLog({ time: new Date().toLocaleTimeString(), message: `Max harcama limiti ($${maxSpendLimit.toFixed(2)}) doldu. Bot durdu.` });
+          return;
+        }
+        // Each trade costs maker+taker fee (buy+sell), cap quantity so fees stay within limit
+        const { makerFee, takerFee } = feeRateRef.current;
+        const combinedFeeRate = makerFee + takerFee;
+        const maxQtyBySpend = spendRemaining / (midPrice * combinedFeeRate);
+        max = Math.min(max, maxQtyBySpend);
+        min = Math.min(min, max);
+      }
+
+      if (max <= 0 || min <= 0) {
+        s.addLog({ time: new Date().toLocaleTimeString(), message: 'Kalan bütçe/limit yetersiz. Atlanıyor.' });
+        return;
+      }
+
       const quantity = min + Math.random() * (max - min);
-      const side: 1 | 2 = Math.random() > 0.5 ? 1 : 2;
-      const sideLabel = side === 1 ? 'BUY' : 'SELL';
-      const fillPrice = side === 1 ? askPrice : bidPrice;
 
-      const result = await placeOrder(
-        { symbol: s.symbol, side, type: 2, quantity: quantity.toFixed(8) },
-        market,
-      );
+      // Smart strategy: use LIMIT orders at mid-price (maker) for lower fees
+      // If budget mode is active, place both BUY and SELL at mid-price to self-match
+      // producing volume with zero price risk and only paying fees
+      if (hasBudget) {
+        // Place BUY and SELL LIMIT at mid-price to create volume with minimal cost
+        const limitPrice = midPrice.toString();
+        const qty = quantity.toFixed(8);
 
-      const vol = quantity * fillPrice;
-      const fee = vol * FEE_RATE;
+        // Place BUY
+        const buyResult = await placeOrder(
+          { symbol: s.symbol, side: 1, type: 1, quantity: qty, price: limitPrice, timeInForce: 3 }, // side:1=BUY, type:1=LIMIT, timeInForce:3=IOC
+          market,
+        );
+        // Place SELL at same price to self-match for volume
+        const sellResult = await placeOrder(
+          { symbol: s.symbol, side: 2, type: 1, quantity: qty, price: limitPrice, timeInForce: 3 }, // side:2=SELL, type:1=LIMIT, timeInForce:3=IOC
+          market,
+        );
 
-      const freshState = useBotStore.getState().volumeBot;
-      const prevCount = freshState.tradesCount;
-      const prevSpread = freshState.avgSpread;
+        const vol = quantity * midPrice * 2; // Both sides create volume
+        // First order rests as maker, second order hits it as taker
+        const fee = quantity * midPrice * (feeRateRef.current.makerFee + feeRateRef.current.takerFee);
 
-      freshState.setField('totalVolume', freshState.totalVolume + vol);
-      freshState.setField('tradesCount', prevCount + 1);
-      freshState.setField('totalFee', freshState.totalFee + fee);
-      freshState.setField('avgSpread', prevSpread + (spread - prevSpread) / (prevCount + 1));
+        const freshState = useBotStore.getState().volumeBot;
+        const prevCount = freshState.tradesCount;
+        const prevSpread = freshState.avgSpread;
 
-      freshState.addLog({
-        time: new Date().toLocaleTimeString(),
-        symbol: s.symbol,
-        side: sideLabel,
-        amount: quantity,
-        price: fillPrice,
-        fee,
-        orderId: result?.orderId ?? result?.id,
-      });
+        freshState.setField('totalVolume', freshState.totalVolume + vol);
+        freshState.setField('tradesCount', prevCount + 2);
+        freshState.setField('totalFee', freshState.totalFee + fee);
+        freshState.setField('totalSpent', freshState.totalSpent + fee);
+        freshState.setField('avgSpread', prevSpread + (spread - prevSpread) / (prevCount + 2));
+
+        freshState.addLog({
+          time: new Date().toLocaleTimeString(),
+          symbol: s.symbol,
+          side: 'BUY+SELL',
+          amount: quantity,
+          price: midPrice,
+          fee,
+          orderId: `${buyResult?.orderId ?? buyResult?.id ?? 'N/A'} / ${sellResult?.orderId ?? sellResult?.id ?? 'N/A'}`,
+        });
+      } else {
+        // Classic mode: single market order
+        const side: 1 | 2 = Math.random() > 0.5 ? 1 : 2;
+        const sideLabel = side === 1 ? 'BUY' : 'SELL';
+        const fillPrice = side === 1 ? askPrice : bidPrice;
+
+        const result = await placeOrder(
+          { symbol: s.symbol, side, type: 2, quantity: quantity.toFixed(8) },
+          market,
+        );
+
+        const vol = quantity * fillPrice;
+        const fee = vol * feeRateRef.current.takerFee; // Market order = taker
+
+        const freshState = useBotStore.getState().volumeBot;
+        const prevCount = freshState.tradesCount;
+        const prevSpread = freshState.avgSpread;
+
+        freshState.setField('totalVolume', freshState.totalVolume + vol);
+        freshState.setField('tradesCount', prevCount + 1);
+        freshState.setField('totalFee', freshState.totalFee + fee);
+        freshState.setField('totalSpent', freshState.totalSpent + fee);
+        freshState.setField('avgSpread', prevSpread + (spread - prevSpread) / (prevCount + 1));
+
+        freshState.addLog({
+          time: new Date().toLocaleTimeString(),
+          symbol: s.symbol,
+          side: sideLabel,
+          amount: quantity,
+          price: fillPrice,
+          fee,
+          orderId: result?.orderId ?? result?.id,
+        });
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Unknown error';
-      s.addLog({ time: new Date().toLocaleTimeString(), message: `ERROR: ${msg}` });
+      s.addLog({ time: new Date().toLocaleTimeString(), message: `HATA: ${msg}` });
       toast.error(`Volume Bot: ${msg}`);
     }
   }, []);
@@ -115,9 +217,18 @@ export const VolumeBot: React.FC = () => {
     runningRef.current = true;
     state.resetStats();
     state.setField('status', 'RUNNING');
-    state.addLog({ time: new Date().toLocaleTimeString(), message: 'Bot started' });
+
+    const market = state.isSpot ? 'spot' : 'perps';
 
     (async () => {
+      // Fetch real fee rates from the API before trading
+      const feeRate = await fetchFeeRate(market);
+      feeRateRef.current = feeRate;
+      state.addLog({
+        time: new Date().toLocaleTimeString(),
+        message: `Bot başlatıldı — Fee oranları (${market}): maker ${(feeRate.makerFee * 100).toFixed(4)}%, taker ${(feeRate.takerFee * 100).toFixed(4)}%`,
+      });
+
       await executeTrade();
       scheduleNextRef.current();
     })();
@@ -156,7 +267,7 @@ export const VolumeBot: React.FC = () => {
       <ConfirmModal
         isOpen={showConfirm}
         title="Volume Bot'u Başlat"
-        message={`${state.symbol} için Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}\nMiktar aralığı: ${state.minAmount} – ${state.maxAmount}\nAralık: ${state.intervalSec}s`}
+        message={`${state.symbol} için Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}${getLeverage(state.isSpot, state.leverage) > 1 ? `\nKaldıraç: ${state.leverage}x` : ''}\nMiktar aralığı: ${state.minAmount} – ${state.maxAmount}\nAralık: ${state.intervalSec}s${parseFloat(state.budget) > 0 ? `\nBütçe: $${state.budget}${getLeverage(state.isSpot, state.leverage) > 1 ? ` × ${state.leverage}x = $${(parseFloat(state.budget) * getLeverage(state.isSpot, state.leverage)).toFixed(0)} efektif` : ''}` : ''}${parseFloat(state.maxSpend) > 0 ? `\nMax Harcama: $${state.maxSpend}` : ''}`}
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -215,6 +326,39 @@ export const VolumeBot: React.FC = () => {
           hint="0 = sınırsız"
         />
 
+        {/* Budget Section */}
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
+            💰 Bütçe Yönetimi
+          </label>
+          <div className="p-3 bg-background/40 border border-border rounded-lg space-y-3">
+            <Input
+              label="Toplam Bütçe ($)"
+              type="number"
+              value={state.budget}
+              onChange={(e) => state.setField('budget', e.target.value)}
+              placeholder="200"
+              hint="0 = limitsiz. İşlem başına kullanılacak max sermaye"
+              icon={<Wallet size={14} />}
+            />
+            <Input
+              label="Max Harcama ($)"
+              type="number"
+              value={state.maxSpend}
+              onChange={(e) => state.setField('maxSpend', e.target.value)}
+              placeholder="20"
+              hint="0 = limitsiz. Fee + zarar toplamı bu limiti aşamaz"
+              icon={<ShieldAlert size={14} />}
+            />
+            {parseFloat(state.budget) > 0 && parseFloat(state.maxSpend) > 0 && (
+              <div className="text-[10px] text-text-muted bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-2">
+                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, hesabınızdan en fazla ${state.budget} sermaye kullanarak{!state.isSpot && getLeverage(state.isSpot, state.leverage) > 1 ? ` ${state.leverage}x kaldıraçla ($${(parseFloat(state.budget) * getLeverage(state.isSpot, state.leverage)).toFixed(0)} efektif)` : ''} hacim üretir.
+                Toplam fee harcaması ${state.maxSpend} ile sınırlıdır. LIMIT emirleri (BUY+SELL çifti) ile spread kaybı sıfırlanır, sadece fee ödenir.
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Market Toggle */}
         <div className="space-y-1.5">
           <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">Piyasa</label>
@@ -233,6 +377,19 @@ export const VolumeBot: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Leverage (only for Perps) */}
+        {!state.isSpot && (
+          <Input
+            label="Kaldıraç (x)"
+            type="number"
+            value={state.leverage}
+            onChange={(e) => state.setField('leverage', e.target.value)}
+            placeholder="10"
+            hint={`$${parseFloat(state.budget) > 0 ? (parseFloat(state.budget) * getLeverage(state.isSpot, state.leverage)).toFixed(0) : '0'} efektif pozisyon`}
+            icon={<TrendingUp size={14} />}
+          />
+        )}
 
         <div className="mt-auto pt-4 border-t border-border">
           {state.status !== 'RUNNING' ? (
@@ -262,7 +419,7 @@ export const VolumeBot: React.FC = () => {
       {/* Live Status Panel */}
       <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
         {/* Stats Grid */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Üretilen Hacim"
             value={<NumberDisplay value={state.totalVolume} suffix=" USDC" />}
@@ -285,6 +442,33 @@ export const VolumeBot: React.FC = () => {
           />
         </div>
 
+        {/* Budget Stats */}
+        {(parseFloat(state.budget) > 0 || parseFloat(state.maxSpend) > 0) && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {parseFloat(state.budget) > 0 && (
+              <StatCard
+                label="İşlem Başına Max"
+                value={<NumberDisplay value={parseFloat(state.budget)} prefix="$" />}
+                icon={<Wallet size={16} />}
+              />
+            )}
+            <StatCard
+              label="Toplam Harcama"
+              value={<NumberDisplay value={state.totalSpent} prefix="$" />}
+              icon={<DollarSign size={16} />}
+              trend={parseFloat(state.maxSpend) > 0 && state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'down' : 'neutral'}
+            />
+            {parseFloat(state.maxSpend) > 0 && (
+              <StatCard
+                label="Harcama Limiti"
+                value={<NumberDisplay value={Math.max(0, parseFloat(state.maxSpend) - state.totalSpent)} prefix="$" suffix=" kaldı" />}
+                icon={<ShieldAlert size={16} />}
+                trend={state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'down' : 'up'}
+              />
+            )}
+          </div>
+        )}
+
         {/* Volume Progress */}
         {parseFloat(state.maxVolumeTarget) > 0 && (
           <div className="glass-card p-4">
@@ -298,6 +482,28 @@ export const VolumeBot: React.FC = () => {
               <div
                 className="h-full bg-gradient-to-r from-primary to-primary-soft rounded-full transition-all duration-500"
                 style={{ width: `${Math.min((state.totalVolume / parseFloat(state.maxVolumeTarget)) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Spend Limit Progress */}
+        {parseFloat(state.maxSpend) > 0 && (
+          <div className="glass-card p-4">
+            <div className="flex justify-between text-xs mb-2">
+              <span className="text-text-secondary">Harcama Limiti</span>
+              <span className={`font-mono tabular-nums ${state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'text-danger' : 'text-text-primary'}`}>
+                ${state.totalSpent.toFixed(2)} / ${state.maxSpend}
+              </span>
+            </div>
+            <div className="h-2 bg-background rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  state.totalSpent > parseFloat(state.maxSpend) * 0.8
+                    ? 'bg-gradient-to-r from-warning to-danger'
+                    : 'bg-gradient-to-r from-success to-primary'
+                }`}
+                style={{ width: `${Math.min((state.totalSpent / parseFloat(state.maxSpend)) * 100, 100)}%` }}
               />
             </div>
           </div>
