@@ -585,15 +585,24 @@ export interface FeeRateInfo {
  * Falls back to default Tier-1 rates if the call fails (e.g. no wallet configured).
  */
 export async function fetchFeeRate(market: 'spot' | 'perps' = 'perps'): Promise<FeeRateInfo> {
+  const normalizeFeeRate = (raw: number): number => {
+    const abs = Math.abs(raw);
+    // Convert percent-like values (e.g. 0.04 for 0.04%) to ratio.
+    return abs > 0.01 ? raw / 100 : raw;
+  };
+
   try {
     const address = getEvmAddress();
     if (!address) throw new Error('No wallet configured');
     const client = getClient(market);
     const res: any = await withRetry(() => client.get(`/accounts/${address}/fee-rate`));
-    const data = res?.data ?? res ?? {};
-    const makerFee = parseFloat(data.makerFee ?? data.maker_fee ?? data.maker);
-    const takerFee = parseFloat(data.takerFee ?? data.taker_fee ?? data.taker);
-    if (isNaN(makerFee) || isNaN(takerFee) || makerFee < 0 || takerFee < 0) {
+    const envelope = res?.data ?? res ?? {};
+    assertNoBodyError(envelope);
+    const data = envelope?.data ?? envelope;
+    const makerFee = normalizeFeeRate(parseFloat(data.makerFeeRate ?? data.makerFee ?? data.maker_fee ?? data.maker));
+    const takerFee = normalizeFeeRate(parseFloat(data.takerFeeRate ?? data.takerFee ?? data.taker_fee ?? data.taker));
+    // maker fee can be negative when rebate is active; taker fee cannot.
+    if (!Number.isFinite(makerFee) || !Number.isFinite(takerFee) || takerFee < 0) {
       throw new Error('Invalid fee rate response');
     }
     return { makerFee, takerFee };
@@ -624,6 +633,7 @@ export interface OrderStatusResult {
   filledQty: number;
   avgFillPrice: number;
   filledValue: number;
+  totalFee: number;
 }
 
 /**
@@ -661,17 +671,20 @@ export async function fetchOrderStatus(
       // unfilled. It may also mean the order is still in flight (unlikely after the
       // FILL_VERIFICATION_DELAY_MS wait). Using EXPIRED is a safe assumption here;
       // callers that see filledQty === 0 will not count volume.
-      return { orderId, status: 'EXPIRED', filledQty: 0, avgFillPrice: 0, filledValue: 0 };
+      return { orderId, status: 'EXPIRED', filledQty: 0, avgFillPrice: 0, filledValue: 0, totalFee: 0 };
     }
 
     // Aggregate fills across all trade executions for this order
     let totalQty = 0;
     let totalValue = 0;
+    let totalFee = 0;
     for (const t of trades) {
       const qty = parseFloat(t.quantity ?? '0') || 0;
       const price = parseFloat(t.price ?? '0') || 0;
+      const fee = parseFloat(t.fee ?? t.commission ?? '0') || 0;
       totalQty += qty;
       totalValue += qty * price;
+      totalFee += fee;
     }
     const avgFillPrice = totalQty > 0 ? totalValue / totalQty : 0;
 
@@ -681,6 +694,7 @@ export async function fetchOrderStatus(
       filledQty: totalQty,
       avgFillPrice,
       filledValue: totalValue,
+      totalFee,
     };
   } catch {
     return null;

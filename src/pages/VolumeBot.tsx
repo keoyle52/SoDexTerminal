@@ -21,7 +21,9 @@ import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 
 const DEFAULT_INTERVAL_SEC = 10;
-const PERPS_LEVERAGE = 10;
+const DEFAULT_PERPS_LEVERAGE = 10;
+const MIN_PERPS_LEVERAGE = 1;
+const MAX_PERPS_LEVERAGE = 100;
 const PERPS_MARGIN_MODE_CROSS: 1 | 2 = 2;
 const MAX_QUANTITY_PRECISION = 12;
 const ROUND_TRIP_SIDES = 2;
@@ -39,6 +41,12 @@ function symbolFromBase(base: string, market: 'spot' | 'perps'): string {
 function parsePositiveLimit(value: string): number | null {
   const n = parseFloat(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function parsePerpsLeverage(value: string): number {
+  const parsed = Math.round(parseFloat(value));
+  if (!Number.isFinite(parsed)) return DEFAULT_PERPS_LEVERAGE;
+  return Math.min(MAX_PERPS_LEVERAGE, Math.max(MIN_PERPS_LEVERAGE, parsed));
 }
 
 /**
@@ -80,15 +88,16 @@ function classifyError(err: unknown): string {
  * Extract fill information from a placeOrder response (some exchanges embed it).
  * Returns undefined if the response does not contain reliable fill data.
  */
-function extractInlineFill(res: unknown): { filledQty: number; avgFillPrice: number; status: string } | undefined {
+function extractInlineFill(res: unknown): { filledQty: number; avgFillPrice: number; status: string; totalFee: number } | undefined {
   const payload = res as Record<string, unknown> | null;
   if (!payload || typeof payload !== 'object') return undefined;
   const status = String(payload.status ?? payload.orderStatus ?? '');
   const filledQty = parseFloat(String(payload.filledQty ?? payload.executedQty ?? payload.filled_qty ?? payload.cumQty ?? '0')) || 0;
   const avgFillPrice = parseFloat(String(payload.avgFillPrice ?? payload.avgPrice ?? payload.avg_price ?? '0')) || 0;
+  const totalFee = parseFloat(String(payload.fee ?? payload.filledFee ?? payload.commission ?? payload.totalFee ?? '0')) || 0;
   // Only trust inline fill if the status is explicit or we have both filled qty and price
   if ((status && !['OPEN', 'NEW', ''].includes(status.toUpperCase())) || (filledQty > 0 && avgFillPrice > 0)) {
-    return { filledQty, avgFillPrice, status: status || (filledQty > 0 ? 'FILLED' : 'OPEN') };
+    return { filledQty, avgFillPrice, status: status || (filledQty > 0 ? 'FILLED' : 'OPEN'), totalFee };
   }
   return undefined;
 }
@@ -125,7 +134,7 @@ export const VolumeBot: React.FC = () => {
 
     const market = s.isSpot ? 'spot' : 'perps';
     const budgetVal = parseFloat(s.budget) || 0;
-    const leverageVal = s.isSpot ? 1 : PERPS_LEVERAGE;
+    const leverageVal = s.isSpot ? 1 : parsePerpsLeverage(s.leverage);
     const effectiveBudget = budgetVal * leverageVal;
     const hasBudget = budgetVal > 0;
     const normalizedSym = normalizeSymbol(s.symbol, market);
@@ -220,13 +229,13 @@ export const VolumeBot: React.FC = () => {
         let buyFill = extractInlineFill(buyResult);
         if (!buyFill && buyOrderId) {
           const st = await fetchOrderStatus(buyOrderId, s.symbol, market);
-          if (st) buyFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status };
+            if (st) buyFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status, totalFee: st.totalFee };
         }
 
         let sellFill = extractInlineFill(sellResult);
         if (!sellFill && sellOrderId) {
           const st = await fetchOrderStatus(sellOrderId, s.symbol, market);
-          if (st) sellFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status };
+            if (st) sellFill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status, totalFee: st.totalFee };
         }
 
         // If we couldn't verify either order, increment failure counter
@@ -271,7 +280,9 @@ export const VolumeBot: React.FC = () => {
         const filledSides = (filledQtyBuy > 0 ? 1 : 0) + (filledQtySell > 0 ? 1 : 0);
         const filledQtyAvg = filledSides > 0 ? (filledQtyBuy + filledQtySell) / filledSides : 0;
         const takerFeeRate = feeRateRef.current.takerFee;
-        const fee = (buyVol * takerFeeRate) + (sellVol * takerFeeRate);
+        const buyFee = buyFill?.totalFee && buyFill.totalFee > 0 ? buyFill.totalFee : buyVol * takerFeeRate;
+        const sellFee = sellFill?.totalFee && sellFill.totalFee > 0 ? sellFill.totalFee : sellVol * takerFeeRate;
+        const fee = buyFee + sellFee;
 
         const freshState = useBotStore.getState().volumeBot;
         const prevCount = freshState.tradesCount;
@@ -339,7 +350,7 @@ export const VolumeBot: React.FC = () => {
         let fill = extractInlineFill(result);
         if (!fill && orderId) {
           const st = await fetchOrderStatus(orderId, s.symbol, market);
-          if (st) fill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status };
+          if (st) fill = { filledQty: st.filledQty, avgFillPrice: st.avgFillPrice, status: st.status, totalFee: st.totalFee };
         }
 
         if (!fill) {
@@ -374,7 +385,7 @@ export const VolumeBot: React.FC = () => {
         consecutiveUnverifiedRef.current = 0;
 
         const vol = fill.filledQty * fill.avgFillPrice;
-        const fee = vol * feeRateRef.current.takerFee;
+        const fee = fill.totalFee > 0 ? fill.totalFee : vol * feeRateRef.current.takerFee;
 
         const freshState = useBotStore.getState().volumeBot;
         const prevCount = freshState.tradesCount;
@@ -440,7 +451,8 @@ export const VolumeBot: React.FC = () => {
     runningRef.current = true;
     consecutiveUnverifiedRef.current = 0;
     state.resetStats();
-    state.setField('leverage', state.isSpot ? '1' : String(PERPS_LEVERAGE));
+    const perpsLeverage = parsePerpsLeverage(state.leverage);
+    state.setField('leverage', state.isSpot ? '1' : String(perpsLeverage));
     state.setField('status', 'RUNNING');
 
     const market = state.isSpot ? 'spot' : 'perps';
@@ -448,16 +460,16 @@ export const VolumeBot: React.FC = () => {
     (async () => {
       if (market === 'perps') {
         try {
-          await updatePerpsLeverage(state.symbol, PERPS_LEVERAGE, PERPS_MARGIN_MODE_CROSS);
+          await updatePerpsLeverage(state.symbol, perpsLeverage, PERPS_MARGIN_MODE_CROSS);
           state.addLog({
             time: new Date().toLocaleTimeString(),
-            message: `[PERPS] ${normalizeSymbol(state.symbol, 'perps')}: Kaldıraç ${PERPS_LEVERAGE}x (CROSS) olarak ayarlandı`,
+            message: `[PERPS] ${normalizeSymbol(state.symbol, 'perps')}: Kaldıraç ${perpsLeverage}x (CROSS) olarak ayarlandı`,
           });
         } catch (err: unknown) {
           const category = classifyError(err);
           state.addLog({
             time: new Date().toLocaleTimeString(),
-            message: `[PERPS] Kaldıraç güncellenemedi (${PERPS_LEVERAGE}x): ${category}`,
+            message: `[PERPS] Kaldıraç güncellenemedi (${perpsLeverage}x): ${category}`,
           });
         }
       }
@@ -507,13 +519,14 @@ export const VolumeBot: React.FC = () => {
   const volumeTargetValue = parsePositiveLimit(state.maxVolumeTarget);
   const spendUsageRatio = spendLimitValue !== null ? Math.min((state.totalSpent / spendLimitValue) * 100, 100) : 0;
   const volumeProgressRatio = volumeTargetValue !== null ? Math.min((state.totalVolume / volumeTargetValue) * 100, 100) : 0;
+  const currentPerpsLeverage = parsePerpsLeverage(state.leverage);
 
   return (
     <div className="flex h-[calc(100vh-52px)]">
       <ConfirmModal
         isOpen={showConfirm}
         title="Volume Bot'u Başlat"
-        message={`Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}${!state.isSpot ? `\nKaldıraç: ${PERPS_LEVERAGE}x (otomatik)` : ''}\nKullanılacak bütçe: $${state.budget || '0'}\nHarcanacak bütçe: $${state.maxSpend || '0'}\nHedef hacim: $${state.maxVolumeTarget || '0'}`}
+        message={`Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}${!state.isSpot ? `\nKaldıraç: ${currentPerpsLeverage}x` : ''}\nKullanılacak bütçe: $${state.budget || '0'}\nHarcanacak bütçe: $${state.maxSpend || '0'}\nHedef hacim: $${state.maxVolumeTarget || '0'}`}
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -530,12 +543,12 @@ export const VolumeBot: React.FC = () => {
           value={state.isSpot ? 'spot' : 'perps'}
           options={[
             { value: 'spot', label: 'Spot' },
-            { value: 'perps', label: 'Perps (otomatik 10x)' },
-          ]}
+              { value: 'perps', label: 'Perps' },
+            ]}
           onChange={(e) => {
             const nextMarket = e.target.value === 'spot' ? 'spot' : 'perps';
             state.setField('isSpot', nextMarket === 'spot');
-            state.setField('leverage', nextMarket === 'spot' ? '1' : String(PERPS_LEVERAGE));
+            state.setField('leverage', nextMarket === 'spot' ? '1' : String(DEFAULT_PERPS_LEVERAGE));
             state.setField('symbol', normalizeSymbol(state.symbol, nextMarket));
           }}
         />
@@ -556,8 +569,22 @@ export const VolumeBot: React.FC = () => {
           value={state.budget}
           onChange={(e) => state.setField('budget', e.target.value)}
           placeholder="200"
-          hint={!state.isSpot ? `Perps'te otomatik ${PERPS_LEVERAGE}x kullanılır` : undefined}
+          hint={!state.isSpot ? `Perps'te girilen kaldıraç (${currentPerpsLeverage}x) kullanılır` : undefined}
         />
+
+        {!state.isSpot && (
+          <Input
+            label="Kaldıraç (x)"
+            type="number"
+            min={MIN_PERPS_LEVERAGE}
+            max={MAX_PERPS_LEVERAGE}
+            step="1"
+            value={state.leverage}
+            onChange={(e) => state.setField('leverage', e.target.value)}
+            placeholder={String(DEFAULT_PERPS_LEVERAGE)}
+            hint={`${MIN_PERPS_LEVERAGE}-${MAX_PERPS_LEVERAGE} arası, tam sayı`}
+          />
+        )}
 
         <Input
           label="Harcanacak Bütçe ($)"
@@ -623,7 +650,7 @@ export const VolumeBot: React.FC = () => {
           />
           <StatCard
             label="Piyasa / Kaldıraç"
-            value={`${state.isSpot ? 'Spot 1x' : `Perps ${PERPS_LEVERAGE}x`}`}
+            value={`${state.isSpot ? 'Spot 1x' : `Perps ${currentPerpsLeverage}x`}`}
             icon={<Activity size={16} />}
           />
         </div>
