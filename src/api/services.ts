@@ -111,6 +111,11 @@ export interface SymbolPrecision {
   stepSize: number;
 }
 
+export interface SymbolTradingRules {
+  quantityPrecision: number;
+  stepSize: number;
+}
+
 /** Fallback price precision (decimal places) when symbol metadata is unavailable. */
 const DEFAULT_PRICE_PRECISION = 2;
 /** Fallback tick size for price when symbol metadata is unavailable. */
@@ -162,6 +167,15 @@ function extractPrecision(entry: any): Omit<SymbolPrecision, 'symbolID'> {
   const quantityPrecision = entry?.quantityPrecision ?? DEFAULT_QUANTITY_PRECISION;
   const stepSize = parseFloat(entry?.stepSize ?? String(DEFAULT_STEP_SIZE)) || DEFAULT_STEP_SIZE;
   return { pricePrecision, tickSize, quantityPrecision, stepSize };
+}
+
+export async function fetchSymbolTradingRules(
+  symbol: string,
+  market: 'spot' | 'perps',
+): Promise<SymbolTradingRules> {
+  const entry = await fetchSymbolEntry(symbol, market);
+  const { quantityPrecision, stepSize } = extractPrecision(entry);
+  return { quantityPrecision, stepSize };
 }
 
 /**

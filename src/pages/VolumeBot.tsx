@@ -1,39 +1,40 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Play, Square, BarChart3, Hash, DollarSign, Activity, Wallet, ShieldAlert, TrendingUp } from 'lucide-react';
+import { Play, Square, BarChart3, Hash, DollarSign, Activity } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { placeOrder, fetchOrderbook, fetchFeeRate, normalizeSymbol, fetchOrderStatus } from '../api/services';
+import { placeOrder, fetchOrderbook, fetchFeeRate, normalizeSymbol, fetchOrderStatus, fetchSymbolTradingRules } from '../api/services';
 import type { FeeRateInfo } from '../api/services';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { StatCard } from '../components/common/Card';
-import { Input } from '../components/common/Input';
+import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 
 const DEFAULT_INTERVAL_SEC = 10;
+const PERPS_LEVERAGE = 10;
 /** Stop bot after this many consecutive attempts where no fill could be verified. */
 const MAX_CONSECUTIVE_UNVERIFIED = 5;
 /** How long to wait (ms) after placing an order before querying its fill status. */
 const FILL_VERIFICATION_DELAY_MS = 800;
 
-function getLeverage(isSpot: boolean, leverage: string): number {
-  return isSpot ? 1 : (parseInt(leverage) || 1);
-}
-
 /**
  * Classify an API error into a human-readable category so the log is actionable.
  */
-function classifyError(err: any): string {
-  const status: number = err?.response?.status ?? 0;
-  const body: string = (err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message ?? '').toLowerCase();
+function classifyError(err: unknown): string {
+  const e = err as { response?: { status?: number; data?: { message?: string; error?: string } }; message?: string };
+  const status: number = e?.response?.status ?? 0;
+  const body: string = (e?.response?.data?.message ?? e?.response?.data?.error ?? e?.message ?? '').toLowerCase();
 
   if (status === 401 || status === 403 || body.includes('signature') || body.includes('auth') || body.includes('nonce')) {
     return 'AUTH/SIGNATURE ERROR — check API key, private key, and nonce';
   }
   if (body.includes('insufficient') || body.includes('balance') || body.includes('margin')) {
-    return 'INSUFFICIENT BALANCE — add funds or reduce quantity';
+    return 'INSUFFICIENT MARGIN — bütçe yetersiz, kullanılan bütçeyi yükseltin veya perps/spot seçimini kontrol edin';
+  }
+  if (body.includes('quantity') || body.includes('lot size') || body.includes('step size')) {
+    return 'QUANTITY INVALID — miktar adımı/symbol kuralı ile uyuşmuyor, bütçe artırılmalı';
   }
   if (body.includes('invalid symbol') || body.includes('unknown symbol') || status === 404) {
     return 'INVALID SYMBOL — check symbol format (spot: BTC-USDC, perps: BTC-USD)';
@@ -50,18 +51,19 @@ function classifyError(err: any): string {
   if (body.includes('not filled') || body.includes('ioc') || body.includes('cancelled')) {
     return 'ORDER NOT FILLED — IOC cancelled or no matching liquidity';
   }
-  return err?.response?.data?.message ?? err?.message ?? 'Unknown error';
+  return e?.response?.data?.message ?? e?.message ?? 'Unknown error';
 }
 
 /**
  * Extract fill information from a placeOrder response (some exchanges embed it).
  * Returns undefined if the response does not contain reliable fill data.
  */
-function extractInlineFill(res: any): { filledQty: number; avgFillPrice: number; status: string } | undefined {
-  if (!res || typeof res !== 'object') return undefined;
-  const status: string = res.status ?? res.orderStatus ?? '';
-  const filledQty = parseFloat(res.filledQty ?? res.executedQty ?? res.filled_qty ?? res.cumQty ?? '0') || 0;
-  const avgFillPrice = parseFloat(res.avgFillPrice ?? res.avgPrice ?? res.avg_price ?? '0') || 0;
+function extractInlineFill(res: unknown): { filledQty: number; avgFillPrice: number; status: string } | undefined {
+  const payload = res as Record<string, unknown> | null;
+  if (!payload || typeof payload !== 'object') return undefined;
+  const status = String(payload.status ?? payload.orderStatus ?? '');
+  const filledQty = parseFloat(String(payload.filledQty ?? payload.executedQty ?? payload.filled_qty ?? payload.cumQty ?? '0')) || 0;
+  const avgFillPrice = parseFloat(String(payload.avgFillPrice ?? payload.avgPrice ?? payload.avg_price ?? '0')) || 0;
   // Only trust inline fill if the status is explicit or we have both filled qty and price
   if ((status && !['OPEN', 'NEW', ''].includes(status.toUpperCase())) || (filledQty > 0 && avgFillPrice > 0)) {
     return { filledQty, avgFillPrice, status: status || (filledQty > 0 ? 'FILLED' : 'OPEN') };
@@ -100,8 +102,8 @@ export const VolumeBot: React.FC = () => {
     }
 
     const market = s.isSpot ? 'spot' : 'perps';
-    const budgetVal = parseFloat(s.budget);
-    const leverageVal = getLeverage(s.isSpot, s.leverage);
+    const budgetVal = parseFloat(s.budget) || 0;
+    const leverageVal = s.isSpot ? 1 : PERPS_LEVERAGE;
     const effectiveBudget = budgetVal * leverageVal;
     const hasBudget = budgetVal > 0;
     const normalizedSym = normalizeSymbol(s.symbol, market);
@@ -127,20 +129,17 @@ export const VolumeBot: React.FC = () => {
 
       const spread = ((askPrice - bidPrice) / midPrice) * 100;
 
-      const spreadTol = parseFloat(s.spreadTolerance);
-      if (spreadTol > 0 && spread > spreadTol) {
-        s.addLog({ time: new Date().toLocaleTimeString(), message: `[${market.toUpperCase()}] ${normalizedSym}: spread çok geniş (${spread.toFixed(2)}% > ${spreadTol}%). Atlanıyor.` });
+      if (!hasBudget) {
+        runningRef.current = false;
+        s.setField('status', 'STOPPED');
+        s.addLog({ time: new Date().toLocaleTimeString(), message: 'Kullanılacak bütçe 0 olamaz. Bot durdu.' });
         return;
       }
 
-      let min = parseFloat(s.minAmount);
-      let max = parseFloat(s.maxAmount);
-
-      if (hasBudget) {
-        const maxQtyByBudget = effectiveBudget / midPrice;
-        max = Math.min(max, maxQtyByBudget);
-        min = Math.min(min, max);
-      }
+      const rules = await fetchSymbolTradingRules(s.symbol, market);
+      const quantityPrecision = Math.max(0, Math.min(12, rules.quantityPrecision || 8));
+      const stepSize = rules.stepSize > 0 ? rules.stepSize : (1 / Math.pow(10, quantityPrecision));
+      let maxQty = effectiveBudget / (midPrice * 2);
 
       if (maxSpendLimit > 0) {
         const spendRemaining = maxSpendLimit - s.totalSpent;
@@ -150,24 +149,21 @@ export const VolumeBot: React.FC = () => {
           s.addLog({ time: new Date().toLocaleTimeString(), message: `Max harcama limiti ($${maxSpendLimit.toFixed(2)}) doldu. Bot durdu.` });
           return;
         }
-        const { makerFee, takerFee } = feeRateRef.current;
-        const combinedFeeRate = makerFee + takerFee;
-        const maxQtyBySpend = spendRemaining / (midPrice * combinedFeeRate);
-        max = Math.min(max, maxQtyBySpend);
-        min = Math.min(min, max);
+        const roundTripFeeRate = Math.max(feeRateRef.current.takerFee * 2, 0.00000001);
+        const maxQtyBySpend = spendRemaining / (midPrice * roundTripFeeRate);
+        maxQty = Math.min(maxQty, maxQtyBySpend);
       }
 
-      if (max <= 0 || min <= 0) {
+      const quantity = Math.floor(maxQty / stepSize) * stepSize;
+      if (quantity <= 0) {
         s.addLog({ time: new Date().toLocaleTimeString(), message: 'Kalan bütçe/limit yetersiz. Atlanıyor.' });
         return;
       }
 
-      const quantity = min + Math.random() * (max - min);
-
       if (hasBudget) {
         // Budget mode: place BUY and SELL LIMIT IOC at mid-price
         const limitPrice = midPrice.toString();
-        const qty = quantity.toFixed(8);
+        const qty = quantity.toFixed(quantityPrecision);
 
         s.addLog({
           time: new Date().toLocaleTimeString(),
@@ -358,7 +354,7 @@ export const VolumeBot: React.FC = () => {
           message: `[${market.toUpperCase()}] Fill doğrulandı: ${sideLabel} ${fill.filledQty.toFixed(8)}@${fill.avgFillPrice.toFixed(4)} → hacim $${vol.toFixed(4)} status=${fill.status}`,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const category = classifyError(err);
       const { volumeBot: s2 } = useBotStore.getState();
       s2.addLog({ time: new Date().toLocaleTimeString(), message: `[${market.toUpperCase()}] HATA: ${category}` });
@@ -385,6 +381,7 @@ export const VolumeBot: React.FC = () => {
     runningRef.current = true;
     consecutiveUnverifiedRef.current = 0;
     state.resetStats();
+    state.setField('leverage', state.isSpot ? '1' : String(PERPS_LEVERAGE));
     state.setField('status', 'RUNNING');
 
     const market = state.isSpot ? 'spot' : 'perps';
@@ -436,7 +433,7 @@ export const VolumeBot: React.FC = () => {
       <ConfirmModal
         isOpen={showConfirm}
         title="Volume Bot'u Başlat"
-        message={`${state.symbol} için Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}${getLeverage(state.isSpot, state.leverage) > 1 ? `\nKaldıraç: ${state.leverage}x` : ''}\nMiktar aralığı: ${state.minAmount} – ${state.maxAmount}\nAralık: ${state.intervalSec}s${parseFloat(state.budget) > 0 ? `\nBütçe: $${state.budget}${getLeverage(state.isSpot, state.leverage) > 1 ? ` × ${state.leverage}x = $${(parseFloat(state.budget) * getLeverage(state.isSpot, state.leverage)).toFixed(0)} efektif` : ''}` : ''}${parseFloat(state.maxSpend) > 0 ? `\nMax Harcama: $${state.maxSpend}` : ''}`}
+        message={`Volume Bot başlatılacak.\nPiyasa: ${state.isSpot ? 'Spot' : 'Perps'}${!state.isSpot ? `\nKaldıraç: ${PERPS_LEVERAGE}x (otomatik)` : ''}\nKullanılacak bütçe: $${state.budget || '0'}\nHarcanılacak bütçe: $${state.maxSpend || '0'}\nHedef hacim: $${state.maxVolumeTarget || '0'}`}
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -448,124 +445,47 @@ export const VolumeBot: React.FC = () => {
           <StatusBadge status={state.status} />
         </div>
 
-        <Input
-          label="Sembol"
-          type="text"
-          value={state.symbol}
-          onChange={(e) => state.setField('symbol', e.target.value)}
-          placeholder={state.isSpot ? 'BTC_USDC' : 'BTC-USD'}
-          hint={state.isSpot ? 'Spot format: BTC_USDC' : 'Perps format: BTC-USD'}
+        <Select
+          label="Piyasa"
+          value={state.isSpot ? 'spot' : 'perps'}
+          options={[
+            { value: 'spot', label: 'Spot' },
+            { value: 'perps', label: 'Perps (otomatik 10x)' },
+          ]}
+          onChange={(e) => {
+            const nextMarket = e.target.value === 'spot' ? 'spot' : 'perps';
+            state.setField('isSpot', nextMarket === 'spot');
+            state.setField('leverage', nextMarket === 'spot' ? '1' : String(PERPS_LEVERAGE));
+            state.setField('symbol', normalizeSymbol(state.symbol, nextMarket));
+          }}
         />
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Min Miktar"
-            type="number"
-            value={state.minAmount}
-            onChange={(e) => state.setField('minAmount', e.target.value)}
-          />
-          <Input
-            label="Max Miktar"
-            type="number"
-            value={state.maxAmount}
-            onChange={(e) => state.setField('maxAmount', e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Aralık (sn)"
-            type="number"
-            value={state.intervalSec}
-            onChange={(e) => state.setField('intervalSec', e.target.value)}
-          />
-          <Input
-            label="Max Hacim"
-            type="number"
-            value={state.maxVolumeTarget}
-            onChange={(e) => state.setField('maxVolumeTarget', e.target.value)}
-            hint="0 = limitsiz"
-          />
-        </div>
-
         <Input
-          label="Spread Toleransı (%)"
+          label="Kullanılacak Bütçe ($)"
           type="number"
-          value={state.spreadTolerance}
-          onChange={(e) => state.setField('spreadTolerance', e.target.value)}
-          hint="0 = sınırsız"
+          value={state.budget}
+          onChange={(e) => state.setField('budget', e.target.value)}
+          placeholder="200"
+          hint={!state.isSpot ? `Perps'te otomatik ${PERPS_LEVERAGE}x kullanılır` : undefined}
         />
 
-        {/* Budget Section */}
-        <div className="space-y-1.5">
-          <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
-            💰 Bütçe Yönetimi
-          </label>
-          <div className="p-3 bg-background/40 border border-border rounded-lg space-y-3">
-            <Input
-              label="Toplam Bütçe ($)"
-              type="number"
-              value={state.budget}
-              onChange={(e) => state.setField('budget', e.target.value)}
-              placeholder="200"
-              hint="0 = limitsiz. İşlem başına kullanılacak max sermaye"
-              icon={<Wallet size={14} />}
-            />
-            <Input
-              label="Max Harcama ($)"
-              type="number"
-              value={state.maxSpend}
-              onChange={(e) => state.setField('maxSpend', e.target.value)}
-              placeholder="20"
-              hint="0 = limitsiz. Fee + zarar toplamı bu limiti aşamaz"
-              icon={<ShieldAlert size={14} />}
-            />
-            {parseFloat(state.budget) > 0 && parseFloat(state.maxSpend) > 0 && (
-              <div className="text-[10px] text-text-muted bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-2">
-                <span className="text-primary font-medium">Akıllı Mod:</span> Bot, hesabınızdan en fazla ${state.budget} sermaye kullanarak{!state.isSpot && getLeverage(state.isSpot, state.leverage) > 1 ? ` ${state.leverage}x kaldıraçla ($${(parseFloat(state.budget) * getLeverage(state.isSpot, state.leverage)).toFixed(0)} efektif)` : ''} hacim üretir.
-                Toplam fee harcaması ${state.maxSpend} ile sınırlıdır. LIMIT emirleri (BUY+SELL çifti) ile spread kaybı sıfırlanır, sadece fee ödenir.
-              </div>
-            )}
-          </div>
-        </div>
+        <Input
+          label="Harcanılacak Bütçe ($)"
+          type="number"
+          value={state.maxSpend}
+          onChange={(e) => state.setField('maxSpend', e.target.value)}
+          placeholder="20"
+          hint="Fee limiti (0 = limitsiz)"
+        />
 
-        {/* Market Toggle */}
-        <div className="space-y-1.5">
-          <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">Piyasa</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                state.setField('isSpot', true);
-                state.setField('symbol', normalizeSymbol(state.symbol, 'spot'));
-              }}
-              className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'}`}
-            >
-              Spot
-            </button>
-            <button
-              onClick={() => {
-                state.setField('isSpot', false);
-                state.setField('symbol', normalizeSymbol(state.symbol, 'perps'));
-              }}
-              className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${!state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'}`}
-            >
-              Perps
-            </button>
-          </div>
-        </div>
-
-        {/* Leverage (only for Perps) */}
-        {!state.isSpot && (
-          <Input
-            label="Kaldıraç (x)"
-            type="number"
-            value={state.leverage}
-            onChange={(e) => state.setField('leverage', e.target.value)}
-            placeholder="10"
-            hint={`$${parseFloat(state.budget) > 0 ? (parseFloat(state.budget) * getLeverage(state.isSpot, state.leverage)).toFixed(0) : '0'} efektif pozisyon`}
-            icon={<TrendingUp size={14} />}
-          />
-        )}
+        <Input
+          label="Hedef Hacim ($)"
+          type="number"
+          value={state.maxVolumeTarget}
+          onChange={(e) => state.setField('maxVolumeTarget', e.target.value)}
+          placeholder="10000"
+          hint="0 = limitsiz"
+        />
 
         <div className="mt-auto pt-4 border-t border-border">
           {state.status !== 'RUNNING' ? (
@@ -612,38 +532,32 @@ export const VolumeBot: React.FC = () => {
             icon={<DollarSign size={16} />}
           />
           <StatCard
-            label="Ort. Spread"
-            value={<NumberDisplay value={state.avgSpread} suffix="%" />}
+            label="Piyasa / Kaldıraç"
+            value={`${state.isSpot ? 'Spot 1x' : `Perps ${PERPS_LEVERAGE}x`}`}
             icon={<Activity size={16} />}
           />
         </div>
 
         {/* Budget Stats */}
-        {(parseFloat(state.budget) > 0 || parseFloat(state.maxSpend) > 0) && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {parseFloat(state.budget) > 0 && (
-              <StatCard
-                label="İşlem Başına Max"
-                value={<NumberDisplay value={parseFloat(state.budget)} prefix="$" />}
-                icon={<Wallet size={16} />}
-              />
-            )}
-            <StatCard
-              label="Toplam Harcama"
-              value={<NumberDisplay value={state.totalSpent} prefix="$" />}
-              icon={<DollarSign size={16} />}
-              trend={parseFloat(state.maxSpend) > 0 && state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'down' : 'neutral'}
-            />
-            {parseFloat(state.maxSpend) > 0 && (
-              <StatCard
-                label="Harcama Limiti"
-                value={<NumberDisplay value={Math.max(0, parseFloat(state.maxSpend) - state.totalSpent)} prefix="$" suffix=" kaldı" />}
-                icon={<ShieldAlert size={16} />}
-                trend={state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'down' : 'up'}
-              />
-            )}
-          </div>
-        )}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <StatCard
+            label="Kullanılan Bütçe"
+            value={<NumberDisplay value={parseFloat(state.budget) || 0} prefix="$" />}
+            icon={<DollarSign size={16} />}
+          />
+          <StatCard
+            label="Harcanan Bütçe"
+            value={<NumberDisplay value={state.totalSpent} prefix="$" />}
+            icon={<DollarSign size={16} />}
+            trend={parseFloat(state.maxSpend) > 0 && state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'down' : 'neutral'}
+          />
+          <StatCard
+            label="Kalan Harcama"
+            value={<NumberDisplay value={Math.max(0, (parseFloat(state.maxSpend) || 0) - state.totalSpent)} prefix="$" />}
+            icon={<Activity size={16} />}
+            trend={parseFloat(state.maxSpend) > 0 && state.totalSpent > parseFloat(state.maxSpend) * 0.8 ? 'down' : 'up'}
+          />
+        </div>
 
         {/* Volume Progress */}
         {parseFloat(state.maxVolumeTarget) > 0 && (
