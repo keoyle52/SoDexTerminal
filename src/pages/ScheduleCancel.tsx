@@ -163,7 +163,7 @@ export const ScheduleCancel: React.FC = () => {
               <Shield size={20} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">Dead Man&apos;s Switch</h2>
+              <h2 className="text-lg font-semibold">{"Dead Man's Switch"}</h2>
               <p className="text-[11px] text-text-muted">Otomatik emir iptal koruma sistemi</p>
             </div>
           </div>

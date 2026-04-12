@@ -243,7 +243,7 @@ export const VolumeBot: React.FC = () => {
               icon={<Play size={16} />}
               onClick={startBot}
             >
-              Bot&apos;u Başlat
+              {"Bot'u Başlat"}
             </Button>
           ) : (
             <Button

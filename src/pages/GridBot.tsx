@@ -421,7 +421,7 @@ export const GridBot: React.FC = () => {
         <div className="mt-auto pt-4 border-t border-border">
           {!isRunning ? (
             <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={startBot}>
-              Bot&apos;u Başlat
+              {"Bot'u Başlat"}
             </Button>
           ) : (
             <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={stopBot}>
