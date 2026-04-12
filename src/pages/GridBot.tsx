@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { Play, Square, Layers, DollarSign, CheckCircle2, TrendingUp, Grid2X2 } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
 import {
@@ -11,6 +12,9 @@ import {
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmModal } from '../components/common/ConfirmModal';
+import { StatCard } from '../components/common/Card';
+import { Input, Select } from '../components/common/Input';
+import { Button } from '../components/common/Button';
 
 interface GridLevel {
   price: number;
@@ -42,8 +46,6 @@ export const GridBot: React.FC = () => {
       [{ time: new Date().toLocaleTimeString(), ...entry }, ...prev].slice(0, 50),
     );
   }, []);
-
-  /* ---- helpers ---- */
 
   const calculateGridLevels = useCallback(
     (lower: number, upper: number, count: number): number[] => {
@@ -113,8 +115,6 @@ export const GridBot: React.FC = () => {
     }
   }, [addLog]);
 
-  /* ---- poll for filled orders ---- */
-
   const pollOrders = useCallback(async () => {
     if (!runningRef.current) return;
     const { gridBot: s } = useBotStore.getState();
@@ -155,7 +155,6 @@ export const GridBot: React.FC = () => {
           fresh.setField('completedGrids', fresh.completedGrids + 1);
           fresh.setField('realizedPnl', fresh.realizedPnl + pnlPerGrid);
 
-          // Place counter-order at adjacent grid level
           if (filledSide === 'BUY' && i + 1 < levels.length) {
             const orderId = await placeGridOrder(levels[i + 1].price, 'SELL');
             if (orderId) {
@@ -190,8 +189,6 @@ export const GridBot: React.FC = () => {
       addLog({ message: `ERROR polling orders: ${msg}` });
     }
   }, [addLog, placeGridOrder]);
-
-  /* ---- start / stop ---- */
 
   const doStart = useCallback(async () => {
     if (runningRef.current) return;
@@ -319,7 +316,6 @@ export const GridBot: React.FC = () => {
     addLog({ message: 'Grid Bot stopped' });
   }, [addLog]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       runningRef.current = false;
@@ -330,8 +326,10 @@ export const GridBot: React.FC = () => {
     };
   }, []);
 
+  const isRunning = state.status === 'RUNNING';
+
   return (
-    <div className="flex h-[calc(100vh-48px)]">
+    <div className="flex h-[calc(100vh-52px)]">
       <ConfirmModal
         isOpen={showConfirm}
         title="Grid Bot'u Başlat"
@@ -341,155 +339,176 @@ export const GridBot: React.FC = () => {
       />
 
       {/* Settings Panel */}
-      <div className="w-80 border-r border-border bg-surface p-4 flex flex-col gap-4 overflow-y-auto">
-        <h2 className="font-semibold mb-2">Grid Bot Ayarları</h2>
+      <div className="w-80 border-r border-border bg-surface/30 backdrop-blur-sm p-5 flex flex-col gap-5 overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-sm">Ayarlar</h2>
+          <StatusBadge status={state.status} />
+        </div>
 
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Sembol</label>
-          <input
-            type="text"
-            value={state.symbol}
-            onChange={(e) => state.setField('symbol', e.target.value)}
-            className="w-full bg-surface border border-border rounded px-3 py-2 text-sm"
-            disabled={state.status === 'RUNNING'}
+        <Input
+          label="Sembol"
+          type="text"
+          value={state.symbol}
+          onChange={(e) => state.setField('symbol', e.target.value)}
+          disabled={isRunning}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Alt Fiyat"
+            type="number"
+            value={state.lowerPrice}
+            onChange={(e) => state.setField('lowerPrice', e.target.value)}
+            disabled={isRunning}
+          />
+          <Input
+            label="Üst Fiyat"
+            type="number"
+            value={state.upperPrice}
+            onChange={(e) => state.setField('upperPrice', e.target.value)}
+            disabled={isRunning}
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Alt Fiyat</label>
-            <input
-              type="number"
-              value={state.lowerPrice}
-              onChange={(e) => state.setField('lowerPrice', e.target.value)}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums"
-              disabled={state.status === 'RUNNING'}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Üst Fiyat</label>
-            <input
-              type="number"
-              value={state.upperPrice}
-              onChange={(e) => state.setField('upperPrice', e.target.value)}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums"
-              disabled={state.status === 'RUNNING'}
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Grid Sayısı"
+            type="number"
+            value={state.gridCount}
+            onChange={(e) => state.setField('gridCount', e.target.value)}
+            disabled={isRunning}
+          />
+          <Input
+            label="Miktar/Grid"
+            type="number"
+            value={state.amountPerGrid}
+            onChange={(e) => state.setField('amountPerGrid', e.target.value)}
+            disabled={isRunning}
+          />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Grid Sayısı</label>
-            <input
-              type="number"
-              value={state.gridCount}
-              onChange={(e) => state.setField('gridCount', e.target.value)}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums"
-              disabled={state.status === 'RUNNING'}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Miktar/Grid</label>
-            <input
-              type="number"
-              value={state.amountPerGrid}
-              onChange={(e) => state.setField('amountPerGrid', e.target.value)}
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm tabular-nums"
-              disabled={state.status === 'RUNNING'}
-            />
-          </div>
-        </div>
+        <Select
+          label="Yön (Mod)"
+          value={state.mode}
+          onChange={(e) => state.setField('mode', e.target.value)}
+          disabled={isRunning}
+          options={[
+            { value: 'NEUTRAL', label: 'Neutral' },
+            { value: 'LONG', label: 'Long' },
+            { value: 'SHORT', label: 'Short' },
+          ]}
+        />
 
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Yön (Mod)</label>
-          <select
-            value={state.mode}
-            onChange={(e) => state.setField('mode', e.target.value)}
-            className="w-full bg-surface border border-border rounded px-3 py-2 text-sm outline-none"
-            disabled={state.status === 'RUNNING'}
-          >
-            <option value="NEUTRAL">Neutral</option>
-            <option value="LONG">Long</option>
-            <option value="SHORT">Short</option>
-          </select>
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-2">
-          {state.status !== 'RUNNING' ? (
+        {/* Market Toggle */}
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">Piyasa</label>
+          <div className="flex gap-2">
             <button
-              onClick={startBot}
-              className="w-full py-2 bg-primary text-black font-medium rounded hover:bg-primary/90 transition-colors"
+              onClick={() => !isRunning && state.setField('isSpot', true)}
+              className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'} ${isRunning ? 'opacity-50 pointer-events-none' : ''}`}
             >
-              Başlat
+              Spot
             </button>
+            <button
+              onClick={() => !isRunning && state.setField('isSpot', false)}
+              className={`flex-1 py-2 text-xs rounded-lg border transition-all duration-200 ${!state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover'} ${isRunning ? 'opacity-50 pointer-events-none' : ''}`}
+            >
+              Perps
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-auto pt-4 border-t border-border">
+          {!isRunning ? (
+            <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={startBot}>
+              {"Bot'u Başlat"}
+            </Button>
           ) : (
-            <button
-              onClick={stopBot}
-              className="w-full py-2 bg-danger/10 text-danger border border-danger/30 font-medium rounded hover:bg-danger/20 transition-colors"
-            >
+            <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={stopBot}>
               Durdur
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
       {/* Live Status Panel */}
-      <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Grid Durumu</h2>
-          <StatusBadge status={state.status} />
-        </div>
-
+      <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">Aktif Emirler</div>
-            <div className="text-xl"><NumberDisplay value={state.activeOrders} decimals={0} /></div>
-          </div>
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">Kullanılan Bakiye</div>
-            <div className="text-xl"><NumberDisplay value={state.totalInvestment} prefix="$" /></div>
-          </div>
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">Tamamlanan Gridler</div>
-            <div className="text-xl"><NumberDisplay value={state.completedGrids} decimals={0} /></div>
-          </div>
-          <div className="bg-surface border border-border rounded p-4">
-            <div className="text-xs text-text-secondary mb-1">Gerçekleşen PnL</div>
-            <div className="text-xl"><NumberDisplay value={state.realizedPnl} prefix="$" trend={state.realizedPnl >= 0 ? (state.realizedPnl > 0 ? 'up' : 'neutral') : 'down'} /></div>
-          </div>
+          <StatCard
+            label="Aktif Emirler"
+            value={<NumberDisplay value={state.activeOrders} decimals={0} />}
+            icon={<Layers size={16} />}
+          />
+          <StatCard
+            label="Kullanılan Bakiye"
+            value={<NumberDisplay value={state.totalInvestment} prefix="$" />}
+            icon={<DollarSign size={16} />}
+          />
+          <StatCard
+            label="Tamamlanan Gridler"
+            value={<NumberDisplay value={state.completedGrids} decimals={0} />}
+            icon={<CheckCircle2 size={16} />}
+          />
+          <StatCard
+            label="Gerçekleşen PnL"
+            value={<NumberDisplay value={state.realizedPnl} prefix="$" trend={state.realizedPnl >= 0 ? (state.realizedPnl > 0 ? 'up' : 'neutral') : 'down'} />}
+            icon={<TrendingUp size={16} />}
+            trend={state.realizedPnl >= 0 ? (state.realizedPnl > 0 ? 'up' : 'neutral') : 'down'}
+          />
         </div>
 
-        {/* Grid Levels Display */}
-        <div className="bg-surface border border-border rounded flex flex-col overflow-hidden" style={{ maxHeight: '240px' }}>
-          <div className="px-4 py-2 border-b border-border text-sm font-medium">Grid Seviyeleri</div>
-          <div className="flex-1 overflow-y-auto p-2">
+        {/* Grid Levels */}
+        <div className="glass-card flex flex-col overflow-hidden p-0" style={{ maxHeight: '260px' }}>
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Grid Seviyeleri</span>
+            <span className="badge badge-primary">
+              <Grid2X2 size={10} />
+              {gridLevels.filter((l) => l.status === 'ACTIVE').length} aktif
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
             {gridLevels.length > 0 ? (
-              <div className="flex flex-col gap-1">
-                {[...gridLevels].reverse().map((level, i) => (
-                  <div key={i} className="flex items-center gap-3 px-2 py-1 text-xs font-mono rounded hover:bg-border/20">
-                    <span className="w-24 tabular-nums">{level.price.toFixed(2)}</span>
-                    {level.side ? (
-                      <span className={`w-10 font-medium ${level.side === 'BUY' ? 'text-success' : 'text-danger'}`}>
-                        {level.side}
+              <div className="flex flex-col gap-0.5">
+                {[...gridLevels].reverse().map((level, i) => {
+                  const pct = gridLevels.length > 1
+                    ? ((level.price - gridLevels[0].price) / (gridLevels[gridLevels.length - 1].price - gridLevels[0].price)) * 100
+                    : 50;
+
+                  return (
+                    <div key={i} className="flex items-center gap-3 px-3 py-1.5 text-xs font-mono rounded-lg hover:bg-surface-hover/50 transition-colors group">
+                      <span className="w-24 tabular-nums text-text-primary">{level.price.toFixed(2)}</span>
+                      {level.side ? (
+                        <span className={`badge ${level.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>
+                          {level.side}
+                        </span>
+                      ) : (
+                        <span className="w-12 text-text-muted">—</span>
+                      )}
+                      <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            level.status === 'ACTIVE' ? 'bg-primary/60' :
+                            level.status === 'FILLED' ? 'bg-success/60' :
+                            'bg-border'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-sans ${
+                        level.status === 'ACTIVE' ? 'text-primary' :
+                        level.status === 'FILLED' ? 'text-success' :
+                        'text-text-muted'
+                      }`}>
+                        {level.status === 'ACTIVE' ? '● Active' :
+                         level.status === 'FILLED' ? '✓ Filled' :
+                         '○ Empty'}
                       </span>
-                    ) : (
-                      <span className="w-10 text-text-secondary">—</span>
-                    )}
-                    <span className={`text-xs ${
-                      level.status === 'ACTIVE' ? 'text-primary' :
-                      level.status === 'FILLED' ? 'text-success' :
-                      'text-text-secondary'
-                    }`}>
-                      {level.status === 'ACTIVE' ? '● Active' :
-                       level.status === 'FILLED' ? '✓ Filled' :
-                       '○ Empty'}
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <div className="text-center text-text-secondary pt-4 text-sm">
+              <div className="text-center text-text-muted pt-6 text-sm">
                 Bot başlatıldığında grid seviyeleri burada görünecektir.
               </div>
             )}
@@ -497,20 +516,23 @@ export const GridBot: React.FC = () => {
         </div>
 
         {/* Logs */}
-        <div className="flex-1 bg-surface border border-border rounded flex flex-col overflow-hidden">
-          <div className="px-4 py-2 border-b border-border text-sm font-medium">Log Kayıtları</div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+        <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Log Kayıtları</span>
+            <span className="text-[10px] text-text-muted">{logs.length} kayıt</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
             {logs.map((log, i) => (
-              <div key={i} className="text-xs flex items-center gap-4 py-1 border-b border-border/50 font-mono">
-                <span className="text-text-secondary w-20">{log.time}</span>
+              <div key={i} className="text-xs flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-hover/50 transition-colors font-mono animate-fade-in">
+                <span className="text-text-muted w-16 shrink-0 tabular-nums">{log.time}</span>
                 {log.side && (
-                  <span className={log.side === 'BUY' ? 'text-success w-10' : 'text-danger w-10'}>{log.side}</span>
+                  <span className={`badge ${log.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{log.side}</span>
                 )}
-                {log.message && <span className="text-text-secondary">{log.message}</span>}
+                {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
               </div>
             ))}
             {logs.length === 0 && (
-              <div className="text-center text-text-secondary pt-8 text-sm">
+              <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
                 Bot log kayıtları burada görünecektir.
               </div>
             )}
