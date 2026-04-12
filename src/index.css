@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#0a0b0d] text-[#e8eaed] m-0 p-0 overflow-hidden;
+  }
+}
+
+/* React Grid Layout Overrides */
+.react-grid-item.react-grid-placeholder {
+  @apply bg-[#4285f4] opacity-20 rounded shadow-[0_0_15px_#4285f4] transition duration-200;
+}
+
+.react-resizable-handle {
+  @apply filter drop-shadow-md z-20;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: #1e2028; 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2d35; 
+}
+
+/* Clean UI defaults */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
