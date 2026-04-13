@@ -91,13 +91,20 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         if (cancelled || !seriesRef.current) return;
 
         const klines = Array.isArray(rawKlines) ? rawKlines : [];
-        const candlesticks: CandlestickData<Time>[] = klines.map((k: Record<string, unknown>) => ({
-          time: (typeof k.time === 'number' ? k.time / 1000 : Math.floor(new Date(String(k.time ?? k.openTime ?? '')).getTime() / 1000)) as Time,
-          open: parseFloat(String(k.open ?? 0)),
-          high: parseFloat(String(k.high ?? 0)),
-          low: parseFloat(String(k.low ?? 0)),
-          close: parseFloat(String(k.close ?? 0)),
-        }));
+        const candlesticks: CandlestickData<Time>[] = klines
+          .filter((k: Record<string, unknown>) => {
+            // Skip klines with missing essential data
+            const hasTime = k.time != null || k.openTime != null;
+            const hasPrice = k.open != null || k.close != null;
+            return hasTime && hasPrice;
+          })
+          .map((k: Record<string, unknown>) => ({
+            time: (typeof k.time === 'number' ? k.time / 1000 : Math.floor(new Date(String(k.time ?? k.openTime ?? 0)).getTime() / 1000)) as Time,
+            open: parseFloat(String(k.open ?? k.close ?? 0)),
+            high: parseFloat(String(k.high ?? k.open ?? k.close ?? 0)),
+            low: parseFloat(String(k.low ?? k.open ?? k.close ?? 0)),
+            close: parseFloat(String(k.close ?? k.open ?? 0)),
+          }));
 
         if (candlesticks.length > 0) {
           seriesRef.current.setData(candlesticks);

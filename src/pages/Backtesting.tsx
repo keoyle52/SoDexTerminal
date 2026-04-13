@@ -93,11 +93,15 @@ export const Backtesting: React.FC = () => {
         return;
       }
 
-      const closes: number[] = klines.map((k: Record<string, unknown>) => parseFloat(String(k.close ?? (k as unknown as unknown[])[4])));
-      const highs: number[] = klines.map((k: Record<string, unknown>) => parseFloat(String(k.high ?? (k as unknown as unknown[])[2])));
-      const lows: number[] = klines.map((k: Record<string, unknown>) => parseFloat(String(k.low ?? (k as unknown as unknown[])[3])));
+      /** Extract a numeric field from a kline entry (supports both object and array formats). */
+      const klineVal = (k: Record<string, unknown>, field: string, arrIdx: number): number =>
+        parseFloat(String(k[field] ?? (Array.isArray(k) ? (k as unknown as unknown[])[arrIdx] : 0)));
+
+      const closes: number[] = klines.map((k: Record<string, unknown>) => klineVal(k, 'close', 4));
+      const highs: number[] = klines.map((k: Record<string, unknown>) => klineVal(k, 'high', 2));
+      const lows: number[] = klines.map((k: Record<string, unknown>) => klineVal(k, 'low', 3));
       const times: string[] = klines.map((k: Record<string, unknown>) => {
-        const t = k.time ?? k.openTime ?? (k as unknown as unknown[])[0];
+        const t = k.time ?? k.openTime ?? (Array.isArray(k) ? (k as unknown as unknown[])[0] : 0);
         return typeof t === 'number' ? new Date(t).toLocaleString('tr-TR') : String(t);
       });
 
