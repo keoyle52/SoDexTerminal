@@ -602,7 +602,7 @@ export async function cancelAllOrders(symbol?: string, market: 'spot' | 'perps' 
     if (normalizedFilter && order.symbol !== normalizedFilter) continue;
     // API returns orderID (uint64); fall back to orderId/id for backwards compat.
     const orderId = String(order.orderID ?? order.orderId ?? order.id ?? '');
-    if (!orderId) continue;
+    if (orderId === '') continue;
     try {
       const r = await cancelOrder(orderId, order.symbol, market);
       results.push(r);

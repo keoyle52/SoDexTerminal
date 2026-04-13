@@ -82,7 +82,7 @@ export const Dashboard: React.FC = () => {
           const entryPrice = parseFloat(pos.avgEntryPrice ?? pos.entryPrice ?? pos.avgPrice ?? 0);
           const markPrice = priceMap[pos.symbol] ?? parseFloat(pos.markPrice ?? 0);
           // SoDEX position side is always BOTH: positive size = long, negative = short
-          const side = (pos.side === 1 || pos.side === 'BUY' || pos.side === 'LONG' || rawSize >= 0) ? 1 : -1;
+          const side = (pos.side === 1 || pos.side === 'BUY' || pos.side === 'LONG' || (pos.side !== 'SHORT' && rawSize >= 0)) ? 1 : -1;
           pnl += side * size * (markPrice - entryPrice);
         }
         setTotalPnl(pnl);
