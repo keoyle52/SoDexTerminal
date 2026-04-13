@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi, type CandlestickData, type Time, ColorType } from 'lightweight-charts';
 import { fetchKlines } from '../api/services';
-import { cn } from './common/NumberDisplay';
+import { cn } from '../lib/utils';
 
 interface TradingChartProps {
   symbol: string;
@@ -21,7 +21,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const [interval, setInterval] = useState<string>('1h');
+  const [selectedInterval, setSelectedInterval] = useState<string>('1h');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -87,17 +87,24 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     const loadData = async () => {
       setLoading(true);
       try {
-        const rawKlines = await fetchKlines(symbol, interval, 200, market);
+        const rawKlines = await fetchKlines(symbol, selectedInterval, 200, market);
         if (cancelled || !seriesRef.current) return;
 
         const klines = Array.isArray(rawKlines) ? rawKlines : [];
-        const candlesticks: CandlestickData<Time>[] = klines.map((k: any) => ({
-          time: (typeof k.time === 'number' ? k.time / 1000 : Math.floor(new Date(k.time ?? k.openTime ?? k[0]).getTime() / 1000)) as Time,
-          open: parseFloat(k.open ?? k[1]),
-          high: parseFloat(k.high ?? k[2]),
-          low: parseFloat(k.low ?? k[3]),
-          close: parseFloat(k.close ?? k[4]),
-        }));
+        const candlesticks: CandlestickData<Time>[] = klines
+          .filter((k: Record<string, unknown>) => {
+            // Skip klines with missing essential data
+            const hasTime = k.time != null || k.openTime != null;
+            const hasPrice = k.open != null || k.close != null;
+            return hasTime && hasPrice;
+          })
+          .map((k: Record<string, unknown>) => ({
+            time: (typeof k.time === 'number' ? k.time / 1000 : Math.floor(new Date(String(k.time ?? k.openTime ?? 0)).getTime() / 1000)) as Time,
+            open: parseFloat(String(k.open ?? k.close ?? 0)),
+            high: parseFloat(String(k.high ?? k.open ?? k.close ?? 0)),
+            low: parseFloat(String(k.low ?? k.open ?? k.close ?? 0)),
+            close: parseFloat(String(k.close ?? k.open ?? 0)),
+          }));
 
         if (candlesticks.length > 0) {
           seriesRef.current.setData(candlesticks);
@@ -117,7 +124,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [symbol, interval, market]);
+  }, [symbol, selectedInterval, market]);
 
   return (
     <div className={cn('glass-card p-0 overflow-hidden', className)}>
@@ -131,10 +138,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           {INTERVALS.map((iv) => (
             <button
               key={iv}
-              onClick={() => setInterval(iv)}
+              onClick={() => setSelectedInterval(iv)}
               className={cn(
                 'px-2 py-1 text-[10px] rounded-md transition-all duration-200',
-                interval === iv
+                selectedInterval === iv
                   ? 'bg-primary/10 text-primary'
                   : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover',
               )}

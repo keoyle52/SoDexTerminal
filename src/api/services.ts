@@ -9,9 +9,10 @@ import { ethers } from 'ethers';
  * Throw if the exchange returned a body-level error even though HTTP was 200.
  * SoDEX perps API returns `{ code: -1, error: "..." }` on bad requests.
  */
-function assertNoBodyError(data: any): void {
+function assertNoBodyError(data: unknown): void {
   if (data && typeof data === 'object' && 'code' in data && data.code !== 0) {
-    throw new Error(data.error ?? data.message ?? `API error code ${data.code}`);
+    const d = data as Record<string, unknown>;
+    throw new Error(String(d.error ?? d.message ?? `API error code ${d.code}`));
   }
 }
 
@@ -99,7 +100,7 @@ function parseOrderIdNumeric(orderId: string): number {
 
 export async function fetchSymbols(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get('/markets/symbols'));
+  const res = await withRetry(() => client.get('/markets/symbols'));
   return res?.data ?? res ?? [];
 }
 
@@ -150,13 +151,13 @@ function roundToTick(value: number, tickSize: number, precision: number): string
  * Look up the full symbol entry (including precision metadata) for a given
  * symbol on the specified market.  Returns null when not found.
  */
-async function fetchSymbolEntry(symbol: string, market: 'spot' | 'perps'): Promise<any | null> {
+async function fetchSymbolEntry(symbol: string, market: 'spot' | 'perps'): Promise<Record<string, unknown> | null> {
   try {
     const symbols = await fetchSymbols(market);
-    const list: any[] = Array.isArray(symbols) ? symbols : (symbols?.symbols ?? symbols?.data ?? []);
+    const list = Array.isArray(symbols) ? symbols : (symbols?.symbols ?? symbols?.data ?? []);
     const normalised = normalizeSymbol(symbol, market);
     return list.find(
-      (s: any) => s.symbol === normalised || s.name === normalised || s.ticker === normalised,
+      (s: Record<string, unknown>) => s.symbol === normalised || s.name === normalised || s.ticker === normalised,
     ) ?? null;
   } catch {
     return null;
@@ -167,11 +168,11 @@ async function fetchSymbolEntry(symbol: string, market: 'spot' | 'perps'): Promi
  * Extract SymbolPrecision from a raw symbol entry object.
  * Falls back to safe defaults (8 decimal places, tick = 0.00000001) when fields are missing.
  */
-function extractPrecision(entry: any): Omit<SymbolPrecision, 'symbolID'> {
-  const pricePrecision = entry?.pricePrecision ?? DEFAULT_PRICE_PRECISION;
-  const tickSize = parseFloat(entry?.tickSize ?? String(DEFAULT_TICK_SIZE)) || DEFAULT_TICK_SIZE;
-  const quantityPrecision = entry?.quantityPrecision ?? DEFAULT_QUANTITY_PRECISION;
-  const stepSize = parseFloat(entry?.stepSize ?? String(DEFAULT_STEP_SIZE)) || DEFAULT_STEP_SIZE;
+function extractPrecision(entry: Record<string, unknown> | null): Omit<SymbolPrecision, 'symbolID'> {
+  const pricePrecision = Number(entry?.pricePrecision ?? DEFAULT_PRICE_PRECISION);
+  const tickSize = parseFloat(String(entry?.tickSize ?? DEFAULT_TICK_SIZE)) || DEFAULT_TICK_SIZE;
+  const quantityPrecision = Number(entry?.quantityPrecision ?? DEFAULT_QUANTITY_PRECISION);
+  const stepSize = parseFloat(String(entry?.stepSize ?? DEFAULT_STEP_SIZE)) || DEFAULT_STEP_SIZE;
   return { pricePrecision, tickSize, quantityPrecision, stepSize };
 }
 
@@ -191,7 +192,7 @@ export async function fetchSymbolTradingRules(
 export async function fetchPerpsSymbolID(symbol: string): Promise<number | null> {
   try {
     const entry = await fetchSymbolEntry(symbol, 'perps');
-    return entry?.symbolID ?? entry?.id ?? entry?.symbolId ?? null;
+    return (entry?.symbolID ?? entry?.id ?? entry?.symbolId ?? null) as number | null;
   } catch {
     return null;
   }
@@ -202,10 +203,10 @@ export async function fetchPerpsSymbolID(symbol: string): Promise<number | null>
  * Uses /state endpoint which returns WsPerpsState (aid = Account ID).
  * Returns an object containing at minimum `accountID`.
  */
-export async function fetchPerpsAccountState(): Promise<{ accountID: number | string; [key: string]: any }> {
+export async function fetchPerpsAccountState(): Promise<{ accountID: number | string; [key: string]: unknown }> {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
-  const res: any = await withRetry(() => perpsClient.get(`/accounts/${address}/state`));
+  const res = await withRetry(() => perpsClient.get(`/accounts/${address}/state`));
   const data = res?.data ?? res ?? {};
   assertNoBodyError(data);
   // WsPerpsState uses `aid` for account ID; also try legacy field names
@@ -219,10 +220,10 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number | st
  * Uses /state endpoint which returns WsSpotState (aid = Account ID).
  * Returns an object containing at minimum `accountID`.
  */
-export async function fetchSpotAccountState(): Promise<{ accountID: number | string; [key: string]: any }> {
+export async function fetchSpotAccountState(): Promise<{ accountID: number | string; [key: string]: unknown }> {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
-  const res: any = await withRetry(() => spotClient.get(`/accounts/${address}/state`));
+  const res = await withRetry(() => spotClient.get(`/accounts/${address}/state`));
   const data = res?.data ?? res ?? {};
   assertNoBodyError(data);
   // WsSpotState uses `aid` for account ID; also try legacy field names
@@ -238,7 +239,7 @@ export async function fetchSpotAccountState(): Promise<{ accountID: number | str
 export async function fetchSpotSymbolID(symbol: string): Promise<number | null> {
   try {
     const entry = await fetchSymbolEntry(symbol, 'spot');
-    return entry?.symbolID ?? entry?.id ?? entry?.symbolId ?? null;
+    return (entry?.symbolID ?? entry?.id ?? entry?.symbolId ?? null) as number | null;
   } catch {
     return null;
   }
@@ -246,12 +247,12 @@ export async function fetchSpotSymbolID(symbol: string): Promise<number | null> 
 
 export async function fetchTickers(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get('/markets/tickers'));
+  const res = await withRetry(() => client.get('/markets/tickers'));
   const raw = res?.data ?? res ?? [];
-  const arr: any[] = Array.isArray(raw) ? raw : [];
+  const arr = Array.isArray(raw) ? raw : [];
   // Normalize SoDEX field names to common aliases expected by consumers.
   // API uses: lastPx, changePct, bidPx, askPx
-  return arr.map((t: any) => ({
+  return arr.map((t: Record<string, unknown>) => ({
     ...t,
     lastPrice: t.lastPx ?? t.lastPrice,
     close: t.lastPx ?? t.close,
@@ -263,17 +264,17 @@ export async function fetchTickers(market: 'spot' | 'perps' = 'perps') {
 
 export async function fetchMiniTickers(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get('/markets/miniTickers'));
+  const res = await withRetry(() => client.get('/markets/miniTickers'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchBookTickers(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get('/markets/bookTickers'));
+  const res = await withRetry(() => client.get('/markets/bookTickers'));
   const raw = res?.data ?? res ?? [];
-  const arr: any[] = Array.isArray(raw) ? raw : [];
+  const arr = Array.isArray(raw) ? raw : [];
   // Normalize SoDEX field names: bidPx/askPx → bidPrice/askPrice/bid/ask
-  return arr.map((t: any) => ({
+  return arr.map((t: Record<string, unknown>) => ({
     ...t,
     bidPrice: t.bidPx ?? t.bidPrice,
     askPrice: t.askPx ?? t.askPrice,
@@ -285,7 +286,7 @@ export async function fetchBookTickers(market: 'spot' | 'perps' = 'perps') {
 export async function fetchOrderbook(symbol: string, market: 'spot' | 'perps' = 'perps', limit = 20) {
   const client = getClient(market);
   const sym = normalizeSymbol(symbol, market);
-  const res: any = await withRetry(() => client.get(`/markets/${sym}/orderbook`, { params: { limit } }));
+  const res = await withRetry(() => client.get(`/markets/${sym}/orderbook`, { params: { limit } }));
   return res?.data ?? res ?? { bids: [], asks: [] };
 }
 
@@ -297,12 +298,12 @@ export async function fetchKlines(
 ) {
   const client = getClient(market);
   const sym = normalizeSymbol(symbol, market);
-  const res: any = await withRetry(() => client.get(`/markets/${sym}/klines`, { params: { interval, limit } }));
+  const res = await withRetry(() => client.get(`/markets/${sym}/klines`, { params: { interval, limit } }));
   const raw = res?.data ?? res ?? [];
-  const arr: any[] = Array.isArray(raw) ? raw : [];
+  const arr = Array.isArray(raw) ? raw : [];
   // SoDEX RPCKline uses single-char field names: t, o, h, l, c, v, q
   // Normalize to common aliases expected by consumers.
-  return arr.map((k: any) => ({
+  return arr.map((k: Record<string, unknown>) => ({
     ...k,
     time: k.t ?? k.time ?? k.openTime,
     openTime: k.t ?? k.openTime ?? k.time,
@@ -316,17 +317,17 @@ export async function fetchKlines(
 
 export async function fetchCoins(market: 'spot' | 'perps' = 'perps') {
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get('/markets/coins'));
+  const res = await withRetry(() => client.get('/markets/coins'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchMarkPrices() {
-  const res: any = await withRetry(() => perpsClient.get('/markets/mark-prices'));
+  const res = await withRetry(() => perpsClient.get('/markets/mark-prices'));
   return res?.data ?? res ?? [];
 }
 
 export async function fetchFundingRates() {
-  const res: any = await withRetry(() => perpsClient.get('/markets/funding-rates'));
+  const res = await withRetry(() => perpsClient.get('/markets/funding-rates'));
   return res?.data ?? res ?? [];
 }
 
@@ -336,7 +337,7 @@ export async function fetchAccountInfo(market: 'spot' | 'perps' = 'perps') {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get(`/accounts/${address}`));
+  const res = await withRetry(() => client.get(`/accounts/${address}`));
   return res?.data ?? res ?? {};
 }
 
@@ -344,7 +345,7 @@ export async function fetchBalances(market: 'spot' | 'perps' = 'perps') {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get(`/accounts/${address}/balances`));
+  const res = await withRetry(() => client.get(`/accounts/${address}/balances`));
   // API returns { blockTime, blockHeight, balances: [...] } — unwrap the inner array.
   const data = res?.data ?? res ?? {};
   return Array.isArray(data) ? data : (data.balances ?? []);
@@ -353,7 +354,7 @@ export async function fetchBalances(market: 'spot' | 'perps' = 'perps') {
 export async function fetchPositions() {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
-  const res: any = await withRetry(() => perpsClient.get(`/accounts/${address}/positions`));
+  const res = await withRetry(() => perpsClient.get(`/accounts/${address}/positions`));
   // API returns { blockTime, blockHeight, positions: [...] } — unwrap the inner array.
   const data = res?.data ?? res ?? {};
   return Array.isArray(data) ? data : (data.positions ?? []);
@@ -363,7 +364,7 @@ export async function fetchOpenOrders(market: 'spot' | 'perps' = 'perps') {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get(`/accounts/${address}/orders`));
+  const res = await withRetry(() => client.get(`/accounts/${address}/orders`));
   // API returns { blockTime, blockHeight, orders: [...] } — unwrap the inner array.
   const data = res?.data ?? res ?? {};
   return Array.isArray(data) ? data : (data.orders ?? []);
@@ -386,7 +387,7 @@ export interface PlaceOrderParams {
  *   { accountID, orders: [{ symbolID, clOrdID, side, type, timeInForce, price?, quantity?, funds? }] }
  * Field order matches the Go struct definition for correct payloadHash computation.
  */
-async function placeSpotOrder(params: PlaceOrderParams): Promise<any> {
+async function placeSpotOrder(params: PlaceOrderParams): Promise<unknown> {
   const [accountState, symbolEntry] = await Promise.all([
     fetchSpotAccountState(),
     fetchSymbolEntry(params.symbol, 'spot'),
@@ -411,7 +412,7 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<any> {
 
   // Build BatchNewOrderItem in Go struct field order:
   // symbolID, clOrdID, side, type, timeInForce, price(omitempty), quantity(omitempty), funds(omitempty)
-  const orderItem: Record<string, any> = {
+  const orderItem: Record<string, unknown> = {
     symbolID,
     clOrdID: generateClOrdID(),
     side: params.side,
@@ -427,7 +428,7 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<any> {
     orders: [orderItem],
   };
 
-  const res: any = await withRetry(() => spotClient.post('/trade/orders/batch', payload));
+  const res = await withRetry(() => spotClient.post('/trade/orders/batch', payload));
   const data = res?.data ?? res ?? {};
   assertNoBodyError(data);
 
@@ -444,7 +445,7 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<any> {
  *   funds(omitempty), stopPrice(omitempty), stopType(omitempty), triggerType(omitempty),
  *   reduceOnly, positionSide
  */
-async function placePerpsOrder(params: PlaceOrderParams): Promise<any> {
+async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
   const [accountState, symbolEntry] = await Promise.all([
     fetchPerpsAccountState(),
     fetchSymbolEntry(params.symbol, 'perps'),
@@ -470,7 +471,7 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<any> {
   // Build PerpsOrderItem in Go struct field order (omitempty fields excluded when absent):
   // clOrdID, modifier, side, type, timeInForce, price?, quantity?, funds?, stopPrice?,
   // stopType?, triggerType?, reduceOnly, positionSide
-  const order: Record<string, any> = {
+  const order: Record<string, unknown> = {
     clOrdID: generateClOrdID(),
     modifier: 1,        // NORMAL = 1
     side: params.side,
@@ -490,7 +491,7 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<any> {
     orders: [order],
   };
 
-  const res: any = await withRetry(() => perpsClient.post('/trade/orders', payload));
+  const res = await withRetry(() => perpsClient.post('/trade/orders', payload));
   const data = res?.data ?? res ?? {};
   assertNoBodyError(data);
 
@@ -541,7 +542,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
     if (symbolID == null) throw new Error(`cancelOrder: symbolID not found for "${symbol}"`);
 
     // PerpsCancelItem in Go struct field order: symbolID, orderID(omitempty), clOrdID(omitempty)
-    const cancelItem: Record<string, any> = { symbolID };
+    const cancelItem: Record<string, unknown> = { symbolID };
     const numericOrderId = parseOrderIdNumeric(orderId);
     if (orderId && !isNaN(numericOrderId)) {
       cancelItem.orderID = numericOrderId;
@@ -555,7 +556,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
       cancels: [cancelItem],
     };
 
-    const res: any = await withRetry(() => perpsClient.delete('/trade/orders', { data: payload }));
+    const res = await withRetry(() => perpsClient.delete('/trade/orders', { data: payload }));
     const data = res?.data ?? res ?? {};
     assertNoBodyError(data);
     return data;
@@ -569,7 +570,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
 
     // BatchCancelOrderItem in Go struct field order:
     // symbolID, clOrdID(required — new ID for this cancel request), orderID(omitempty), origClOrdID(omitempty)
-    const cancelItem: Record<string, any> = {
+    const cancelItem: Record<string, unknown> = {
       symbolID,
       clOrdID: generateClOrdID(), // unique ID for this cancellation request
     };
@@ -586,7 +587,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
       cancels: [cancelItem],
     };
 
-    const res: any = await withRetry(() => spotClient.delete('/trade/orders/batch', { data: payload }));
+    const res = await withRetry(() => spotClient.delete('/trade/orders/batch', { data: payload }));
     const data = res?.data ?? res ?? {};
     assertNoBodyError(data);
     return data;
@@ -595,7 +596,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
 
 export async function cancelAllOrders(symbol?: string, market: 'spot' | 'perps' = 'perps') {
   const orders = await fetchOpenOrders(market);
-  const results: any[] = [];
+  const results: unknown[] = [];
   const ordersArray = Array.isArray(orders) ? orders : [];
   const normalizedFilter = symbol ? normalizeSymbol(symbol, market) : undefined;
   for (const order of ordersArray) {
@@ -641,7 +642,7 @@ export async function fetchFeeRate(market: 'spot' | 'perps' = 'perps'): Promise<
     const address = getEvmAddress();
     if (!address) throw new Error('No wallet configured');
     const client = getClient(market);
-    const res: any = await withRetry(() => client.get(`/accounts/${address}/fee-rate`));
+    const res = await withRetry(() => client.get(`/accounts/${address}/fee-rate`));
     const envelope = res?.data ?? res ?? {};
     assertNoBodyError(envelope);
     const data = envelope?.data ?? envelope;
@@ -667,7 +668,7 @@ export async function fetchAccountOrders(
   const addr = address || getEvmAddress();
   if (!addr) throw new Error('No wallet configured');
   const client = getClient(market);
-  const res: any = await withRetry(() => client.get(`/accounts/${addr}/orders`));
+  const res = await withRetry(() => client.get(`/accounts/${addr}/orders`));
   // API returns { blockTime, blockHeight, orders: [...] } — unwrap the inner array.
   const data = res?.data ?? res ?? {};
   return Array.isArray(data) ? data : (data.orders ?? []);
@@ -704,21 +705,21 @@ export async function fetchOrderStatus(
   const sym = normalizeSymbol(symbol, market);
   const numericOrderId = parseOrderIdNumeric(orderId);
   try {
-    const res: any = await client.get(`/accounts/${address}/trades`, {
+    const res = await client.get(`/accounts/${address}/trades`, {
       params: {
         symbol: sym,
         ...(orderId && !isNaN(numericOrderId) ? { orderID: numericOrderId } : {}),
         limit: 50,
       },
     });
-    const trades: any[] = res?.data ?? res ?? [];
+    const trades = res?.data ?? res ?? [];
     if (!Array.isArray(trades)) return null;
 
     // Filter to only trades that belong to this specific order.
     // The endpoint may return all recent trades when orderID filtering is not
     // supported server-side; without this filter every status check would
     // aggregate unrelated fills and inflate the volume/fee metrics.
-    const matchingTrades = trades.filter((t: any) => {
+    const matchingTrades = trades.filter((t: Record<string, unknown>) => {
       const tradeOrderId = t.orderID ?? t.orderId ?? t.order_id;
       if (tradeOrderId == null) return false; // exclude trades with no ID — cannot verify ownership
       const tradeIdStr = String(tradeOrderId);
@@ -764,12 +765,12 @@ export async function fetchOrderStatus(
 export async function fetchAccountFills(
   market: 'spot' | 'perps' = 'perps',
   limit = 20,
-): Promise<any[]> {
+): Promise<unknown[]> {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
   const client = getClient(market);
   try {
-    const res: any = await client.get(`/accounts/${address}/trades`, {
+    const res = await client.get(`/accounts/${address}/trades`, {
       params: { limit },
     });
     const list = res?.data ?? res ?? [];
