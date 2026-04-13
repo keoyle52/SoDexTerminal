@@ -45,6 +45,8 @@ const INTERVAL_DECREASE_THRESHOLD = 10;
 const RATE_LIMIT_PENALTY_SEC = 2;
 /** Estimated 14-day maker volume share threshold for rebate. */
 const REBATE_THRESHOLD_SHARE = 0.005; // 0.5%
+/** Rough estimate of 14-day platform total volume used when no target is set. */
+const ESTIMATED_PLATFORM_VOLUME = 1_000_000;
 
 function symbolFromBase(base: string, market: 'spot' | 'perps'): string {
   return market === 'spot' ? `${base}_USDC` : `${base}-USD`;
@@ -228,7 +230,9 @@ export const VolumeBot: React.FC = () => {
       const quantityStepEpsilon = Math.max(stepSize * 1e-9, Number.EPSILON);
       const pricePrecision = Math.max(0, Math.min(8, rules.pricePrecision || 2));
 
-      // Use maker fee for cost calculation since we use GTX (post-only)
+      // Use absolute maker fee for cost calculation since we use GTX (post-only).
+      // Math.abs is intentional: when rebate is active (negative fee), the exchange
+      // credits us, but we still need a positive rate for budget/spend limit math.
       const makerFeeRate = Math.max(Math.abs(feeRateRef.current.makerFee), MIN_FEE_RATE);
 
       let maxQtyPerSide = effectiveBudget / (midPrice * ROUND_TRIP_SIDES);
@@ -694,10 +698,10 @@ export const VolumeBot: React.FC = () => {
   const volumeTargetValue = parsePositiveLimit(state.maxVolumeTarget);
   const spendUsageRatio = spendLimitValue !== null ? Math.min((state.totalSpent / spendLimitValue) * 100, 100) : 0;
   const volumeProgressRatio = volumeTargetValue !== null ? Math.min((state.totalVolume / volumeTargetValue) * 100, 100) : 0;
-  const efficiency = state.totalFee > 0 ? Math.round(state.totalVolume / state.totalFee) : 0;
+  const efficiency = state.totalFee > 0 ? Math.min(Math.round(state.totalVolume / state.totalFee), 999_999) : 0;
   const estimatedMakerShare = volumeTargetValue !== null && volumeTargetValue > 0
     ? Math.min((state.totalVolume / volumeTargetValue) * REBATE_THRESHOLD_SHARE * 100, 100)
-    : (state.totalVolume > 0 ? (state.totalVolume / 1_000_000) * 100 : 0); // rough estimate: % of $1M
+    : (state.totalVolume > 0 ? (state.totalVolume / ESTIMATED_PLATFORM_VOLUME) * 100 : 0);
   const rebateRemaining = Math.max(0, REBATE_THRESHOLD_SHARE * 100 - estimatedMakerShare);
   const hasAccountB = !!(settings.accountBApiKeyName && settings.accountBPrivateKey);
   return (

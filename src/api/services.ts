@@ -975,6 +975,25 @@ export async function placeOrderWithSigner(
 }
 
 /**
+ * Build a cancel item for a given orderId, used by batch cancel.
+ */
+function buildCancelItem(orderId: string, symbolID: number | string | null, includeClOrdID = false): Record<string, unknown> {
+  const cancelItem: Record<string, unknown> = { symbolID };
+  if (includeClOrdID) cancelItem.clOrdID = generateClOrdID();
+  const numericOrderId = parseOrderIdNumeric(orderId);
+  if (orderId && !isNaN(numericOrderId)) {
+    cancelItem.orderID = numericOrderId;
+  } else if (orderId) {
+    if (includeClOrdID) {
+      cancelItem.origClOrdID = orderId;
+    } else {
+      cancelItem.clOrdID = orderId;
+    }
+  }
+  return cancelItem;
+}
+
+/**
  * Batch cancel open orders for a specific account.
  * Cancels orders by their IDs. Works for both primary and Account B.
  */
@@ -986,35 +1005,24 @@ export async function batchCancelOrders(
 ): Promise<unknown> {
   if (orderIds.length === 0) return {};
 
-  const isAccountB = !!signer;
-
   if (market === 'perps') {
     const [accountState, symbolID] = await Promise.all([
-      isAccountB
-        ? fetchAccountStateForAddress(signer!.address, 'perps')
+      signer
+        ? fetchAccountStateForAddress(signer.address, 'perps')
         : fetchPerpsAccountState(),
       fetchPerpsSymbolID(symbol),
     ]);
     if (symbolID == null) throw new Error(`batchCancelOrders: symbolID not found for "${symbol}"`);
 
-    const cancels = orderIds.map((orderId) => {
-      const cancelItem: Record<string, unknown> = { symbolID };
-      const numericOrderId = parseOrderIdNumeric(orderId);
-      if (orderId && !isNaN(numericOrderId)) {
-        cancelItem.orderID = numericOrderId;
-      } else if (orderId) {
-        cancelItem.clOrdID = orderId;
-      }
-      return cancelItem;
-    });
+    const cancels = orderIds.map((orderId) => buildCancelItem(orderId, symbolID));
 
     const payload = {
       accountID: accountState.accountID,
       cancels,
     };
 
-    if (isAccountB) {
-      return await withRetry(() => signedDelete('/trade/orders', payload as Record<string, unknown>, 'perps', signer!));
+    if (signer) {
+      return await withRetry(() => signedDelete('/trade/orders', payload as Record<string, unknown>, 'perps', signer));
     }
     const res = await withRetry(() => perpsClient.delete('/trade/orders', { data: payload }));
     const data = res?.data ?? res ?? {};
@@ -1023,34 +1031,22 @@ export async function batchCancelOrders(
   } else {
     // Spot
     const [accountState, symbolID] = await Promise.all([
-      isAccountB
-        ? fetchAccountStateForAddress(signer!.address, 'spot')
+      signer
+        ? fetchAccountStateForAddress(signer.address, 'spot')
         : fetchSpotAccountState(),
       fetchSpotSymbolID(symbol),
     ]);
     if (symbolID == null) throw new Error(`batchCancelOrders: symbolID not found for "${symbol}"`);
 
-    const cancels = orderIds.map((orderId) => {
-      const cancelItem: Record<string, unknown> = {
-        symbolID,
-        clOrdID: generateClOrdID(),
-      };
-      const numericOrderId = parseOrderIdNumeric(orderId);
-      if (orderId && !isNaN(numericOrderId)) {
-        cancelItem.orderID = numericOrderId;
-      } else if (orderId) {
-        cancelItem.origClOrdID = orderId;
-      }
-      return cancelItem;
-    });
+    const cancels = orderIds.map((orderId) => buildCancelItem(orderId, symbolID, true));
 
     const payload = {
       accountID: accountState.accountID,
       cancels,
     };
 
-    if (isAccountB) {
-      return await withRetry(() => signedDelete('/trade/orders/batch', payload as Record<string, unknown>, 'spot', signer!));
+    if (signer) {
+      return await withRetry(() => signedDelete('/trade/orders/batch', payload as Record<string, unknown>, 'spot', signer));
     }
     const res = await withRetry(() => spotClient.delete('/trade/orders/batch', { data: payload }));
     const data = res?.data ?? res ?? {};
