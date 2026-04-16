@@ -14,8 +14,8 @@ import { useSettingsStore } from '../store/settingsStore';
 import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
-import { cn } from '../lib/utils';
-import { getErrorMessage } from '../lib/utils';
+import { cn, getErrorMessage } from '../lib/utils';
+import { analyzeSentiment } from '../api/geminiClient';
 
 interface LogEntry {
   time: string;
@@ -39,9 +39,10 @@ const DEFAULT_RULES: TriggerRule[] = [
 const POLL_MS = 60_000; // 60 seconds
 
 export const NewsBot: React.FC = () => {
-  const { sosoApiKey, privateKey, apiKeyName } = useSettingsStore();
+  const { sosoApiKey, privateKey, apiKeyName, geminiApiKey } = useSettingsStore();
 
   const [running, setRunning] = useState(false);
+  const [useAi, setUseAi] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [rules, setRules] = useState<TriggerRule[]>(DEFAULT_RULES);
   const [newKeyword, setNewKeyword] = useState('');
@@ -55,6 +56,7 @@ export const NewsBot: React.FC = () => {
   const [triggeredIds] = useState(() => new Set<string>());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runningRef = useRef(false);
+  const useAiRef = useRef(false); // needed for closure in interval
 
   const addLog = useCallback((type: LogEntry['type'], message: string) => {
     setLogs((prev) => [
@@ -107,20 +109,41 @@ export const NewsBot: React.FC = () => {
     addLog('info', 'Checking latest news...');
     try {
       const result = filterCoin
-        ? await fetchSosoNewsByCurrency(filterCoin, 1, 50)
-        : await fetchSosoNews(1, 50);
+        ? await fetchSosoNewsByCurrency(filterCoin, 1, 10)
+        : await fetchSosoNews(1, 10);
 
-      let matches = 0;
-      for (const item of result.list) {
+      const items = result.list || [];
+      let processes = 0;
+
+      for (const item of items) {
         if (triggeredIds.has(item.id)) continue;
-        const rule = matchesRules(item);
-        if (rule) {
-          triggeredIds.add(item.id);
-          matches++;
-          await executeTrade(rule, item);
+        triggeredIds.add(item.id);
+        const title = getNewsTitle(item);
+
+        if (useAiRef.current) {
+          addLog('info', `🤖 Analyzing with AI: "${title.slice(0, 40)}..."`);
+          try {
+            const sentiment = await analyzeSentiment(title);
+            if (sentiment === 'BULLISH') {
+              await executeTrade({ keyword: 'AI_BULLISH', side: 'BUY', category: 0 }, item);
+            } else if (sentiment === 'BEARISH') {
+              await executeTrade({ keyword: 'AI_BEARISH', side: 'SELL', category: 0 }, item);
+            } else {
+              addLog('info', `◈ Sentiment: Neutral — Ignoring`);
+            }
+          } catch (err) {
+            addLog('error', `AI Error: ${getErrorMessage(err)}`);
+          }
+        } else {
+          const rule = matchesRules(item);
+          if (rule) {
+            await executeTrade(rule, item);
+          }
         }
+        processes++;
       }
-      if (matches === 0) addLog('info', `No triggers matched across ${result.list.length} headlines`);
+      
+      if (processes === 0) addLog('info', `No new headlines found`);
     } catch (err) {
       addLog('error', `Poll error: ${getErrorMessage(err)}`);
     }
@@ -128,13 +151,16 @@ export const NewsBot: React.FC = () => {
 
   const start = useCallback(() => {
     if (!sosoApiKey) { toast.error('Set SosoValue API key in Settings'); return; }
-    if (rules.length === 0) { toast.error('Add at least one trigger rule'); return; }
+    if (useAi && !geminiApiKey) { toast.error('Set Gemini API key in Settings for AI mode'); return; }
+    if (!useAi && rules.length === 0) { toast.error('Add at least one trigger rule'); return; }
+    
     runningRef.current = true;
+    useAiRef.current = useAi;
     setRunning(true);
-    addLog('info', `▶ Bot started — polling every ${POLL_MS / 1000}s`);
-    poll(); // immediate first poll
+    addLog('info', `▶ Bot started (${useAi ? 'AI Sentiment' : 'Keyword'} mode) — polling 60s`);
+    poll();
     pollRef.current = setInterval(poll, POLL_MS);
-  }, [sosoApiKey, rules, poll, addLog]);
+  }, [sosoApiKey, geminiApiKey, useAi, rules, poll, addLog]);
 
   const stop = useCallback(() => {
     runningRef.current = false;
@@ -173,11 +199,36 @@ export const NewsBot: React.FC = () => {
           </div>
 
           {!sosoApiKey && (
-            <div className="flex items-start gap-2 p-2 bg-warning/5 border border-warning/20 rounded-lg mb-3 text-xs text-warning">
+            <div className="flex items-start gap-2 p-2 bg-danger/5 border border-danger/20 rounded-lg mb-3 text-[10px] text-danger">
               <AlertCircle size={12} className="shrink-0 mt-0.5" />
               SosoValue API key required
             </div>
           )}
+
+          {/* Mode Toggle */}
+          <div className="flex items-center justify-between mb-4 p-2 bg-surface rounded-lg">
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                'w-2 h-2 rounded-full',
+                useAi ? 'bg-gradient-to-tr from-blue-500 to-purple-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-text-muted'
+              )} />
+              <span className="text-xs font-medium">{useAi ? 'Gemini AI Mode' : 'Keyword Mode'}</span>
+            </div>
+            <button
+              disabled={running}
+              onClick={() => setUseAi(!useAi)}
+              className={cn(
+                'w-9 h-5 rounded-full transition-colors relative flex items-center',
+                useAi ? 'bg-primary' : 'bg-border',
+                running && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              <div className={cn(
+                'w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform',
+                useAi ? 'translate-x-4.5' : 'translate-x-1'
+              )} />
+            </button>
+          </div>
 
           <div className="flex gap-2">
             <Button
@@ -235,10 +286,11 @@ export const NewsBot: React.FC = () => {
         </Card>
 
         {/* Trigger Rules */}
-        <Card>
+        <Card className={cn(useAi && 'opacity-50 pointer-events-none grayscale')}>
           <div className="flex items-center gap-2 mb-4">
             <Zap size={14} className="text-primary" />
             <h3 className="text-sm font-semibold">Trigger Rules</h3>
+            {useAi && <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">Paused</span>}
           </div>
 
           <div className="space-y-2 mb-4">

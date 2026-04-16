@@ -1,1 +1,7 @@
-feat: SosoValue API integration (ETF Tracker, Crypto News, News Bot)
+feat: SosoValue robustness fixes and Gemini AI News Sentiment integration
+
+- Updated SosoValue services with data structure fallbacks
+- Added geminiApiKey to settings and store
+- Created Gemini AI client for sentiment analysis
+- Integrated Gemini AI mode into News Bot with sentiment-based triggers
+- Fixed build errors and verified production build

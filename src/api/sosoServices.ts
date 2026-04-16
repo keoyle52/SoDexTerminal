@@ -113,8 +113,13 @@ export async function fetchSosoNewsByCurrency(
 // ─── ETF ─────────────────────────────────────────────────────────────────────
 
 export async function fetchEtfHistoricalInflow(type: EtfType): Promise<EtfDayData[]> {
-  const res = await sosoValueClient.post('/openapi/v2/etf/historicalInflowChart', { type }) as { data: { list: EtfDayData[] } };
-  return res?.data?.list ?? [];
+  const res = await sosoValueClient.post('/openapi/v2/etf/historicalInflowChart', { type }) as { data: any };
+  // Robustness: Handle both { data: { list: [...] } } and { data: [...] }
+  const rawData = res?.data;
+  if (!rawData) return [];
+  if (Array.isArray(rawData)) return rawData;
+  if (rawData.list && Array.isArray(rawData.list)) return rawData.list;
+  return [];
 }
 
 export async function fetchEtfCurrentMetrics(type: EtfType): Promise<EtfCurrentMetrics> {

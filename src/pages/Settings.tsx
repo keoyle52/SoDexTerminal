@@ -4,7 +4,7 @@ import { spotClient } from '../api/spotClient';
 import { wsService } from '../api/websocket';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
-import { Key, Shield, Settings2, Info, Wifi, Unplug, Globe, Bell, Hash } from 'lucide-react';
+import { Key, Shield, Settings2, Info, Wifi, Unplug, Globe, Bell, Hash, Zap } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { Toggle } from '../components/common/Input';
@@ -128,6 +128,28 @@ export const Settings: React.FC = () => {
                   placeholder="Enter your SosoValue API key..."
                   icon={<Key size={14} />}
                   hint="Get your key at sosovalue.com → API. Stored in localStorage."
+                />
+              </Card>
+
+              {/* Gemini API */}
+              <Card>
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="w-4 h-4 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 overflow-hidden flex items-center justify-center">
+                    <Zap size={10} className="text-white fill-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Gemini AI API Key</h3>
+                    <p className="text-[11px] text-text-muted mt-0.5">Powering "News Bot" intelligent sentiment analysis</p>
+                  </div>
+                </div>
+                <Input
+                  label="Gemini API Key"
+                  type="password"
+                  value={store.geminiApiKey}
+                  onChange={(e) => store.setGeminiApiKey(e.target.value)}
+                  placeholder="Enter your Gemini API key..."
+                  icon={<Zap size={14} />}
+                  hint="Get your key at aistudio.google.com/app/apikey"
                 />
               </Card>
 

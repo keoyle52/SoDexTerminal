@@ -9,6 +9,7 @@ interface SettingsState {
   confirmOrders: boolean;
   toastsEnabled: boolean;
   sosoApiKey: string;
+  geminiApiKey: string;
   setApiKeyName: (val: string) => void;
   setPrivateKey: (val: string) => void;
   setIsTestnet: (val: boolean) => void;
@@ -16,6 +17,7 @@ interface SettingsState {
   setConfirmOrders: (val: boolean) => void;
   setToastsEnabled: (val: boolean) => void;
   setSosoApiKey: (val: string) => void;
+  setGeminiApiKey: (val: string) => void;
   disconnect: () => void;
 }
 
@@ -29,6 +31,7 @@ export const useSettingsStore = create<SettingsState>()(
       confirmOrders: true,
       toastsEnabled: true,
       sosoApiKey: '',
+      geminiApiKey: '',
       setApiKeyName: (val) => set({ apiKeyName: val }),
       setPrivateKey: (val) => set({ privateKey: val }),
       setIsTestnet: (val) => set({ isTestnet: val }),
@@ -36,6 +39,7 @@ export const useSettingsStore = create<SettingsState>()(
       setConfirmOrders: (val) => set({ confirmOrders: val }),
       setToastsEnabled: (val) => set({ toastsEnabled: val }),
       setSosoApiKey: (val) => set({ sosoApiKey: val }),
+      setGeminiApiKey: (val) => set({ geminiApiKey: val }),
       disconnect: () => set({ apiKeyName: '', privateKey: '' }),
     }),
     {
@@ -47,6 +51,7 @@ export const useSettingsStore = create<SettingsState>()(
         confirmOrders: state.confirmOrders,
         toastsEnabled: state.toastsEnabled,
         sosoApiKey: state.sosoApiKey,
+        geminiApiKey: state.geminiApiKey,
         // privateKey intentionally excluded — never stored in localStorage
       }),
     }
