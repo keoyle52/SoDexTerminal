@@ -28,11 +28,11 @@ const PageLoader = () => (
 
 function App() {
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-text-primary font-sans antialiased">
+    <div className="flex h-screen w-screen overflow-hidden text-text-primary font-sans antialiased bg-transparent selection:bg-primary/30">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative z-10 backdrop-blur-[2px]">
         <Topbar />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/dashboard"       element={<Dashboard />} />
@@ -58,22 +58,22 @@ function App() {
       <Toaster
         position="bottom-right"
         toastOptions={{
-          duration: 3000,
+          duration: 3500,
           style: {
-            background: 'rgba(13,17,23,0.95)',
-            color: '#e6edf3',
-            border: '1px solid rgba(27,34,48,0.8)',
+            background: 'rgba(14, 20, 29, 0.95)',
+            color: '#f0f4f8',
+            border: '1px solid rgba(0, 225, 255, 0.2)',
             backdropFilter: 'blur(12px)',
-            borderRadius: '10px',
+            borderRadius: '12px',
             fontSize: '13px',
             padding: '12px 16px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            boxShadow: '0 8px 32px rgba(0, 225, 255, 0.1)',
           },
           success: {
-            iconTheme: { primary: '#3fb950', secondary: '#0d1117' },
+            iconTheme: { primary: '#00e676', secondary: '#06090e' },
           },
           error: {
-            iconTheme: { primary: '#f85149', secondary: '#0d1117' },
+            iconTheme: { primary: '#ff3366', secondary: '#06090e' },
           },
         }}
       />

@@ -1,7 +1,7 @@
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
-import { Wifi, WifiOff, Globe } from 'lucide-react';
+import { Wifi, WifiOff, Settings } from 'lucide-react';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -20,41 +20,61 @@ const PAGE_TITLES: Record<string, string> = {
 
 export const Topbar: React.FC = () => {
   const location = useLocation();
-  const title = PAGE_TITLES[location.pathname] ?? 'SoDEX Terminal';
-  const { apiKeyName, isTestnet } = useSettingsStore();
-  const isConnected = !!apiKeyName;
+  const title = PAGE_TITLES[location.pathname] ?? 'Terminal';
+  const store = useSettingsStore();
+  const isConnected = !!store.apiKeyName;
 
   return (
-    <header className="h-[52px] border-b border-border bg-surface/50 backdrop-blur-xl flex items-center justify-between px-5 shrink-0">
-      <div className="flex items-center gap-3">
-        <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
+    <header className="h-[72px] border-b border-white/5 bg-[#0A0D14]/50 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-40">
+      <div className="flex items-center gap-4">
+        <h1 className="text-xl font-bold tracking-wide text-text-primary drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
+          {title}
+        </h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
         {/* Network Badge */}
-        <div className={`badge ${isTestnet ? 'badge-neutral' : 'badge-primary'}`}>
-          <Globe size={11} />
-          {isTestnet ? 'Testnet' : 'Mainnet'}
+        <div className="flex items-center gap-2 text-xs bg-white/5 border border-white/10 rounded-full px-3 py-1.5 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+          <div className={`w-2 h-2 rounded-full ${store.isTestnet ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]' : 'bg-primary shadow-[0_0_8px_var(--color-primary)]'}`} />
+          <span className="text-text-primary font-medium tracking-wide">
+            {store.isTestnet ? 'Testnet' : 'Mainnet'}
+          </span>
         </div>
 
-        {/* Separator */}
-        <div className="w-px h-4 bg-border mx-1" />
-
-        {/* Connection Status */}
-        <div className={`badge ${isConnected ? 'badge-success' : 'badge-neutral'}`}>
+        {/* API Connection Status */}
+        <div className="flex items-center gap-2 text-xs bg-white/5 border border-white/10 rounded-full px-3 py-1.5 cursor-default transition-all shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
           {isConnected ? (
             <>
-              <Wifi size={11} />
-              <span className="max-w-[100px] truncate">{apiKeyName}</span>
+              <Wifi size={14} className="text-success drop-shadow-[0_0_5px_var(--color-success)]" />
+              <span className="text-success font-medium tracking-wide">Online</span>
             </>
           ) : (
             <>
-              <WifiOff size={11} />
-              Not Connected
+              <WifiOff size={14} className="text-text-secondary" />
+              <span className="text-text-secondary font-medium tracking-wide">Offline</span>
             </>
           )}
         </div>
+
+        {/* Settings / API Key Button */}
+        {/* Settings / API Key Button */}
+        <Link 
+          to="/settings"
+          className={cn(
+            "hidden md:flex items-center gap-2 text-sm font-semibold px-5 py-2 rounded-xl transition-all active:scale-95",
+            !isConnected 
+              ? "bg-primary text-[#06090e] shadow-[0_0_15px_rgba(0,225,255,0.3)] hover:shadow-[0_0_20px_rgba(255,255,255,0.5)] hover:bg-white"
+              : "bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"
+          )}
+        >
+          <Settings size={16} className={isConnected ? "text-primary drop-shadow-[0_0_5px_var(--color-primary)]" : ""} />
+          <span>Enter API Key</span>
+        </Link>
       </div>
     </header>
   );
 };
+
+function cn(...classes: string[]) {
+  return classes.filter(Boolean).join(' ');
+}
