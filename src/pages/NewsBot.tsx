@@ -1,0 +1,347 @@
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Play, Square, Zap, RefreshCw, Settings2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import {
+  fetchSosoNews,
+  fetchSosoNewsByCurrency,
+  fetchSosoCoins,
+  NEWS_CATEGORIES,
+  getNewsTitle,
+} from '../api/sosoServices';
+import type { SosoCoin, SosoNewsItem } from '../api/sosoServices';
+import { placeOrder } from '../api/services';
+import { useSettingsStore } from '../store/settingsStore';
+import { Card } from '../components/common/Card';
+import { Input, Select } from '../components/common/Input';
+import { Button } from '../components/common/Button';
+import { cn } from '../lib/utils';
+import { getErrorMessage } from '../lib/utils';
+
+interface LogEntry {
+  time: string;
+  type: 'info' | 'trade' | 'error';
+  message: string;
+}
+
+interface TriggerRule {
+  keyword: string;
+  side: 'BUY' | 'SELL';
+  category: number; // 0 = any
+}
+
+const DEFAULT_RULES: TriggerRule[] = [
+  { keyword: 'ETF approved', side: 'BUY', category: 0 },
+  { keyword: 'SEC reject', side: 'SELL', category: 0 },
+  { keyword: 'halving', side: 'BUY', category: 0 },
+  { keyword: 'hack', side: 'SELL', category: 0 },
+];
+
+const POLL_MS = 60_000; // 60 seconds
+
+export const NewsBot: React.FC = () => {
+  const { sosoApiKey, privateKey, apiKeyName } = useSettingsStore();
+
+  const [running, setRunning] = useState(false);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [rules, setRules] = useState<TriggerRule[]>(DEFAULT_RULES);
+  const [newKeyword, setNewKeyword] = useState('');
+  const [newSide, setNewSide] = useState<'BUY' | 'SELL'>('BUY');
+  const [newCat, setNewCat] = useState(0);
+  const [symbol, setSymbol] = useState('BTC-USD');
+  const [market, setMarket] = useState<'perps' | 'spot'>('perps');
+  const [quantity, setQuantity] = useState('0.001');
+  const [coins, setCoins] = useState<SosoCoin[]>([]);
+  const [filterCoin, setFilterCoin] = useState<string>(''); // currencyId
+  const [triggeredIds] = useState(() => new Set<string>());
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const runningRef = useRef(false);
+
+  const addLog = useCallback((type: LogEntry['type'], message: string) => {
+    setLogs((prev) => [
+      { time: new Date().toLocaleTimeString(), type, message },
+      ...prev,
+    ].slice(0, 100));
+  }, []);
+
+  // Load coins for filter dropdown
+  useEffect(() => {
+    if (sosoApiKey) {
+      fetchSosoCoins().then(setCoins).catch(() => {});
+    }
+  }, [sosoApiKey]);
+
+  const matchesRules = useCallback((item: SosoNewsItem): TriggerRule | null => {
+    const title = getNewsTitle(item).toLowerCase();
+    for (const rule of rules) {
+      if (!rule.keyword) continue;
+      if (!title.includes(rule.keyword.toLowerCase())) continue;
+      if (rule.category !== 0 && item.category !== rule.category) continue;
+      return rule;
+    }
+    return null;
+  }, [rules]);
+
+  const executeTrade = useCallback(async (rule: TriggerRule, item: SosoNewsItem) => {
+    const title = getNewsTitle(item);
+    addLog('trade', `🔔 Trigger: "${rule.keyword}" → ${rule.side} ${quantity} ${symbol}`);
+    try {
+      if (!privateKey || !apiKeyName) {
+        addLog('error', 'No wallet configured — set Private Key in Settings');
+        return;
+      }
+      await placeOrder(
+        { symbol, side: rule.side === 'BUY' ? 1 : 2, type: 2, quantity },
+        market,
+      );
+      addLog('trade', `✅ ${rule.side} MARKET ${quantity} ${symbol} placed — "${title.slice(0, 60)}"`);
+      toast.success(`News Bot: ${rule.side} order placed!`);
+    } catch (err) {
+      const msg = getErrorMessage(err);
+      addLog('error', `❌ Order failed: ${msg}`);
+      toast.error(`News Bot: ${msg}`);
+    }
+  }, [symbol, quantity, market, privateKey, apiKeyName, addLog]);
+
+  const poll = useCallback(async () => {
+    if (!runningRef.current) return;
+    addLog('info', 'Checking latest news...');
+    try {
+      const result = filterCoin
+        ? await fetchSosoNewsByCurrency(filterCoin, 1, 50)
+        : await fetchSosoNews(1, 50);
+
+      let matches = 0;
+      for (const item of result.list) {
+        if (triggeredIds.has(item.id)) continue;
+        const rule = matchesRules(item);
+        if (rule) {
+          triggeredIds.add(item.id);
+          matches++;
+          await executeTrade(rule, item);
+        }
+      }
+      if (matches === 0) addLog('info', `No triggers matched across ${result.list.length} headlines`);
+    } catch (err) {
+      addLog('error', `Poll error: ${getErrorMessage(err)}`);
+    }
+  }, [filterCoin, matchesRules, executeTrade, addLog, triggeredIds]);
+
+  const start = useCallback(() => {
+    if (!sosoApiKey) { toast.error('Set SosoValue API key in Settings'); return; }
+    if (rules.length === 0) { toast.error('Add at least one trigger rule'); return; }
+    runningRef.current = true;
+    setRunning(true);
+    addLog('info', `▶ Bot started — polling every ${POLL_MS / 1000}s`);
+    poll(); // immediate first poll
+    pollRef.current = setInterval(poll, POLL_MS);
+  }, [sosoApiKey, rules, poll, addLog]);
+
+  const stop = useCallback(() => {
+    runningRef.current = false;
+    setRunning(false);
+    if (pollRef.current) clearInterval(pollRef.current);
+    addLog('info', '■ Bot stopped');
+  }, [addLog]);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  const addRule = () => {
+    if (!newKeyword.trim()) return;
+    setRules((prev) => [...prev, { keyword: newKeyword.trim(), side: newSide, category: newCat }]);
+    setNewKeyword('');
+  };
+
+  const removeRule = (idx: number) => setRules((prev) => prev.filter((_, i) => i !== idx));
+
+  return (
+    <div className="flex h-[calc(100vh-52px)] overflow-hidden gap-4 p-5">
+      {/* Config panel */}
+      <div className="w-80 shrink-0 space-y-4 overflow-y-auto">
+        {/* Status */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Zap size={15} className={cn('text-primary', running && 'animate-pulse')} />
+              <h3 className="text-sm font-semibold">News Trading Bot</h3>
+            </div>
+            <span className={cn(
+              'text-[10px] font-semibold px-2 py-0.5 rounded-full',
+              running ? 'text-success bg-success/10' : 'text-text-muted bg-surface',
+            )}>
+              {running ? 'LIVE' : 'IDLE'}
+            </span>
+          </div>
+
+          {!sosoApiKey && (
+            <div className="flex items-start gap-2 p-2 bg-warning/5 border border-warning/20 rounded-lg mb-3 text-xs text-warning">
+              <AlertCircle size={12} className="shrink-0 mt-0.5" />
+              SosoValue API key required
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              icon={running ? <Square size={13} /> : <Play size={13} />}
+              variant={running ? 'danger' : 'primary'}
+              onClick={running ? stop : start}
+            >
+              {running ? 'Stop' : 'Start'}
+            </Button>
+            <Button variant="outline" icon={<RefreshCw size={13} />} onClick={poll} disabled={!running}>
+              Poll
+            </Button>
+          </div>
+        </Card>
+
+        {/* Trade settings */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <Settings2 size={14} className="text-primary" />
+            <h3 className="text-sm font-semibold">Trade Settings</h3>
+          </div>
+          <div className="space-y-3">
+            <Input
+              label="Symbol"
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder="BTC-USD"
+            />
+            <Input
+              label="Quantity"
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+            <Select
+              label="Market"
+              value={market}
+              onChange={(e) => setMarket(e.target.value as 'perps' | 'spot')}
+              options={[
+                { value: 'perps', label: 'Perps' },
+                { value: 'spot', label: 'Spot' },
+              ]}
+            />
+            <Select
+              label="Filter by Coin (optional)"
+              value={filterCoin}
+              onChange={(e) => setFilterCoin(e.target.value)}
+              options={[
+                { value: '', label: 'All Coins' },
+                ...coins.slice(0, 30).map((c) => ({ value: c.id, label: `${c.name.toUpperCase()} — ${c.fullName}` })),
+              ]}
+            />
+          </div>
+        </Card>
+
+        {/* Trigger Rules */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <Zap size={14} className="text-primary" />
+            <h3 className="text-sm font-semibold">Trigger Rules</h3>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {rules.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 bg-surface rounded-lg text-xs">
+                <span className={cn(
+                  'font-semibold px-1.5 py-0.5 rounded text-[10px]',
+                  r.side === 'BUY' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger',
+                )}>
+                  {r.side}
+                </span>
+                <span className="flex-1 truncate text-text-secondary">"{r.keyword}"</span>
+                {r.category !== 0 && (
+                  <span className="text-[9px] text-text-muted">{NEWS_CATEGORIES[r.category]?.label}</span>
+                )}
+                <button
+                  onClick={() => removeRule(i)}
+                  className="text-text-muted hover:text-danger transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Add new rule */}
+          <div className="space-y-2">
+            <Input
+              label="Keyword"
+              value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)}
+              placeholder='e.g. "ETF approved"'
+              onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && addRule()}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Select
+                label="Action"
+                value={newSide}
+                onChange={(e) => setNewSide(e.target.value as 'BUY' | 'SELL')}
+                options={[{ value: 'BUY', label: 'BUY' }, { value: 'SELL', label: 'SELL' }]}
+              />
+              <Select
+                label="Category"
+                value={String(newCat)}
+                onChange={(e) => setNewCat(parseInt(e.target.value))}
+                options={[
+                  { value: '0', label: 'Any' },
+                  ...Object.entries(NEWS_CATEGORIES).map(([k, v]) => ({ value: k, label: v.label })),
+                ]}
+              />
+            </div>
+            <Button variant="outline" className="w-full" onClick={addRule} disabled={!newKeyword.trim()}>
+              + Add Rule
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      {/* Activity Log */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <Card className="flex-1 flex flex-col p-0 overflow-hidden">
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between shrink-0">
+            <span className="text-xs font-semibold uppercase tracking-wider">Activity Log</span>
+            <button
+              onClick={() => setLogs([])}
+              className="text-[10px] text-text-muted hover:text-text transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-1.5 font-mono">
+            {logs.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-text-muted">
+                <Zap size={36} className="opacity-20 mb-3" />
+                <p className="text-sm">Start the bot to begin monitoring news</p>
+                <p className="text-xs mt-1 opacity-60">Headlines are checked every 60 seconds</p>
+              </div>
+            )}
+            {logs.map((log, i) => (
+              <div key={i} className={cn(
+                'flex items-start gap-3 text-xs py-1 px-2 rounded',
+                log.type === 'trade' && 'bg-primary/5',
+                log.type === 'error' && 'bg-danger/5',
+              )}>
+                <span className="text-text-muted shrink-0">{log.time}</span>
+                <span className={cn(
+                  'flex-1 leading-relaxed',
+                  log.type === 'trade' && 'text-primary',
+                  log.type === 'error' && 'text-danger',
+                  log.type === 'info' && 'text-text-secondary',
+                )}>
+                  {log.message}
+                </span>
+                {log.type === 'trade' && (
+                  log.message.includes('BUY')
+                    ? <TrendingUp size={12} className="text-success shrink-0 mt-0.5" />
+                    : <TrendingDown size={12} className="text-danger shrink-0 mt-0.5" />
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};

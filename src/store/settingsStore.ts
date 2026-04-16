@@ -8,12 +8,14 @@ interface SettingsState {
   defaultSymbol: string;
   confirmOrders: boolean;
   toastsEnabled: boolean;
+  sosoApiKey: string;
   setApiKeyName: (val: string) => void;
   setPrivateKey: (val: string) => void;
   setIsTestnet: (val: boolean) => void;
   setDefaultSymbol: (val: string) => void;
   setConfirmOrders: (val: boolean) => void;
   setToastsEnabled: (val: boolean) => void;
+  setSosoApiKey: (val: string) => void;
   disconnect: () => void;
 }
 
@@ -26,12 +28,14 @@ export const useSettingsStore = create<SettingsState>()(
       defaultSymbol: 'BTC-USD',
       confirmOrders: true,
       toastsEnabled: true,
+      sosoApiKey: '',
       setApiKeyName: (val) => set({ apiKeyName: val }),
       setPrivateKey: (val) => set({ privateKey: val }),
       setIsTestnet: (val) => set({ isTestnet: val }),
       setDefaultSymbol: (val) => set({ defaultSymbol: val }),
       setConfirmOrders: (val) => set({ confirmOrders: val }),
       setToastsEnabled: (val) => set({ toastsEnabled: val }),
+      setSosoApiKey: (val) => set({ sosoApiKey: val }),
       disconnect: () => set({ apiKeyName: '', privateKey: '' }),
     }),
     {
@@ -42,6 +46,7 @@ export const useSettingsStore = create<SettingsState>()(
         defaultSymbol: state.defaultSymbol,
         confirmOrders: state.confirmOrders,
         toastsEnabled: state.toastsEnabled,
+        sosoApiKey: state.sosoApiKey,
         // privateKey intentionally excluded — never stored in localStorage
       }),
     }

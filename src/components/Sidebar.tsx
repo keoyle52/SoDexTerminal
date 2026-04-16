@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Grid2X2, Clock, Repeat, Users, LineChart, Coins, TimerOff, Bell, FlaskConical, Settings, Zap } from 'lucide-react';
+import { LayoutDashboard, Grid2X2, Clock, Repeat, Users, LineChart, Coins, TimerOff, Bell, FlaskConical, Settings, Zap, BarChart2, Newspaper } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const NAV_ITEMS = [
@@ -14,6 +14,9 @@ const NAV_ITEMS = [
   { to: '/schedule-cancel', icon: TimerOff, label: 'Schedule' },
   { to: '/alerts', icon: Bell, label: 'Alerts' },
   { to: '/backtesting', icon: FlaskConical, label: 'Backtest' },
+  { to: '/etf-tracker', icon: BarChart2, label: 'ETF Tracker' },
+  { to: '/news', icon: Newspaper, label: 'Crypto News' },
+  { to: '/news-bot', icon: Zap, label: 'News Bot' },
 ];
 
 export const Sidebar: React.FC = () => {

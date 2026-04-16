@@ -1,0 +1,1 @@
+feat: SosoValue API integration (ETF Tracker, Crypto News, News Bot)

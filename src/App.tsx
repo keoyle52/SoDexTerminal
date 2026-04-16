@@ -16,6 +16,9 @@ const ScheduleCancel = lazy(() => import('./pages/ScheduleCancel').then(m => ({ 
 const Alerts       = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
 const Backtesting  = lazy(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })));
 const Settings     = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const EtfTracker   = lazy(() => import('./pages/EtfTracker').then(m => ({ default: m.EtfTracker })));
+const CryptoNews   = lazy(() => import('./pages/CryptoNews').then(m => ({ default: m.CryptoNews })));
+const NewsBot      = lazy(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })));
 
 const PageLoader = () => (
   <div className="flex-1 flex items-center justify-center">
@@ -43,6 +46,9 @@ function App() {
               <Route path="/alerts"          element={<Alerts />} />
               <Route path="/backtesting"     element={<Backtesting />} />
               <Route path="/settings"        element={<Settings />} />
+              <Route path="/etf-tracker"     element={<EtfTracker />} />
+              <Route path="/news"            element={<CryptoNews />} />
+              <Route path="/news-bot"        element={<NewsBot />} />
               <Route path="*"               element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Suspense>

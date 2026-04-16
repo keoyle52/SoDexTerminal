@@ -111,6 +111,26 @@ export const Settings: React.FC = () => {
                 </form>
               </Card>
 
+              {/* SosoValue API */}
+              <Card>
+                <div className="flex items-center gap-2 mb-5">
+                  <Hash size={16} className="text-primary" />
+                  <div>
+                    <h3 className="text-sm font-semibold">SosoValue API Key</h3>
+                    <p className="text-[11px] text-text-muted mt-0.5">Required for ETF Tracker, Crypto News &amp; News Bot</p>
+                  </div>
+                </div>
+                <Input
+                  label="SosoValue API Key"
+                  type="password"
+                  value={store.sosoApiKey}
+                  onChange={(e) => store.setSosoApiKey(e.target.value)}
+                  placeholder="Enter your SosoValue API key..."
+                  icon={<Key size={14} />}
+                  hint="Get your key at sosovalue.com → API. Stored in localStorage."
+                />
+              </Card>
+
               <Card>
                 <div className="flex items-center gap-2 mb-5">
                   <Globe size={16} className="text-primary" />
