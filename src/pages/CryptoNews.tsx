@@ -9,6 +9,7 @@ import {
 } from '../api/sosoServices';
 import type { SosoCoin, SosoNewsItem } from '../api/sosoServices';
 import { useSettingsStore } from '../store/settingsStore';
+import { clearSosoCache } from '../api/sosoValueClient';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { cn } from '../lib/utils';
@@ -167,7 +168,7 @@ export const CryptoNews: React.FC = () => {
           <Button
             variant="outline"
             icon={<RefreshCw size={13} />}
-            onClick={() => loadNews(1, true)}
+            onClick={() => { clearSosoCache(); loadNews(1, true); }}
             loading={loading}
           >
             Refresh

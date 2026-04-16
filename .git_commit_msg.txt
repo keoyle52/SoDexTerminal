@@ -1,9 +1,9 @@
-fix: SosoValue API critical bug fixes
+fix: resolve 429 rate limit errors with TTL cache and StrictMode removal
 
-- Fixed coin list field names: currencyId -> id, currencyName -> name
-- Fixed categoryList URL encoding: URLSearchParams encodes commas as %2C
-  but API expects literal commas — added buildQuery helper to bypass this
-- Fixed error messages: extract .msg/.message from both body and HTTP errors
-- Improved error interceptor to format 401/429 errors clearly
-- Fixed CryptoNews: replaced fragile ref-based init with clean useEffect on sosoApiKey
-- EtfCurrentMetrics now nullable to match updated service signature
+- Remove React StrictMode to stop effects firing twice in development
+- Add TTL in-memory cache to sosoValueClient:
+    coins: 5 min, ETF data: 3-5 min, news: 2 min
+- Cache uses custom Axios adapter to bypass network on cache hits
+- Refresh buttons in EtfTracker and CryptoNews now call clearSosoCache()
+  to force fresh data when user explicitly requests it
+- Users navigating between pages no longer hit new API requests

@@ -4,6 +4,7 @@ import {
   fetchEtfCurrentMetrics,
   fetchEtfHistoricalInflow,
 } from '../api/sosoServices';
+import { clearSosoCache } from '../api/sosoValueClient';
 import type { EtfDayData, EtfType, EtfCurrentMetrics } from '../api/sosoServices';
 import { useSettingsStore } from '../store/settingsStore';
 import { Card, StatCard } from '../components/common/Card';
@@ -38,11 +39,12 @@ export const EtfTracker: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const chartRef = React.useRef<HTMLDivElement>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceRefresh = false) => {
     if (!sosoApiKey) {
       toast.error('Set your SosoValue API key in Settings first.');
       return;
     }
+    if (forceRefresh) clearSosoCache();
     setLoading(true);
     try {
       const [m, h] = await Promise.all([
@@ -123,7 +125,7 @@ export const EtfTracker: React.FC = () => {
               </button>
             ))}
           </div>
-          <Button variant="outline" icon={<RefreshCw size={13} />} onClick={loadData} loading={loading}>
+          <Button variant="outline" icon={<RefreshCw size={13} />} onClick={() => loadData(true)} loading={loading}>
             Refresh
           </Button>
         </div>
