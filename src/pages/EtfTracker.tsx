@@ -4,7 +4,7 @@ import {
   fetchEtfCurrentMetrics,
   fetchEtfHistoricalInflow,
 } from '../api/sosoServices';
-import type { EtfCurrentMetrics, EtfDayData, EtfType } from '../api/sosoServices';
+import type { EtfDayData, EtfType, EtfCurrentMetrics } from '../api/sosoServices';
 import { useSettingsStore } from '../store/settingsStore';
 import { Card, StatCard } from '../components/common/Card';
 import { Button } from '../components/common/Button';

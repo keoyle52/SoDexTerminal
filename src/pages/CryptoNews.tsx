@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Newspaper, RefreshCw, ExternalLink, Search } from 'lucide-react';
 import {
   fetchSosoCoins,
@@ -37,14 +37,13 @@ export const CryptoNews: React.FC = () => {
   const [selectedCoin, setSelectedCoin] = useState<SosoCoin | null>(null);
   const [selectedCats, setSelectedCats] = useState<number[]>(ALL_CATS);
   const [searchQuery, setSearchQuery] = useState('');
-  const initialized = useRef(false);
 
-  const loadCoins = useCallback(async () => {
+  // Load coin list once on mount / API key change
+  useEffect(() => {
     if (!sosoApiKey) return;
-    try {
-      const list = await fetchSosoCoins();
-      setCoins(list.slice(0, 50)); // top 50 coins
-    } catch {/* silent */}
+    fetchSosoCoins()
+      .then((list) => setCoins(list.slice(0, 80)))
+      .catch(() => {});
   }, [sosoApiKey]);
 
   const loadNews = useCallback(async (p = 1, replace = true) => {
@@ -72,19 +71,11 @@ export const CryptoNews: React.FC = () => {
     }
   }, [sosoApiKey, selectedCoin, selectedCats]);
 
+  // Initial load + reload when API key / coin / category changes
   useEffect(() => {
-    if (!initialized.current && sosoApiKey) {
-      initialized.current = true;
-      loadCoins();
-      loadNews(1, true);
-    }
-  }, [sosoApiKey, loadCoins, loadNews]);
-
-  // Reload when filters change
-  useEffect(() => {
-    if (initialized.current) loadNews(1, true);
+    if (sosoApiKey) loadNews(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCoin, selectedCats]);
+  }, [sosoApiKey, selectedCoin, selectedCats]);
 
   const toggleCat = (cat: number) => {
     setSelectedCats((prev) =>
