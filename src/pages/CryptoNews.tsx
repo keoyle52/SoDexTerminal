@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Newspaper, RefreshCw, ExternalLink, Search } from 'lucide-react';
 import {
   fetchSosoCoins,
@@ -77,9 +77,27 @@ export const CryptoNews: React.FC = () => {
     }
   }, [sosoApiKey, selectedCoin, selectedCats]);
 
+  const initialLoadDone = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Initial load + reload when API key / coin / category changes
   useEffect(() => {
-    if (sosoApiKey) loadNews(1, true);
+    if (!sosoApiKey) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadNews(1, true);
+    } else {
+      debounceRef.current = setTimeout(() => {
+        loadNews(1, true);
+      }, 700);
+    }
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sosoApiKey, selectedCoin, selectedCats]);
 

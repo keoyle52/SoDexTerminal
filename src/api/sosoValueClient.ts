@@ -92,17 +92,34 @@ function setStaleFallback(key: string, data: unknown) {
 // ─── Axios Client ─────────────────────────────────────────────────────────────
 
 // ─── Token Bucket / Rate Limiter ───
-// SosoValue limits us to 20 requests/minute. We ensure 1 request max every 3.5 seconds.
-let lastRequestTime = 0;
-const RATE_LIMIT_DELAY = 3500; 
+// SosoValue limits us to 20 requests/minute (1.1 tokens per 3.5s approx).
+// We configure a max bucket of 5 requests for fast initial loading, refilling 1 token every 3.5 seconds.
+let tokens = 10;
+const MAX_TOKENS = 10;
+const REFILL_RATE_MS = 3100; // ~ 19.3 requests per minute burst-sustained
+let lastRefillTime = Date.now();
 
 async function rateLimitPacer() {
   const now = Date.now();
-  const timeSinceLast = now - lastRequestTime;
-  if (timeSinceLast < RATE_LIMIT_DELAY) {
-    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLast));
+  const timePassed = now - lastRefillTime;
+  const tokensToAdd = Math.floor(timePassed / REFILL_RATE_MS);
+  
+  if (tokensToAdd > 0) {
+    tokens = Math.min(MAX_TOKENS, tokens + tokensToAdd);
+    lastRefillTime = now - (timePassed % REFILL_RATE_MS);
   }
-  lastRequestTime = Date.now();
+
+  if (tokens > 0) {
+    tokens--;
+    return;
+  }
+  
+  // bucket empty, wait for next token
+  const nextTokenIn = REFILL_RATE_MS - (timePassed % REFILL_RATE_MS);
+  await new Promise((resolve) => setTimeout(resolve, nextTokenIn));
+  
+  // we just waited for precisely one token and consumed it immediately
+  lastRefillTime = Date.now();
 }
 
 function makeClient() {
