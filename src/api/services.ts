@@ -202,9 +202,23 @@ function normalizeOrderQuantity(
     ? Math.floor((maxQtyRaw * factor) / stepUnits) * stepUnits
     : 0;
 
+  const minNotionalRaw = parseFloat(String(symbolEntry?.minNotional ?? 0));
+  const refPriceRaw = parseFloat(String(
+    symbolEntry?.lastTradePrice
+      ?? symbolEntry?.lastPx
+      ?? symbolEntry?.markPrice
+      ?? symbolEntry?.indexPrice
+      ?? symbolEntry?.oraclePrice
+      ?? 0,
+  ));
+  const notionalQtyUnits = (orderType === 2 && Number.isFinite(minNotionalRaw) && minNotionalRaw > 0 && Number.isFinite(refPriceRaw) && refPriceRaw > 0)
+    ? Math.ceil(((minNotionalRaw / refPriceRaw) * factor) / stepUnits) * stepUnits
+    : 0;
+
   let qtyUnits = Math.floor((rawQuantity * factor) / stepUnits) * stepUnits;
   if (qtyUnits <= 0) qtyUnits = stepUnits;
   if (minQtyUnits > 0 && qtyUnits < minQtyUnits) qtyUnits = minQtyUnits;
+  if (notionalQtyUnits > 0 && qtyUnits < notionalQtyUnits) qtyUnits = notionalQtyUnits;
   if (maxQtyUnits > 0 && qtyUnits > maxQtyUnits) {
     throw new Error(
       `Quantity exceeds max allowed (${(maxQtyUnits / factor).toFixed(safePrecision)}) for this symbol/order type`,
@@ -212,6 +226,23 @@ function normalizeOrderQuantity(
   }
 
   return (qtyUnits / factor).toFixed(safePrecision);
+}
+
+async function fetchReferencePrice(
+  symbol: string,
+  market: 'spot' | 'perps',
+  side: 1 | 2,
+): Promise<number> {
+  const tickers = await fetchBookTickers(market);
+  const arr = Array.isArray(tickers) ? tickers : [];
+  const normalizedSym = normalizeSymbol(symbol, market);
+  const ticker = arr.find((t) => (t as Record<string, unknown>).symbol === normalizedSym) as Record<string, unknown> | undefined;
+  const bid = parseFloat(String(ticker?.bidPrice ?? ticker?.bid ?? '0'));
+  const ask = parseFloat(String(ticker?.askPrice ?? ticker?.ask ?? '0'));
+  if (side === 1 && Number.isFinite(ask) && ask > 0) return ask;
+  if (side === 2 && Number.isFinite(bid) && bid > 0) return bid;
+  if (Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0) return (bid + ask) / 2;
+  throw new Error(`No valid reference price found for ${normalizedSym}`);
 }
 
 /**
@@ -495,6 +526,13 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<unknown> {
   const price = params.price !== undefined
     ? roundToTick(parseFloat(params.price), tickSize, pricePrecision)
     : undefined;
+  const useFundsForMarketBuy = params.type === 2 && params.side === 1;
+  let funds: string | undefined;
+  if (useFundsForMarketBuy) {
+    const refPrice = await fetchReferencePrice(params.symbol, 'spot', params.side);
+    const notional = parseFloat(quantity) * refPrice;
+    funds = notional.toFixed(Math.max(2, Math.min(pricePrecision, 8)));
+  }
 
   // Build BatchNewOrderItem in Go struct field order:
   // symbolID, clOrdID, side, type, timeInForce, price(omitempty), quantity(omitempty), funds(omitempty)
@@ -506,7 +544,11 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<unknown> {
     timeInForce,
   };
   if (price !== undefined) orderItem.price = price;
-  orderItem.quantity = quantity;
+  if (useFundsForMarketBuy) {
+    orderItem.funds = funds;
+  } else {
+    orderItem.quantity = quantity;
+  }
 
   // Build BatchNewOrderRequest in Go struct field order: accountID, orders
   const payload = {
@@ -554,6 +596,13 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
   const price = params.price !== undefined
     ? roundToTick(parseFloat(params.price), tickSize, pricePrecision)
     : undefined;
+  const useFundsForMarketBuy = params.type === 2 && params.side === 1;
+  let funds: string | undefined;
+  if (useFundsForMarketBuy) {
+    const refPrice = await fetchReferencePrice(params.symbol, 'perps', params.side);
+    const notional = parseFloat(quantity) * refPrice;
+    funds = notional.toFixed(Math.max(2, Math.min(pricePrecision, 8)));
+  }
 
   // Build PerpsOrderItem in Go struct field order (omitempty fields excluded when absent):
   // clOrdID, modifier, side, type, timeInForce, price?, quantity?, funds?, stopPrice?,
@@ -566,7 +615,11 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
     timeInForce,
   };
   if (price !== undefined) order.price = price;
-  order.quantity = quantity;
+  if (useFundsForMarketBuy) {
+    order.funds = funds;
+  } else {
+    order.quantity = quantity;
+  }
   // funds, stopPrice, stopType, triggerType omitted (omitempty, unused for regular orders)
   order.reduceOnly = false;
   order.positionSide = 1; // BOTH = 1
