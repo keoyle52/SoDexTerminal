@@ -228,7 +228,8 @@ function normalizeOrderQuantity(
     );
   }
 
-  return (qtyUnits / factor).toFixed(safePrecision);
+  const fixed = (qtyUnits / factor).toFixed(safePrecision);
+  return fixed.replace(/\.?0+$/, '');
 }
 
 async function fetchReferencePrice(
@@ -650,26 +651,52 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
     if (!isMarketBuy || !isQuantityInvalid) throw err;
 
     const refPrice = await fetchReferencePrice(params.symbol, 'perps', params.side);
-    const notional = parseFloat(quantity) * refPrice;
-    const funds = notional.toFixed(Math.max(2, Math.min(pricePrecision, 8)));
-    const fallbackOrder: Record<string, unknown> = {
+    const quantityAsNumber = parseFloat(quantity);
+    const funds = (quantityAsNumber * refPrice).toFixed(Math.max(2, Math.min(pricePrecision, 8))).replace(/\.?0+$/, '');
+
+    // Retry #1: quantity again but forced plain-trim format.
+    const fallbackQtyOrder: Record<string, unknown> = {
       clOrdID: generateClOrdID(),
       modifier: 1,
       side: params.side,
       type: params.type,
       timeInForce,
-      funds,
+      quantity: String(quantityAsNumber),
       reduceOnly: false,
       positionSide: 1,
     };
-    const fallbackPayload = {
+    const fallbackQtyPayload = {
       accountID: accountState.accountID,
       symbolID,
-      orders: [fallbackOrder],
+      orders: [fallbackQtyOrder],
     };
-    const fallbackRes = await withRetry(() => perpsClient.post('/trade/orders', fallbackPayload));
-    data = fallbackRes?.data ?? fallbackRes ?? {};
-    assertNoBodyError(data);
+    try {
+      const retryRes = await withRetry(() => perpsClient.post('/trade/orders', fallbackQtyPayload));
+      data = retryRes?.data ?? retryRes ?? {};
+      assertNoBodyError(data);
+    } catch (retryErr) {
+      // Retry #2: use funds for market BUY only.
+      const retryIsQuantityInvalid = extractApiErrorMessage(retryErr).includes('quantity is invalid');
+      if (!retryIsQuantityInvalid) throw retryErr;
+      const fallbackOrder: Record<string, unknown> = {
+        clOrdID: generateClOrdID(),
+        modifier: 1,
+        side: params.side,
+        type: params.type,
+        timeInForce,
+        funds,
+        reduceOnly: false,
+        positionSide: 1,
+      };
+      const fallbackPayload = {
+        accountID: accountState.accountID,
+        symbolID,
+        orders: [fallbackOrder],
+      };
+      const fallbackRes = await withRetry(() => perpsClient.post('/trade/orders', fallbackPayload));
+      data = fallbackRes?.data ?? fallbackRes ?? {};
+      assertNoBodyError(data);
+    }
   }
 
   // Unwrap the first order result from the response array
