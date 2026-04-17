@@ -22,9 +22,6 @@ async function runTest() {
      console.log('Perps Order PLACED!', res);
   } catch (e: any) {
      console.error('Perps Error:', e.message || e);
-     if (e.response?.config?.data) {
-        console.error('Payload Sent:', e.response.config.data);
-     }
   }
 }
 
