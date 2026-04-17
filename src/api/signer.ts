@@ -49,6 +49,9 @@ export function deriveActionType(method: string, url: string): string {
   if (url.includes('/trade/orders/schedule-cancel')) return 'scheduleCancel';
   if (url.includes('/trade/orders/replace')) return 'replaceOrder';
   if (url.includes('/trade/orders/modify')) return 'modifyOrder';
+  if (url.includes('/trade/orders/batch')) {
+    return m === 'DELETE' ? 'batchCancelOrder' : 'batchNewOrder';
+  }
   if (url.includes('/trade/orders') && m === 'DELETE') return 'cancelOrder';
   if (url.includes('/trade/orders')) return 'newOrder';
   if (url.includes('/accounts/transfers')) return 'transferAsset';

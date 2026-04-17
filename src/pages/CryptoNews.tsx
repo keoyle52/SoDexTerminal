@@ -52,7 +52,11 @@ export const CryptoNews: React.FC = () => {
       toast.error('Set your SosoValue API key in Settings first.');
       return;
     }
-    replace ? setLoading(true) : setLoadingMore(true);
+    if (replace) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
       const cats = selectedCats.length > 0 ? selectedCats : ALL_CATS;
       const result = selectedCoin
@@ -60,9 +64,10 @@ export const CryptoNews: React.FC = () => {
         : await fetchSosoNews(p, 20, cats);
 
       const items = result.list ?? [];
+      const totalPages = Math.max(1, Math.ceil(result.total / Math.max(result.pageSize, 1)));
       setNews((prev) => replace ? items : [...prev, ...items]);
-      setPage(p);
-      setHasMore(parseInt(result.totalPages) > p);
+      setPage(result.page || p);
+      setHasMore(totalPages > (result.page || p));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load news';
       toast.error(msg);

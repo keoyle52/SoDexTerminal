@@ -7,9 +7,28 @@ const DOMAIN_API_XYZ = 'https://api.sosovalue.xyz';
 
 // ─── In-Memory TTL Cache & Circuit Breaker ─────────────────────────────────────
 interface CacheEntry { data: unknown; expiresAt: number; }
+interface SosoRequestMeta {
+  __cacheKey?: string;
+  __ttl?: number;
+  __endpointKey?: string;
+}
+interface SosoLikeError {
+  message?: string;
+  config?: { url?: string } & SosoRequestMeta;
+  response?: {
+    status?: number;
+    headers?: Record<string, string | number | undefined>;
+    data?: {
+      msg?: string;
+      message?: string;
+      details?: { retry_after?: number };
+    };
+  };
+}
 const memoryCache = new Map<string, CacheEntry>();
+const inflightRequests = new Map<string, Promise<unknown>>();
 
-let rateLimitResetTime = 0; // Timestamp when the 429 lock expires
+const endpointRateLimitReset = new Map<string, number>();
 
 const TTL: Record<string, number> = {
   '/openapi/v1/data/default/coin/list':      5 * 60_000, 
@@ -30,8 +49,29 @@ function cacheKey(url: string, body?: unknown): string {
   return `${url}::${body ? typeof body === 'string' ? body : JSON.stringify(body) : ''}`;
 }
 
+function endpointKey(url: string): string {
+  const clean = url.split('?')[0];
+  if (clean.includes('/api/v1/news')) return '/api/v1/news';
+  if (clean.includes('/openapi/v2/etf')) return '/openapi/v2/etf';
+  if (clean.includes('/openapi/v1/data/default/coin/list')) return '/openapi/v1/data/default/coin/list';
+  return clean;
+}
+
+function readRateLimitResetAt(error: SosoLikeError): number {
+  const now = Date.now();
+  const resetHeader = Number(error?.response?.headers?.['x-ratelimit-reset']);
+  if (Number.isFinite(resetHeader) && resetHeader > now) return resetHeader;
+
+  const retryAfterSeconds = Number(error?.response?.data?.details?.retry_after);
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return now + retryAfterSeconds * 1000;
+  }
+
+  return now + 60_000;
+}
+
 // Helper to gracefully fallback to localStorage stale data
-function getStaleFallback(key: string): any {
+function getStaleFallback(key: string): unknown {
   try {
     const raw = localStorage.getItem(`soso_fallback_${key}`);
     return raw ? JSON.parse(raw) : null;
@@ -40,7 +80,7 @@ function getStaleFallback(key: string): any {
   }
 }
 
-function setStaleFallback(key: string, data: any) {
+function setStaleFallback(key: string, data: unknown) {
   try {
     localStorage.setItem(`soso_fallback_${key}`, JSON.stringify(data));
   } catch {
@@ -66,18 +106,23 @@ function makeClient() {
     const key = cacheKey(url, config.data);
     
     // Attach exactly computed key to ensure response matches it
-    (config as any).__cacheKey = key;
-    (config as any).__ttl = ttl;
+    const meta = config as typeof config & SosoRequestMeta;
+    meta.__cacheKey = key;
+    meta.__ttl = ttl;
+    meta.__endpointKey = endpointKey(url);
 
     // ── Circuit Breaker: Try Stale Fallback ──
-    if (Date.now() < rateLimitResetTime) {
+    const endpoint = meta.__endpointKey ?? endpointKey(url);
+    const resetAt = endpointRateLimitReset.get(endpoint) ?? 0;
+    if (Date.now() < resetAt) {
       const fallback = getStaleFallback(key);
       if (fallback) {
         // Silently serve stale data instead of crashing the UI
         config.adapter = () => Promise.resolve({ data: fallback, status: 200, statusText: 'OK', headers: {}, config });
         return config;
       }
-      return Promise.reject(new Error('[429] Rate limit exceeded. Pausing requests...'));
+      const waitSec = Math.ceil((resetAt - Date.now()) / 1000);
+      return Promise.reject(new Error(`[429] Rate limit exceeded. Retry in ${waitSec}s`));
     }
 
     // ── Fresh Memory Cache ──
@@ -97,8 +142,9 @@ function makeClient() {
       const body = response.data;
 
       // Store in memory cache + offline fallback if request succeeded
-      const key = (response.config as any).__cacheKey;
-      const ttl = (response.config as any).__ttl;
+      const config = response.config as typeof response.config & SosoRequestMeta;
+      const key = config.__cacheKey;
+      const ttl = config.__ttl;
       if (key && ttl > 0) {
         memoryCache.set(key, { data: body, expiresAt: Date.now() + ttl });
         setStaleFallback(key, body); // Always keep a stale copy just in case!
@@ -112,15 +158,18 @@ function makeClient() {
 
       return body; // unwrap: services receive full body { code, data, ... }
     },
-    (error) => {
+    (rawError) => {
+      const error = rawError as SosoLikeError;
       const status = error?.response?.status;
       
-      // If we hit 429, engage the circuit breaker for 60 seconds
+      // If we hit 429, engage endpoint-scoped circuit breaker
       if (status === 429) {
-        rateLimitResetTime = Date.now() + 60_000;
+        const endpoint = error.config?.__endpointKey ?? endpointKey(error?.config?.url ?? '');
+        const resetAt = readRateLimitResetAt(error);
+        endpointRateLimitReset.set(endpoint, resetAt);
         
         // Let's try to RESCUE this failed request using our offline fallback!
-        const key = (error.config as any)?.__cacheKey;
+        const key = error.config?.__cacheKey;
         if (key) {
           const fallback = getStaleFallback(key);
           if (fallback) {
@@ -143,10 +192,37 @@ function makeClient() {
   return client;
 }
 
-export const sosoValueClient = makeClient();
+const _client = makeClient();
+
+async function requestWithDedupe<T>(method: 'get' | 'post', url: string, data?: unknown): Promise<T> {
+  const key = cacheKey(`${method}:${url}`, data);
+  const existing = inflightRequests.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const request = (method === 'get'
+    ? _client.get(url)
+    : _client.post(url, data)) as Promise<T>;
+
+  inflightRequests.set(key, request as Promise<unknown>);
+  try {
+    return await request;
+  } finally {
+    inflightRequests.delete(key);
+  }
+}
+
+export const sosoValueClient = {
+  get<T = unknown>(url: string) {
+    return requestWithDedupe<T>('get', url);
+  },
+  post<T = unknown>(url: string, data?: unknown) {
+    return requestWithDedupe<T>('post', url, data);
+  },
+};
 
 /** Manually clear all cached SosoValue responses (e.g. on Refresh button press). */
 export function clearSosoCache() {
   memoryCache.clear();
-  rateLimitResetTime = 0; // also reset the 429 lock
+  endpointRateLimitReset.clear();
+  inflightRequests.clear();
 }

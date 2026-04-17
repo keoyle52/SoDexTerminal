@@ -1,12 +1,13 @@
 type MessageHandler = (data: unknown) => void;
 
-const WS_URL_MAINNET = 'wss://mainnet-gw.sodex.dev/ws';
-const WS_URL_TESTNET = 'wss://testnet-gw.sodex.dev/ws';
+const WS_URL_MAINNET = 'wss://mainnet-gw.sodex.dev/ws/perps';
+const WS_URL_TESTNET = 'wss://testnet-gw.sodex.dev/ws/perps';
 
 class WebSocketService {
   private ws: WebSocket | null = null;
   private subscriptions = new Map<string, Set<MessageHandler>>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private isTestnet = true;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
@@ -27,7 +28,6 @@ class WebSocketService {
   connect(isTestnet: boolean): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       if (this.isTestnet === isTestnet) return;
-      // Network changed while connected — disconnect and reconnect
       this.disconnect();
       this.reconnectAttempts = 0;
     }
@@ -40,41 +40,44 @@ class WebSocketService {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
-        // Resubscribe to all channels
-        for (const channel of this.subscriptions.keys()) {
-          this.sendSubscribe(channel);
+        
+        // Start ping interval (30s)
+        this.pingTimer = setInterval(() => {
+          this.send({ op: 'ping' });
+        }, 30000);
+
+        for (const [channelKey] of this.subscriptions.entries()) {
+          this.sendSubscribeStr(channelKey);
         }
       };
 
       this.ws.onmessage = (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
+          
+          if (data.op === 'pong') return;
+
           const channel = data.channel ?? data.stream ?? data.e ?? '';
-          if (channel && this.subscriptions.has(channel)) {
-            const handlers = this.subscriptions.get(channel)!;
-            for (const handler of handlers) {
-              handler(data);
+          if (channel) {
+            // Find all handlers whose key includes the channel.
+            // E.g. {"channel":"ticker","symbols":["BTC-USD"]} 
+            for (const [key, handlers] of this.subscriptions.entries()) {
+              if (key.includes(`"channel":"${channel}"`) || key === channel) {
+                 for (const handler of handlers) handler(data);
+              }
             }
           }
-          // Also notify wildcard listeners
           if (this.subscriptions.has('*')) {
             const handlers = this.subscriptions.get('*')!;
-            for (const handler of handlers) {
-              handler(data);
-            }
+            for (const handler of handlers) handler(data);
           }
         } catch {
-          // Ignore malformed messages
+          // Ignore
         }
       };
 
-      this.ws.onclose = () => {
-        this.scheduleReconnect();
-      };
-
-      this.ws.onerror = () => {
-        this.ws?.close();
-      };
+      this.ws.onclose = () => this.scheduleReconnect();
+      this.ws.onerror = () => this.ws?.close();
     } catch {
       this.scheduleReconnect();
     }
@@ -85,6 +88,10 @@ class WebSocketService {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
     this.reconnectAttempts = this.maxReconnectAttempts;
     if (this.ws) {
       this.ws.onclose = null;
@@ -93,38 +100,47 @@ class WebSocketService {
     }
   }
 
+  // Expect params inside channel string or raw JSON parseable. 
+  // Backward compatibility: If channel is pure string e.g. "ticker", we'll wrap it.
   subscribe(channel: string, handler: MessageHandler): () => void {
-    if (!this.subscriptions.has(channel)) {
-      this.subscriptions.set(channel, new Set());
+    let subParams: any = { channel };
+    try {
+      const parsed = JSON.parse(channel);
+      if (typeof parsed === 'object') subParams = parsed;
+    } catch {}
+
+    const channelKey = JSON.stringify(subParams);
+
+    if (!this.subscriptions.has(channelKey)) {
+      this.subscriptions.set(channelKey, new Set());
     }
-    this.subscriptions.get(channel)!.add(handler);
+    this.subscriptions.get(channelKey)!.add(handler);
 
     if (this.connected) {
-      this.sendSubscribe(channel);
+      this.send({ op: 'subscribe', params: subParams });
     }
 
     return () => {
-      const handlers = this.subscriptions.get(channel);
+      const handlers = this.subscriptions.get(channelKey);
       if (handlers) {
         handlers.delete(handler);
         if (handlers.size === 0) {
-          this.subscriptions.delete(channel);
+          this.subscriptions.delete(channelKey);
           if (this.connected) {
-            this.sendUnsubscribe(channel);
+            this.send({ op: 'unsubscribe', params: subParams });
           }
         }
       }
     };
   }
 
-  private sendSubscribe(channel: string): void {
-    if (channel === '*') return;
-    this.send({ method: 'SUBSCRIBE', params: [channel] });
-  }
-
-  private sendUnsubscribe(channel: string): void {
-    if (channel === '*') return;
-    this.send({ method: 'UNSUBSCRIBE', params: [channel] });
+  private sendSubscribeStr(channelKey: string): void {
+    if (channelKey === '*') return;
+    try {
+      this.send({ op: 'subscribe', params: JSON.parse(channelKey) });
+    } catch {
+      this.send({ op: 'subscribe', params: { channel: channelKey } });
+    }
   }
 
   private send(data: unknown): void {
@@ -134,6 +150,10 @@ class WebSocketService {
   }
 
   private scheduleReconnect(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
     if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
     const delay = this.baseDelay * Math.pow(2, this.reconnectAttempts);
     this.reconnectAttempts++;

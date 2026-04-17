@@ -66,6 +66,16 @@ export function normalizeSymbol(symbol: string, market: 'spot' | 'perps'): strin
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  const isRetryableError = (err: unknown): boolean => {
+    const e = err as {
+      code?: string;
+      response?: { status?: number };
+    };
+    const status = e?.response?.status;
+    if (status != null) return status === 429 || status >= 500;
+    return ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ENETUNREACH'].includes(String(e?.code ?? ''));
+  };
+
   let lastError: unknown;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -73,7 +83,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
     } catch (err) {
       lastError = err;
       if (attempt === maxRetries - 1) throw err;
-      await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+      if (!isRetryableError(err)) throw err;
+      const backoff = Math.pow(2, attempt) * 1000;
+      const jitter = Math.floor(Math.random() * 300);
+      await new Promise((r) => setTimeout(r, backoff + jitter));
     }
   }
   throw lastError;
@@ -355,15 +368,6 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number | st
   let accountID = extractAccountIDFromPayload(stateData);
   let parsed = unwrapEnvelopeData(stateData);
 
-  // Fallback: some gateways may omit aid on /state but include it on /accounts/{addr}
-  if (accountID == null) {
-    const infoRes = await withRetry(() => perpsClient.get(`/accounts/${address}`));
-    const infoData = infoRes?.data ?? infoRes ?? {};
-    assertNoBodyError(infoData);
-    accountID = extractAccountIDFromPayload(infoData);
-    parsed = { ...parsed, ...unwrapEnvelopeData(infoData) };
-  }
-
   if (accountID == null) throw new Error('fetchPerpsAccountState: accountID not found in response');
   const state = { ...parsed, accountID };
   _accountStateCache.set(cacheKey, { state, ts: Date.now() });
@@ -387,15 +391,6 @@ export async function fetchSpotAccountState(): Promise<{ accountID: number | str
   assertNoBodyError(stateData);
   let accountID = extractAccountIDFromPayload(stateData);
   let parsed = unwrapEnvelopeData(stateData);
-
-  // Fallback: some gateways may omit aid on /state but include it on /accounts/{addr}
-  if (accountID == null) {
-    const infoRes = await withRetry(() => spotClient.get(`/accounts/${address}`));
-    const infoData = infoRes?.data ?? infoRes ?? {};
-    assertNoBodyError(infoData);
-    accountID = extractAccountIDFromPayload(infoData);
-    parsed = { ...parsed, ...unwrapEnvelopeData(infoData) };
-  }
 
   if (accountID == null) throw new Error('fetchSpotAccountState: accountID not found in response');
   const state = { ...parsed, accountID };
@@ -550,6 +545,11 @@ export interface PlaceOrderParams {
   quantity: string;
   price?: string;         // required for LIMIT
   timeInForce?: 1 | 3 | 4; // 1=GTC, 3=IOC, 4=GTX  (FOK not supported by SoDEX)
+  // TP/SL fields (Perps only)
+  stopPrice?: string;
+  stopType?: 1 | 2;      // 1=STOP_LOSS, 2=TAKE_PROFIT
+  triggerType?: 2;       // 2=MARK_PRICE
+  reduceOnly?: boolean;  // defaults to false if omitted
 }
 
 /**
@@ -656,17 +656,26 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
   // Build PerpsOrderItem in Go struct field order (omitempty fields excluded when absent):
   // clOrdID, modifier, side, type, timeInForce, price?, quantity?, funds?, stopPrice?,
   // stopType?, triggerType?, reduceOnly, positionSide
+  const isStop = params.stopType === 1 || params.stopType === 2;
+  const modifier = isStop ? 2 : 1;
+
   const order: Record<string, unknown> = {
     clOrdID: generateClOrdID(),
-    modifier: 1,        // NORMAL = 1
+    modifier,
     side: params.side,
     type: params.type,
     timeInForce,
   };
   if (price !== undefined) order.price = price;
   order.quantity = quantity;
-  // funds, stopPrice, stopType, triggerType omitted (omitempty, unused for regular orders)
-  order.reduceOnly = false;
+
+  if (isStop && params.stopPrice) {
+    order.stopPrice = roundToTick(parseFloat(params.stopPrice), tickSize, pricePrecision);
+    order.stopType = params.stopType;
+    order.triggerType = params.triggerType ?? 2; // Default MARK_PRICE
+  }
+
+  order.reduceOnly = params.reduceOnly ?? false;
   order.positionSide = 1; // BOTH = 1
 
   // Build PerpsNewOrderRequest in Go struct field order: accountID, symbolID, orders

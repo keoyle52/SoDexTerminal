@@ -6,7 +6,7 @@ import { ethers } from 'ethers';
 const BASE_URL_MAINNET = 'https://mainnet-gw.sodex.dev/api/v1/perps';
 const BASE_URL_TESTNET = 'https://testnet-gw.sodex.dev/api/v1/perps';
 
-export const perpsClient = axios.create();
+export const perpsClient = axios.create({ timeout: 15_000 });
 
 function resolveApiKeyAddress(apiKeyName: string, privateKey: string): string {
   const raw = (apiKeyName ?? '').trim();

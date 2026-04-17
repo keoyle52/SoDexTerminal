@@ -6,7 +6,7 @@ import { ethers } from 'ethers';
 const BASE_URL_MAINNET = 'https://mainnet-gw.sodex.dev/api/v1/spot';
 const BASE_URL_TESTNET = 'https://testnet-gw.sodex.dev/api/v1/spot';
 
-export const spotClient = axios.create();
+export const spotClient = axios.create({ timeout: 15_000 });
 
 function resolveApiKeyAddress(apiKeyName: string, privateKey: string): string {
   const raw = (apiKeyName ?? '').trim();

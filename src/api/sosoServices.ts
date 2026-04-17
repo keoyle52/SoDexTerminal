@@ -29,10 +29,9 @@ export interface SosoNewsItem {
 }
 
 export interface SosoNewsList {
-  pageNum: string;
-  pageSize: string;
-  totalPages: string;
-  total: string;
+  page: number;
+  pageSize: number;
+  total: number;
   list: SosoNewsItem[];
 }
 
@@ -80,8 +79,65 @@ export type EtfType = 'us-btc-spot' | 'us-eth-spot';
 function buildQuery(params: Record<string, string | number | undefined>): string {
   return Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${v}`)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
     .join('&');
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeMatchedCurrencies(raw: unknown): { id: string; fullName: string; name: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((c) => {
+    const item = (c ?? {}) as Record<string, unknown>;
+    return {
+      id: String(item.id ?? item.currencyId ?? ''),
+      fullName: String(item.full_name ?? item.fullName ?? ''),
+      name: String(item.name ?? item.currencyName ?? ''),
+    };
+  }).filter((c) => c.id !== '');
+}
+
+function normalizeNewsItem(raw: unknown): SosoNewsItem {
+  const item = (raw ?? {}) as Record<string, unknown>;
+  const title = String(item.title ?? '');
+  const content = String(item.content ?? '');
+  return {
+    id: String(item.id ?? ''),
+    sourceLink: String(item.source_link ?? item.sourceLink ?? ''),
+    releaseTime: toNumber(item.release_time ?? item.releaseTime, Date.now()),
+    author: String(item.author ?? ''),
+    authorDescription: item.author_description ? String(item.author_description) : (item.authorDescription ? String(item.authorDescription) : undefined),
+    authorAvatarUrl: item.author_avatar_url ? String(item.author_avatar_url) : (item.authorAvatarUrl ? String(item.authorAvatarUrl) : undefined),
+    category: toNumber(item.category, 0),
+    featureImage: item.feature_image ? String(item.feature_image) : (item.featureImage ? String(item.featureImage) : undefined),
+    matchedCurrencies: normalizeMatchedCurrencies(item.matched_currencies ?? item.matchedCurrencies),
+    tags: Array.isArray(item.tags) ? item.tags.map((t) => String(t)) : [],
+    multilanguageContent: title || content
+      ? [{ language: 'en', title, content }]
+      : (Array.isArray(item.multilanguageContent)
+        ? item.multilanguageContent as { language: string; title: string; content: string }[]
+        : []),
+    mediaInfo: Array.isArray(item.media_info) ? item.media_info : (Array.isArray(item.mediaInfo) ? item.mediaInfo : []),
+    nickName: item.nick_name ? String(item.nick_name) : (item.nickName ? String(item.nickName) : undefined),
+    quoteInfo: item.quote_info ?? item.quoteInfo,
+  };
+}
+
+function normalizeNewsList(raw: unknown, fallbackPage: number, fallbackPageSize: number): SosoNewsList {
+  const data = (raw ?? {}) as Record<string, unknown>;
+  const page = toNumber(data.page ?? data.pageNum, fallbackPage);
+  const pageSize = toNumber(data.page_size ?? data.pageSize, fallbackPageSize);
+  const total = toNumber(data.total, 0);
+  const listRaw = Array.isArray(data.list) ? data.list : [];
+  return {
+    page,
+    pageSize,
+    total,
+    list: listRaw.map(normalizeNewsItem).filter((item) => item.id !== ''),
+  };
 }
 
 // ─── Coin List ────────────────────────────────────────────────────────────────
@@ -102,37 +158,37 @@ export async function fetchSosoCoins(): Promise<SosoCoin[]> {
 // ─── News ─────────────────────────────────────────────────────────────────────
 
 export async function fetchSosoNews(
-  pageNum = 1,
+  page = 1,
   pageSize = 20,
-  categoryList?: number[],
+  category?: number[],
+  language = 'en',
 ): Promise<SosoNewsList> {
-  const q: Record<string, string | number> = {
-    pageNum,
-    pageSize,
-  };
-  // categoryList must be comma-separated WITHOUT URL-encoding the commas
-  const catParam = (categoryList && categoryList.length > 0)
-    ? categoryList.join(',')
-    : '1,2,3,4,5,6,7,9,10';
-
-  const query = `${buildQuery(q)}&categoryList=${catParam}`;
-  const res = await sosoValueClient.get(`/api/v1/news/featured?${query}`) as { data: SosoNewsList };
-  return res?.data ?? { pageNum: '1', pageSize: String(pageSize), totalPages: '0', total: '0', list: [] };
+  const query = buildQuery({
+    page,
+    page_size: pageSize,
+    language,
+    category: category && category.length > 0 ? category.join(',') : undefined,
+  });
+  const res = await sosoValueClient.get(`/api/v1/news/featured?${query}`) as { data: unknown };
+  return normalizeNewsList(res?.data, page, pageSize);
 }
 
 export async function fetchSosoNewsByCurrency(
   currencyId: string,
-  pageNum = 1,
+  page = 1,
   pageSize = 20,
-  categoryList?: number[],
+  category?: number[],
+  language = 'en',
 ): Promise<SosoNewsList> {
-  const catParam = (categoryList && categoryList.length > 0)
-    ? categoryList.join(',')
-    : '1,2,3,4,5,6,7,9,10';
-
-  const query = `${buildQuery({ pageNum, pageSize, currencyId })}&categoryList=${catParam}`;
-  const res = await sosoValueClient.get(`/api/v1/news/featured/currency?${query}`) as { data: SosoNewsList };
-  return res?.data ?? { pageNum: '1', pageSize: String(pageSize), totalPages: '0', total: '0', list: [] };
+  const query = buildQuery({
+    page,
+    page_size: pageSize,
+    currency_id: currencyId,
+    language,
+    category: category && category.length > 0 ? category.join(',') : undefined,
+  });
+  const res = await sosoValueClient.get(`/api/v1/news?${query}`) as { data: unknown };
+  return normalizeNewsList(res?.data, page, pageSize);
 }
 
 // ─── ETF ──────────────────────────────────────────────────────────────────────

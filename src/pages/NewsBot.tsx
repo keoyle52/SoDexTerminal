@@ -37,6 +37,33 @@ const DEFAULT_RULES: TriggerRule[] = [
 ];
 
 const POLL_MS = 180_000; // 3 minutes (reduced polling to save API limits)
+const TRIGGER_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TRACKED_IDS = 2000;
+const AI_TIMEOUT_MS = 8000;
+const AI_RETRIES = 2;
+
+async function analyzeSentimentWithTimeout(title: string, timeoutMs = AI_TIMEOUT_MS): Promise<'BULLISH' | 'BEARISH' | 'NEUTRAL'> {
+  return Promise.race([
+    analyzeSentiment(title),
+    new Promise<'BULLISH' | 'BEARISH' | 'NEUTRAL'>((_, reject) =>
+      setTimeout(() => reject(new Error('AI sentiment timeout')), timeoutMs),
+    ),
+  ]);
+}
+
+async function analyzeSentimentWithRetry(title: string): Promise<'BULLISH' | 'BEARISH' | 'NEUTRAL'> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < AI_RETRIES; attempt++) {
+    try {
+      return await analyzeSentimentWithTimeout(title);
+    } catch (err) {
+      lastError = err;
+      if (attempt === AI_RETRIES - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('AI sentiment failed');
+}
 
 export const NewsBot: React.FC = () => {
   const { sosoApiKey, privateKey, apiKeyName, geminiApiKey } = useSettingsStore();
@@ -53,10 +80,11 @@ export const NewsBot: React.FC = () => {
   const [quantity, setQuantity] = useState('0.001');
   const [coins, setCoins] = useState<SosoCoin[]>([]);
   const [filterCoin, setFilterCoin] = useState<string>(''); // currencyId
-  const [triggeredIds] = useState(() => new Set<string>());
+  const [triggeredIds] = useState(() => new Map<string, number>());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runningRef = useRef(false);
   const useAiRef = useRef(false); // needed for closure in interval
+  const pollInFlightRef = useRef(false);
 
   const addLog = useCallback((type: LogEntry['type'], message: string) => {
     setLogs((prev) => [
@@ -106,8 +134,24 @@ export const NewsBot: React.FC = () => {
 
   const poll = useCallback(async () => {
     if (!runningRef.current) return;
+    if (pollInFlightRef.current) {
+      addLog('info', 'Previous poll still running, skipping this cycle');
+      return;
+    }
+    pollInFlightRef.current = true;
     addLog('info', 'Checking latest news...');
     try {
+      const now = Date.now();
+      for (const [id, ts] of triggeredIds.entries()) {
+        if (now - ts > TRIGGER_TTL_MS) triggeredIds.delete(id);
+      }
+      if (triggeredIds.size > MAX_TRACKED_IDS) {
+        const sorted = [...triggeredIds.entries()].sort((a, b) => a[1] - b[1]);
+        for (const [id] of sorted.slice(0, triggeredIds.size - MAX_TRACKED_IDS)) {
+          triggeredIds.delete(id);
+        }
+      }
+
       const result = filterCoin
         ? await fetchSosoNewsByCurrency(filterCoin, 1, 10)
         : await fetchSosoNews(1, 10);
@@ -117,13 +161,13 @@ export const NewsBot: React.FC = () => {
 
       for (const item of items) {
         if (triggeredIds.has(item.id)) continue;
-        triggeredIds.add(item.id);
+        triggeredIds.set(item.id, now);
         const title = getNewsTitle(item);
 
         if (useAiRef.current) {
           addLog('info', `🤖 Analyzing with AI: "${title.slice(0, 40)}..."`);
           try {
-            const sentiment = await analyzeSentiment(title);
+            const sentiment = await analyzeSentimentWithRetry(title);
             if (sentiment === 'BULLISH') {
               await executeTrade({ keyword: 'AI_BULLISH', side: 'BUY', category: 0 }, item);
             } else if (sentiment === 'BEARISH') {
@@ -146,6 +190,8 @@ export const NewsBot: React.FC = () => {
       if (processes === 0) addLog('info', `No new headlines found`);
     } catch (err) {
       addLog('error', `Poll error: ${getErrorMessage(err)}`);
+    } finally {
+      pollInFlightRef.current = false;
     }
   }, [filterCoin, matchesRules, executeTrade, addLog, triggeredIds]);
 
@@ -157,7 +203,7 @@ export const NewsBot: React.FC = () => {
     runningRef.current = true;
     useAiRef.current = useAi;
     setRunning(true);
-    addLog('info', `▶ Bot started (${useAi ? 'AI Sentiment' : 'Keyword'} mode) — polling 60s`);
+    addLog('info', `▶ Bot started (${useAi ? 'AI Sentiment' : 'Keyword'} mode) — polling ${Math.round(POLL_MS / 1000)}s`);
     poll();
     pollRef.current = setInterval(poll, POLL_MS);
   }, [sosoApiKey, geminiApiKey, useAi, rules, poll, addLog]);
@@ -366,7 +412,7 @@ export const NewsBot: React.FC = () => {
               <div className="flex flex-col items-center justify-center h-full text-text-muted">
                 <Zap size={36} className="opacity-20 mb-3" />
                 <p className="text-sm">Start the bot to begin monitoring news</p>
-                <p className="text-xs mt-1 opacity-60">Headlines are checked every 60 seconds</p>
+                <p className="text-xs mt-1 opacity-60">Headlines are checked every {Math.round(POLL_MS / 1000)} seconds</p>
               </div>
             )}
             {logs.map((log, i) => (
