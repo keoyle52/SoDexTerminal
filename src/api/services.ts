@@ -31,13 +31,30 @@ function generateClOrdID(): string {
   return `${ts}-${seq}`.slice(0, 36);
 }
 
-// Symbol cache — 60 second TTL
+// Symbol cache — 60 second TTL. Keyed by (network, market, symbol) so
+// mainnet and testnet symbol IDs cannot be confused.
 const _symbolCache = new Map<string, { entry: Record<string, unknown>; ts: number }>();
 const SYMBOL_CACHE_TTL = 60_000;
 
-// AccountState cache — 30 second TTL
+// AccountState cache — 30 second TTL. Keyed by (network, market, address)
+// because mainnet and testnet accountIDs are different for the same wallet.
 const _accountStateCache = new Map<string, { state: { accountID: number | string; [key: string]: unknown }; ts: number }>();
 const ACCOUNT_STATE_CACHE_TTL = 30_000;
+
+/** Short network tag used to namespace caches so testnet/mainnet do not share entries. */
+function getNetworkTag(): 'test' | 'main' {
+  return useSettingsStore.getState().isTestnet ? 'test' : 'main';
+}
+
+/**
+ * Clear all in-memory caches. Call this when switching networks, wallets or
+ * otherwise invalidating the current session so the next request fetches fresh
+ * data instead of returning stale cross-network entries.
+ */
+export function clearServiceCaches(): void {
+  _symbolCache.clear();
+  _accountStateCache.clear();
+}
 
 // ---------- helpers ----------
 
@@ -292,9 +309,10 @@ export function extractApiErrorMessage(err: unknown): string {
  * Look up the full symbol entry (including precision metadata) for a given
  * symbol on the specified market.  Returns null when not found.
  * Results are cached for SYMBOL_CACHE_TTL ms to avoid redundant API calls.
+ * Cache is namespaced per network so testnet/mainnet metadata never mix.
  */
 async function fetchSymbolEntry(symbol: string, market: 'spot' | 'perps'): Promise<Record<string, unknown> | null> {
-  const cacheKey = `${market}:${symbol}`;
+  const cacheKey = `${getNetworkTag()}:${market}:${symbol}`;
   const cached = _symbolCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < SYMBOL_CACHE_TTL) return cached.entry;
   try {
@@ -406,7 +424,8 @@ function extractAccountIDDeep(raw: unknown): number | null {
 export async function fetchPerpsAccountState(): Promise<{ accountID: number; [key: string]: unknown }> {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
-  const cacheKey = `perps:${address}`;
+  // Cache key namespaced by network — testnet/mainnet accountIDs differ for the same address.
+  const cacheKey = `${getNetworkTag()}:perps:${address}`;
   const cached = _accountStateCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < ACCOUNT_STATE_CACHE_TTL) return cached.state as { accountID: number; [key: string]: unknown };
 
@@ -468,7 +487,8 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number; [ke
 export async function fetchSpotAccountState(): Promise<{ accountID: number; [key: string]: unknown }> {
   const address = getEvmAddress();
   if (!address) throw new Error('No wallet configured');
-  const cacheKey = `spot:${address}`;
+  // Cache key namespaced by network — testnet/mainnet accountIDs differ for the same address.
+  const cacheKey = `${getNetworkTag()}:spot:${address}`;
   const cached = _accountStateCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < ACCOUNT_STATE_CACHE_TTL) return cached.state as { accountID: number; [key: string]: unknown };
 

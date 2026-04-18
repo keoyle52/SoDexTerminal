@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { spotClient } from '../api/spotClient';
 import { wsService } from '../api/websocket';
+import { clearServiceCaches } from '../api/services';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
 import { Key, Shield, Settings2, Info, Wifi, Unplug, Globe, Bell, Hash, Zap, FlaskConical, Sun } from 'lucide-react';
@@ -165,6 +166,7 @@ export const Settings: React.FC = () => {
                     onClick={() => {
                       store.setIsTestnet(false);
                       wsService.switchNetwork(false);
+                      clearServiceCaches();
                     }}
                     className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
                       !store.isTestnet
@@ -178,6 +180,7 @@ export const Settings: React.FC = () => {
                     onClick={() => {
                       store.setIsTestnet(true);
                       wsService.switchNetwork(true);
+                      clearServiceCaches();
                     }}
                     className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
                       store.isTestnet
@@ -194,6 +197,17 @@ export const Settings: React.FC = () => {
                     <Info size={14} className="text-warning shrink-0 mt-0.5" />
                     <p className="text-xs text-warning leading-relaxed">
                       You are in Mainnet mode. Real assets will be used in transactions.
+                    </p>
+                  </div>
+                )}
+
+                {store.isTestnet && (
+                  <div className="mt-3 flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                    <Info size={14} className="text-primary shrink-0 mt-0.5" />
+                    <p className="text-xs text-primary leading-relaxed">
+                      Testnet mode: requests are signed directly with your private key, and your
+                      derived EVM address is used as the X-API-Key. Registered API keys only work
+                      on Mainnet, and your Mainnet accountID is different from your Testnet accountID.
                     </p>
                   </div>
                 )}
