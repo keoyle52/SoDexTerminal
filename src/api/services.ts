@@ -785,19 +785,17 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
   order.reduceOnly = params.reduceOnly ?? false;
   order.positionSide = 1; // BOTH = 1
 
-  // Build PerpsNewOrderRequest in Go struct field order: accountID, symbolID, orders
-  // CRITICAL: accountID MUST be a number (Go expects uint64), never a string
+  // Build PerpsNewOrderRequest in Go struct field order: AccountID, SymbolID, Orders
+  // CRITICAL: AccountID MUST be a number (Go expects uint64), never a string
   const numericAccountID = Number(accountState.accountID);
   if (!Number.isFinite(numericAccountID)) {
     throw new Error(`placePerpsOrder: invalid accountID "${accountState.accountID}" (type: ${typeof accountState.accountID})`);
   }
 
   const payload = {
-    accountID: numericAccountID,
-    accountId: numericAccountID, // alias for safety
-    AccountID: numericAccountID, // alias for safety (backend error mentioned this case)
-    symbolID: Number(symbolID),
-    orders: [order],
+    AccountID: numericAccountID,
+    SymbolID: Number(symbolID),
+    Orders: [order],
   };
 
   console.log('[placePerpsOrder] >>> PAYLOAD:', JSON.stringify(payload));
@@ -830,11 +828,9 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
       positionSide: 1,
     };
     const fallbackQtyPayload = {
-      accountID: numericAccountID,
-      accountId: numericAccountID,
       AccountID: numericAccountID,
-      symbolID: Number(symbolID),
-      orders: [fallbackQtyOrder],
+      SymbolID: Number(symbolID),
+      Orders: [fallbackQtyOrder],
     };
     try {
       const retryRes = await withRetry(() => perpsClient.post('/trade/orders', fallbackQtyPayload));
@@ -855,11 +851,9 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
         positionSide: 1,
       };
       const fallbackPayload = {
-        accountID: numericAccountID,
-        accountId: numericAccountID,
         AccountID: numericAccountID,
-        symbolID: Number(symbolID),
-        orders: [fallbackOrder],
+        SymbolID: Number(symbolID),
+        Orders: [fallbackOrder],
       };
       const fallbackRes = await withRetry(() => perpsClient.post('/trade/orders', fallbackPayload));
       data = fallbackRes?.data ?? fallbackRes ?? {};
@@ -935,8 +929,6 @@ export async function placeBatchOrders(
     const aid = Number(accountState.accountID);
     const payload = {
       accountID: aid,
-      accountId: aid,
-      AccountID: aid,
       orders,
     };
 
@@ -983,11 +975,9 @@ export async function placeBatchOrders(
 
     const aid = Number(accountState.accountID);
     const payload = {
-      accountID: aid,
-      accountId: aid,
       AccountID: aid,
-      symbolID: Number(symbolID),
-      orders,
+      SymbolID: Number(symbolID),
+      Orders: orders,
     };
 
     const res = await withRetry(() => perpsClient.post('/trade/orders', payload));
