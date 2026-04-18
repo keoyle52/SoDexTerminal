@@ -363,7 +363,8 @@ function extractAccountIDDeep(raw: unknown): number | null {
       const v = obj[key];
       if (v == null) continue;
       const n = Number(v);
-      if (Number.isFinite(n)) return n;
+      // Go backend uses `binding:"required"` on uint64 → rejects 0
+      if (Number.isFinite(n) && n > 0) return n;
     }
     return null;
   };
@@ -378,6 +379,14 @@ function extractAccountIDDeep(raw: unknown): number | null {
   if (obj.data && typeof obj.data === 'object') {
     const nested = tryExtract(obj.data as Record<string, unknown>);
     if (nested != null) return nested;
+  }
+
+  // Deep search: recursively check all object values
+  for (const val of Object.values(obj)) {
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      const deep = extractAccountIDDeep(val);
+      if (deep != null) return deep;
+    }
   }
 
   return null;
@@ -817,8 +826,8 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
       positionSide: 1,
     };
     const fallbackQtyPayload = {
-      accountID: accountState.accountID,
-      symbolID,
+      accountID: numericAccountID,
+      symbolID: Number(symbolID),
       orders: [fallbackQtyOrder],
     };
     try {
@@ -840,8 +849,8 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
         positionSide: 1,
       };
       const fallbackPayload = {
-        accountID: accountState.accountID,
-        symbolID,
+        accountID: numericAccountID,
+        symbolID: Number(symbolID),
         orders: [fallbackOrder],
       };
       const fallbackRes = await withRetry(() => perpsClient.post('/trade/orders', fallbackPayload));
@@ -916,7 +925,7 @@ export async function placeBatchOrders(
     });
 
     const payload = {
-      accountID: accountState.accountID,
+      accountID: Number(accountState.accountID),
       orders,
     };
 
@@ -962,8 +971,8 @@ export async function placeBatchOrders(
     });
 
     const payload = {
-      accountID: accountState.accountID,
-      symbolID,
+      accountID: Number(accountState.accountID),
+      symbolID: Number(symbolID),
       orders,
     };
 

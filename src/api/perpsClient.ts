@@ -32,6 +32,21 @@ perpsClient.interceptors.request.use(async (config) => {
   // Only sign write (non-GET) requests
   if (method !== 'GET' && apiKeyAddress && privateKey) {
     const payload = config.data || {};
+
+    // ── GUARD: Ensure accountID is a valid positive number for write requests ──
+    // Go backend uses `binding:"required"` on uint64 which rejects 0.
+    if (payload && typeof payload === 'object' && 'accountID' in payload) {
+      const aid = Number(payload.accountID);
+      if (!Number.isFinite(aid) || aid <= 0) {
+        const errMsg = `[perpsClient] BLOCKED: accountID is invalid (${payload.accountID}, type=${typeof payload.accountID}). Full payload: ${JSON.stringify(payload).slice(0, 300)}`;
+        console.error(errMsg);
+        return Promise.reject(new Error(errMsg));
+      }
+      // Force accountID to be a plain number (not string)
+      payload.accountID = aid;
+      config.data = payload;
+    }
+
     const actionType = deriveActionType(method, config.url ?? '');
     try {
       const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'futures', isTestnet, apiKeyAddress);
@@ -39,11 +54,12 @@ perpsClient.interceptors.request.use(async (config) => {
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
       
-      console.log('--- NETWORK INTERCEPTOR ---');
-      console.log('URL:', config.url);
-      console.log('X-API-Key:', apiKeyAddress);
-      console.log('Payload being sent:', JSON.stringify(payload));
-      console.log('---------------------------');
+      console.log('--- PERPS INTERCEPTOR ---');
+      console.log('URL:', `${baseURL}${config.url}`);
+      console.log('Method:', method);
+      console.log('accountID:', payload.accountID, '(type:', typeof payload.accountID, ')');
+      console.log('Full payload:', JSON.stringify(config.data));
+      console.log('-------------------------');
       
     } catch (error) {
       console.error('Signing failed:', error);
@@ -56,5 +72,13 @@ perpsClient.interceptors.request.use(async (config) => {
 
 perpsClient.interceptors.response.use(
   (response) => response.data,
-  (error) => Promise.reject(error)
+  (error) => {
+    // Log the full error response for debugging
+    if (error?.response) {
+      console.error('[perpsClient] API Error:', error.response.status, JSON.stringify(error.response.data));
+      console.error('[perpsClient] Request URL:', error.config?.baseURL, error.config?.url);
+      console.error('[perpsClient] Request Body:', JSON.stringify(error.config?.data)?.slice(0, 500));
+    }
+    return Promise.reject(error);
+  }
 );
