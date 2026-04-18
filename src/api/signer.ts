@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 
 const DUMMY_CONTRACT = '0x0000000000000000000000000000000000000000';
 
-type DomainType = 'spot' | 'perps';
+type DomainType = 'spot' | 'futures';
 
 export const getDomain = (type: DomainType, isTestnet: boolean) => ({
   name: type,

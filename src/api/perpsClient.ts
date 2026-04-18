@@ -35,7 +35,7 @@ perpsClient.interceptors.request.use(async (config) => {
 
     const actionType = deriveActionType(method, config.url ?? '');
     try {
-      const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'perps', isTestnet, apiKeyAddress);
+      const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'futures', isTestnet, apiKeyAddress);
       config.headers['X-API-Key'] = apiKeyAddress;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
@@ -43,11 +43,9 @@ perpsClient.interceptors.request.use(async (config) => {
       console.log('--- PERPS INTERCEPTOR ---');
       console.log('URL:', `${baseURL}${config.url}`);
       console.log('Method:', method);
-      console.log('Final Payload IDs:', { 
-        accountID: payload.accountID, 
-        accountId: payload.accountId, 
-        AccountID: payload.AccountID 
-      });
+      console.log('X-API-Key:', apiKeyAddress);
+      console.log('Headers:', JSON.stringify(config.headers));
+      console.log('Payload:', JSON.stringify(payload));
       console.log('-------------------------');
       
     } catch (error) {
