@@ -275,7 +275,7 @@ async function fetchReferencePrice(
 }
 
 // Helper to extract error message from various error formats
-function extractApiErrorMessage(err: unknown): string {
+export function extractApiErrorMessage(err: unknown): string {
   const e = err as {
     message?: unknown;
     response?: { data?: { error?: unknown; message?: unknown; code?: unknown } };
