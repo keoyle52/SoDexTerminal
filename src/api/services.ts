@@ -416,7 +416,7 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number; [ke
   try {
     // perpsClient interceptor returns response.data, so body IS the resolved value
     const body = await withRetry(() => perpsClient.get(`/accounts/${address}/state`));
-    console.log('[fetchPerpsAccountState] /state body:', JSON.stringify(body).slice(0, 500));
+    // Debug: API response received
     assertNoBodyError(body);
     accountID = extractAccountIDDeep(body);
     parsed = unwrapEnvelopeData(body);
@@ -428,7 +428,7 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number; [ke
   if (accountID == null) {
     try {
       const body = await withRetry(() => perpsClient.get(`/accounts/${address}/balances`));
-      console.log('[fetchPerpsAccountState] /balances body:', JSON.stringify(body).slice(0, 500));
+      // Debug: balances endpoint response
       accountID = extractAccountIDDeep(body);
       if (Object.keys(parsed).length === 0) parsed = unwrapEnvelopeData(body);
     } catch (err) {
@@ -440,10 +440,10 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number; [ke
   if (accountID == null) {
     try {
       const body = await withRetry(() => perpsClient.get(`/accounts/${address}/orders`));
-      console.log('[fetchPerpsAccountState] /orders body:', JSON.stringify(body).slice(0, 500));
+      // Debug: orders endpoint response
       accountID = extractAccountIDDeep(body);
     } catch (err) {
-      console.warn('[fetchPerpsAccountState] /orders also failed:', err);
+      // Orders endpoint failed, will throw below
     }
   }
 
@@ -454,7 +454,7 @@ export async function fetchPerpsAccountState(): Promise<{ accountID: number; [ke
     );
   }
 
-  console.log('[fetchPerpsAccountState] ✓ resolved accountID =', accountID, typeof accountID);
+  // Account resolved successfully
   const state = { ...parsed, accountID };
   _accountStateCache.set(cacheKey, { state, ts: Date.now() });
   return state;
@@ -476,7 +476,7 @@ export async function fetchSpotAccountState(): Promise<{ accountID: number; [key
 
   try {
     const body = await withRetry(() => spotClient.get(`/accounts/${address}/state`));
-    console.log('[fetchSpotAccountState] /state body:', JSON.stringify(body).slice(0, 500));
+    // Debug: spot state response
     assertNoBodyError(body);
     accountID = extractAccountIDDeep(body);
     parsed = unwrapEnvelopeData(body);
@@ -487,7 +487,7 @@ export async function fetchSpotAccountState(): Promise<{ accountID: number; [key
   if (accountID == null) {
     try {
       const body = await withRetry(() => spotClient.get(`/accounts/${address}/balances`));
-      console.log('[fetchSpotAccountState] /balances body:', JSON.stringify(body).slice(0, 500));
+      // Debug: spot balances response
       accountID = extractAccountIDDeep(body);
       if (Object.keys(parsed).length === 0) parsed = unwrapEnvelopeData(body);
     } catch (err) {
@@ -499,7 +499,7 @@ export async function fetchSpotAccountState(): Promise<{ accountID: number; [key
     throw new Error('fetchSpotAccountState: accountID not found. Check browser console.');
   }
 
-  console.log('[fetchSpotAccountState] ✓ resolved accountID =', accountID, typeof accountID);
+  // Spot account resolved
   const state = { ...parsed, accountID };
   _accountStateCache.set(cacheKey, { state, ts: Date.now() });
   return state;
@@ -798,7 +798,7 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
     orders: [order],
   };
 
-  console.log('[placePerpsOrder] >>> PAYLOAD:', JSON.stringify(payload));
+  // Order payload prepared
 
   let data: unknown;
   try {

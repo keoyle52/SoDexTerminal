@@ -39,15 +39,6 @@ spotClient.interceptors.request.use(async (config) => {
       config.headers['X-API-Key'] = apiKeyAddress;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
-
-      console.log('--- SPOT INTERCEPTOR ---');
-      console.log('Final Payload IDs:', { 
-        accountID: payload.accountID, 
-        accountId: payload.accountId, 
-        AccountID: payload.AccountID 
-      });
-      console.log('------------------------');
-
     } catch (error) {
       console.error('Signing failed:', error);
       return Promise.reject(error);

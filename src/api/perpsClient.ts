@@ -35,23 +35,10 @@ perpsClient.interceptors.request.use(async (config) => {
 
     const actionType = deriveActionType(method, config.url ?? '');
     try {
-      const pk = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
-      const derivedAddress = new ethers.Wallet(pk).address.toLowerCase();
-      console.log('--- PERPS INTERCEPTOR ---');
-      console.log('X-API-Key:', apiKeyAddress);
-      console.log('Derived from PK:', derivedAddress);
-      console.log('MATCH:', apiKeyAddress === derivedAddress);
-      
       const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'futures', isTestnet, apiKeyAddress);
       config.headers['X-API-Key'] = apiKeyAddress;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
-      
-      console.log('URL:', `${baseURL}${config.url}`);
-      console.log('Method:', method);
-      console.log('Payload:', JSON.stringify(payload));
-      console.log('-------------------------');
-      
     } catch (error) {
       console.error('Signing failed:', error);
       return Promise.reject(error);
