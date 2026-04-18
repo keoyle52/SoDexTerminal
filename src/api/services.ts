@@ -118,13 +118,7 @@ function unwrapEnvelopeData(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function extractAccountIDFromPayload(value: unknown): number | string | null {
-  const root = unwrapEnvelopeData(value);
-  const id = root.aid ?? root.accountID ?? root.accountId ?? root.account_id ?? root.id;
-  if (id == null) return null;
-  if (typeof id === 'string' && id.trim() === '') return null;
-  return id as number | string;
-}
+
 
 /**
  * Parse an order ID string to a numeric value for API parameters that require
