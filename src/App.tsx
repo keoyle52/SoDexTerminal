@@ -5,6 +5,8 @@ import { Toaster } from 'react-hot-toast';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { useSettingsStore } from './store/settingsStore';
+// Settings loaded synchronously to avoid Suspense stall issues
+import { Settings } from './pages/Settings';
 
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const GridBot      = lazy(() => import('./pages/GridBot').then(m => ({ default: m.GridBot })));
@@ -16,7 +18,6 @@ const FundingTracker = lazy(() => import('./pages/FundingTracker').then(m => ({ 
 const ScheduleCancel = lazy(() => import('./pages/ScheduleCancel').then(m => ({ default: m.ScheduleCancel })));
 const Alerts       = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
 const Backtesting  = lazy(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })));
-const Settings     = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const EtfTracker   = lazy(() => import('./pages/EtfTracker').then(m => ({ default: m.EtfTracker })));
 const CryptoNews   = lazy(() => import('./pages/CryptoNews').then(m => ({ default: m.CryptoNews })));
 const NewsBot      = lazy(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })));
@@ -43,25 +44,30 @@ function App() {
       <div className="flex-1 flex flex-col overflow-hidden relative z-10 backdrop-blur-[2px]">
         <Topbar />
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/dashboard"       element={<Dashboard />} />
-              <Route path="/grid-bot"        element={<GridBot />} />
-              <Route path="/twap-bot"        element={<TwapBot />} />
-              <Route path="/dca-bot"         element={<DcaBot />} />
-              <Route path="/copy-trader"     element={<CopyTrader />} />
-              <Route path="/positions"       element={<Positions />} />
-              <Route path="/funding"         element={<FundingTracker />} />
-              <Route path="/schedule-cancel" element={<ScheduleCancel />} />
-              <Route path="/alerts"          element={<Alerts />} />
-              <Route path="/backtesting"     element={<Backtesting />} />
-              <Route path="/settings"        element={<Settings />} />
-              <Route path="/etf-tracker"     element={<EtfTracker />} />
-              <Route path="/news"            element={<CryptoNews />} />
-              <Route path="/news-bot"        element={<NewsBot />} />
-              <Route path="*"               element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </Suspense>
+          <Routes>
+            {/* Settings loaded outside Suspense to avoid load stalls */}
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/dashboard"       element={<Dashboard />} />
+                  <Route path="/grid-bot"        element={<GridBot />} />
+                  <Route path="/twap-bot"        element={<TwapBot />} />
+                  <Route path="/dca-bot"         element={<DcaBot />} />
+                  <Route path="/copy-trader"     element={<CopyTrader />} />
+                  <Route path="/positions"       element={<Positions />} />
+                  <Route path="/funding"         element={<FundingTracker />} />
+                  <Route path="/schedule-cancel" element={<ScheduleCancel />} />
+                  <Route path="/alerts"          element={<Alerts />} />
+                  <Route path="/backtesting"     element={<Backtesting />} />
+                  <Route path="/etf-tracker"     element={<EtfTracker />} />
+                  <Route path="/news"            element={<CryptoNews />} />
+                  <Route path="/news-bot"        element={<NewsBot />} />
+                  <Route path="*"               element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </Suspense>
+            } />
+          </Routes>
         </main>
       </div>
 
