@@ -35,7 +35,7 @@ perpsClient.interceptors.request.use(async (config) => {
 
     const actionType = deriveActionType(method, config.url ?? '');
     try {
-      const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'futures', isTestnet, apiKeyAddress);
+      const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'perps', isTestnet, apiKeyAddress);
       config.headers['X-API-Key'] = apiKeyAddress;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
