@@ -45,7 +45,7 @@ function useWsTickers(symbols: string[], isTestnet: boolean): LiveTicker[] {
   useEffect(() => {
     if (symbols.length === 0) return;
 
-    wsService.connect(isTestnet);
+    try { wsService.connect(isTestnet); } catch { return; }
 
     // Subscribe to mini-ticker for all symbols
     const unsubs = symbols.map((sym) => {
@@ -129,7 +129,7 @@ export function useLivePrice(symbol: string, fallback = 0): number {
   // WS mode
   useEffect(() => {
     if (isDemoMode || !symbol) return;
-    wsService.connect(isTestnet);
+    try { wsService.connect(isTestnet); } catch { return; }
     const channelParam = JSON.stringify({ channel: 'miniTicker', symbols: [symbol] });
     const unsub = wsService.subscribe(channelParam, (raw) => {
       const data = raw as Record<string, unknown>;
