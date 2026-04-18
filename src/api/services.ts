@@ -356,14 +356,15 @@ export async function fetchPerpsSymbolID(symbol: string): Promise<number | null>
 function extractAccountIDDeep(raw: unknown): number | null {
   if (raw == null || typeof raw !== 'object') return null;
 
-  const searchKeys = ['aid', 'accountID', 'accountId', 'account_id'];
+  const searchKeys = ['aid', 'accountID', 'accountId', 'AccountID', 'account_id', 'id'];
 
   const tryExtract = (obj: Record<string, unknown>): number | null => {
     for (const key of searchKeys) {
       const v = obj[key];
-      if (v == null) continue;
+      if (v == null || v === '') continue;
       const n = Number(v);
-      // Go backend uses `binding:"required"` on uint64 → rejects 0
+      // REASONING: Go backend `required` tag on uint64 fields often rejects 0.
+      // We look for a non-zero positive integer to ensure validation passes.
       if (Number.isFinite(n) && n > 0) return n;
     }
     return null;
@@ -381,9 +382,10 @@ function extractAccountIDDeep(raw: unknown): number | null {
     if (nested != null) return nested;
   }
 
-  // Deep search: recursively check all object values
-  for (const val of Object.values(obj)) {
-    if (val && typeof val === 'object' && !Array.isArray(val)) {
+  // Recursive deep search
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val && typeof val === 'object' && !Array.isArray(val) && key !== 'balances' && key !== 'positions') {
       const deep = extractAccountIDDeep(val);
       if (deep != null) return deep;
     }
@@ -792,6 +794,8 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
 
   const payload = {
     accountID: numericAccountID,
+    accountId: numericAccountID, // alias for safety
+    AccountID: numericAccountID, // alias for safety (backend error mentioned this case)
     symbolID: Number(symbolID),
     orders: [order],
   };
@@ -827,6 +831,8 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
     };
     const fallbackQtyPayload = {
       accountID: numericAccountID,
+      accountId: numericAccountID,
+      AccountID: numericAccountID,
       symbolID: Number(symbolID),
       orders: [fallbackQtyOrder],
     };
@@ -850,6 +856,8 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
       };
       const fallbackPayload = {
         accountID: numericAccountID,
+        accountId: numericAccountID,
+        AccountID: numericAccountID,
         symbolID: Number(symbolID),
         orders: [fallbackOrder],
       };
@@ -924,8 +932,11 @@ export async function placeBatchOrders(
       return orderItem;
     });
 
+    const aid = Number(accountState.accountID);
     const payload = {
-      accountID: Number(accountState.accountID),
+      accountID: aid,
+      accountId: aid,
+      AccountID: aid,
       orders,
     };
 
@@ -970,8 +981,11 @@ export async function placeBatchOrders(
       return order;
     });
 
+    const aid = Number(accountState.accountID);
     const payload = {
-      accountID: Number(accountState.accountID),
+      accountID: aid,
+      accountId: aid,
+      AccountID: aid,
       symbolID: Number(symbolID),
       orders,
     };

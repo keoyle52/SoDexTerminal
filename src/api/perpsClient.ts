@@ -20,6 +20,19 @@ function resolveApiKeyAddress(apiKeyName: string, privateKey: string): string {
   }
 }
 
+// Helper to find account ID in ANY case variation
+function findAccountID(payload: Record<string, unknown>): number | null {
+  const keys = ['accountID', 'accountId', 'AccountID', 'account_id', 'aid', 'id'];
+  for (const k of keys) {
+    const v = payload[k];
+    if (v != null) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
 perpsClient.interceptors.request.use(async (config) => {
   const state = useSettingsStore.getState();
   const baseURL = state.isTestnet ? BASE_URL_TESTNET : BASE_URL_MAINNET;
@@ -33,17 +46,14 @@ perpsClient.interceptors.request.use(async (config) => {
   if (method !== 'GET' && apiKeyAddress && privateKey) {
     const payload = config.data || {};
 
-    // ── GUARD: Ensure accountID is a valid positive number for write requests ──
-    // Go backend uses `binding:"required"` on uint64 which rejects 0.
-    if (payload && typeof payload === 'object' && 'accountID' in payload) {
-      const aid = Number(payload.accountID);
-      if (!Number.isFinite(aid) || aid <= 0) {
-        const errMsg = `[perpsClient] BLOCKED: accountID is invalid (${payload.accountID}, type=${typeof payload.accountID}). Full payload: ${JSON.stringify(payload).slice(0, 300)}`;
-        console.error(errMsg);
-        return Promise.reject(new Error(errMsg));
-      }
-      // Force accountID to be a plain number (not string)
+    // ── NUCLEAR GUARD: accountID aliases ──
+    const aid = findAccountID(payload);
+    if (aid !== null) {
+      // Re-inject under all possible names to satisfy backend inconsistencies
       payload.accountID = aid;
+      payload.accountId = aid;
+      payload.AccountID = aid;
+      payload.aid = aid;
       config.data = payload;
     }
 
@@ -57,8 +67,11 @@ perpsClient.interceptors.request.use(async (config) => {
       console.log('--- PERPS INTERCEPTOR ---');
       console.log('URL:', `${baseURL}${config.url}`);
       console.log('Method:', method);
-      console.log('accountID:', payload.accountID, '(type:', typeof payload.accountID, ')');
-      console.log('Full payload:', JSON.stringify(config.data));
+      console.log('Final Payload IDs:', { 
+        accountID: payload.accountID, 
+        accountId: payload.accountId, 
+        AccountID: payload.AccountID 
+      });
       console.log('-------------------------');
       
     } catch (error) {
@@ -73,7 +86,6 @@ perpsClient.interceptors.request.use(async (config) => {
 perpsClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    // Log the full error response for debugging
     if (error?.response) {
       console.error('[perpsClient] API Error:', error.response.status, JSON.stringify(error.response.data));
       console.error('[perpsClient] Request URL:', error.config?.baseURL, error.config?.url);

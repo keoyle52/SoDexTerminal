@@ -20,6 +20,19 @@ function resolveApiKeyAddress(apiKeyName: string, privateKey: string): string {
   }
 }
 
+// Helper to find account ID in ANY case variation
+function findAccountID(payload: Record<string, unknown>): number | null {
+  const keys = ['accountID', 'accountId', 'AccountID', 'account_id', 'aid', 'id'];
+  for (const k of keys) {
+    const v = payload[k];
+    if (v != null) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
 spotClient.interceptors.request.use(async (config) => {
   const state = useSettingsStore.getState();
   const baseURL = state.isTestnet ? BASE_URL_TESTNET : BASE_URL_MAINNET;
@@ -32,12 +45,32 @@ spotClient.interceptors.request.use(async (config) => {
   // Only sign write (non-GET) requests
   if (method !== 'GET' && apiKeyAddress && privateKey) {
     const payload = config.data || {};
+
+    // ── NUCLEAR GUARD: accountID aliases ──
+    const aid = findAccountID(payload);
+    if (aid !== null) {
+      payload.accountID = aid;
+      payload.accountId = aid;
+      payload.AccountID = aid;
+      payload.aid = aid;
+      config.data = payload;
+    }
+
     const actionType = deriveActionType(method, config.url ?? '');
     try {
       const { signature, nonce } = await signPayload(actionType, payload, privateKey, 'spot', isTestnet, apiKeyAddress);
       config.headers['X-API-Key'] = apiKeyAddress;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
+
+      console.log('--- SPOT INTERCEPTOR ---');
+      console.log('Final Payload IDs:', { 
+        accountID: payload.accountID, 
+        accountId: payload.accountId, 
+        AccountID: payload.AccountID 
+      });
+      console.log('------------------------');
+
     } catch (error) {
       console.error('Signing failed:', error);
       return Promise.reject(error);
@@ -49,5 +82,10 @@ spotClient.interceptors.request.use(async (config) => {
 
 spotClient.interceptors.response.use(
   (response) => response.data,
-  (error) => Promise.reject(error)
+  (error) => {
+    if (error?.response) {
+      console.error('[spotClient] API Error:', error.response.status, JSON.stringify(error.response.data));
+    }
+    return Promise.reject(error);
+  }
 );
