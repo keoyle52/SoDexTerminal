@@ -24,26 +24,29 @@ export const Settings: React.FC = () => {
   const store = useSettingsStore();
   const [testing, setTesting] = useState(false);
 
-  // Derive the address that corresponds to the configured private key.
-  // On testnet this IS the master wallet. On mainnet this is the agent /
-  // API-key wallet, which is why we also expose a dedicated Master EVM
-  // Address field below.
+  // Derive the address that corresponds to the active private key. On
+  // testnet this IS the master wallet; on mainnet this is the agent /
+  // API-key wallet (and the dedicated Master EVM Address is separate).
   const derivedAddress = useMemo(() => deriveAddressFromPrivateKey(store.privateKey), [store.privateKey]);
 
-  // The address we will actually put in REST URL paths (balances / orders /
-  // positions / state). Prefer the explicit `evmAddress`; fall back to the
-  // derived address so testnet users still get a sensible default.
+  // Address used in REST URL paths (balances / orders / positions / state):
+  //  - Mainnet: the explicit Master EVM Address (required).
+  //  - Testnet: the optional override if set, else the derived address.
   const effectiveAddress = useMemo(() => {
     const explicit = (store.evmAddress ?? '').trim();
     if (explicit && ethers.isAddress(explicit)) return explicit;
-    return derivedAddress;
-  }, [store.evmAddress, derivedAddress]);
+    return store.isTestnet ? derivedAddress : '';
+  }, [store.evmAddress, derivedAddress, store.isTestnet]);
 
   const evmAddressLooksValid = !store.evmAddress || ethers.isAddress(store.evmAddress.trim());
 
   const handleTestConnection = async () => {
     if (!effectiveAddress) {
-      toast.error('Enter a valid Private Key or Master EVM Address.');
+      toast.error(
+        store.isTestnet
+          ? 'Enter a valid testnet Private Key.'
+          : 'Enter a valid mainnet Master EVM Address.',
+      );
       return;
     }
     setTesting(true);
@@ -90,74 +93,189 @@ export const Settings: React.FC = () => {
         <div className="animate-fade-in">
           {activeTab === 'api' && (
             <div className="space-y-5 max-w-xl">
+              {/* Network selector — primary choice that controls which
+                  credential set below is active. Shown FIRST so the user
+                  sees the right fields without toggling back. */}
               <Card>
                 <div className="flex items-center gap-2 mb-5">
-                  <Shield size={16} className="text-primary" />
-                  <h3 className="text-sm font-semibold">API Configuration</h3>
+                  <Globe size={16} className="text-primary" />
+                  <h3 className="text-sm font-semibold">Network</h3>
                 </div>
 
-                <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-                  <Input
-                    label={store.isTestnet ? 'API Key Name (Mainnet only — ignored on Testnet)' : 'API Key Name (X-API-Key)'}
-                    type="text"
-                    value={store.apiKeyName}
-                    onChange={(e) => store.setApiKeyName(e.target.value)}
-                    placeholder={store.isTestnet ? 'Not required on testnet' : 'Name chosen when creating the API key'}
-                    icon={<Key size={14} />}
-                    hint="Mainnet: the name (typically EVM address) of the SoDEX API key you registered — sent as `X-API-Key` on every signed request. Testnet: ignored; the derived address of the private key below is used instead."
-                    disabled={store.isTestnet}
-                  />
-
-                  <Input
-                    label={store.isTestnet ? 'Private Key (Master Wallet — Testnet)' : 'Private Key (API Key private key — NOT master wallet)'}
-                    type="password"
-                    value={store.privateKey}
-                    onChange={(e) => store.setPrivateKey(e.target.value)}
-                    placeholder="0x..."
-                    hint={
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      store.setIsTestnet(false);
+                      wsService.switchNetwork(false);
+                      clearServiceCaches();
+                    }}
+                    className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
+                      !store.isTestnet
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-background/40 text-text-muted hover:border-border-hover'
+                    }`}
+                  >
+                    Mainnet
+                  </button>
+                  <button
+                    onClick={() => {
+                      store.setIsTestnet(true);
+                      wsService.switchNetwork(true);
+                      clearServiceCaches();
+                    }}
+                    className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
                       store.isTestnet
-                        ? 'Testnet: paste your master EVM wallet private key here — requests are signed with it directly. Stored only in memory, never persisted.'
-                        : 'Mainnet: paste the API key\'s private key (from the keypair you were given when creating the API key), NOT your master wallet key. Stored only in memory, never persisted.'
-                    }
-                  />
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-background/40 text-text-muted hover:border-border-hover'
+                    }`}
+                  >
+                    Testnet
+                  </button>
+                </div>
 
-                  <Input
-                    label="Master EVM Address (used in REST URL paths)"
-                    type="text"
-                    value={store.evmAddress}
-                    onChange={(e) => store.setEvmAddress(e.target.value)}
-                    placeholder={store.isTestnet ? 'Optional — defaults to derived address' : '0x... (required on Mainnet)'}
-                    icon={<Wallet size={14} />}
-                    hint="Your master wallet address, the one connected to SoDEX. Used in URL paths like /accounts/{address}/state. On Testnet this defaults to the derived address. On Mainnet it MUST be set because the private key belongs to the API agent wallet, not the master."
-                  />
-                  {!evmAddressLooksValid && (
-                    <p className="text-[10px] text-danger">Invalid EVM address format.</p>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
-                      Derived address (from private key)
-                    </label>
-                    <div className="w-full bg-background/60 border border-border rounded-lg px-3 py-2.5 text-sm text-text-muted font-mono truncate">
-                      {derivedAddress || 'Will appear once a valid private key is entered...'}
-                    </div>
-                    {!store.isTestnet && derivedAddress && store.evmAddress && store.evmAddress.toLowerCase() !== derivedAddress.toLowerCase() && (
-                      <p className="text-[10px] text-text-muted">
-                        Mainnet: derived address (API agent) differs from master EVM address — this is expected.
-                      </p>
-                    )}
+                {!store.isTestnet && (
+                  <div className="mt-3 flex items-start gap-2 p-3 bg-warning/5 border border-warning/20 rounded-lg">
+                    <Info size={14} className="text-warning shrink-0 mt-0.5" />
+                    <p className="text-xs text-warning leading-relaxed">
+                      Mainnet: real assets are used. Sign requests with your registered API
+                      key's private key (agent wallet, not the master) and set the Master
+                      EVM Address to your master wallet. Mainnet and testnet account IDs
+                      are independent.
+                    </p>
                   </div>
+                )}
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
-                      Effective URL address (used in GETs)
-                    </label>
-                    <div className="w-full bg-background/60 border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary font-mono truncate">
-                      {effectiveAddress || '—'}
-                    </div>
+                {store.isTestnet && (
+                  <div className="mt-3 flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                    <Info size={14} className="text-primary shrink-0 mt-0.5" />
+                    <p className="text-xs text-primary leading-relaxed">
+                      Testnet: registered API keys do not exist here. Paste your master
+                      wallet private key — writes are signed with it and its derived
+                      address is used as X-API-Key. Mainnet credentials stay safely in
+                      a separate slot and are restored when you switch back.
+                    </p>
                   </div>
-                </form>
+                )}
               </Card>
+
+              {/* ───── Mainnet credentials (hidden on testnet) ───── */}
+              {!store.isTestnet && (
+                <Card>
+                  <div className="flex items-center gap-2 mb-5">
+                    <Shield size={16} className="text-primary" />
+                    <h3 className="text-sm font-semibold">Mainnet Credentials</h3>
+                  </div>
+
+                  <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+                    <Input
+                      label="API Key Name (X-API-Key)"
+                      type="text"
+                      value={store.mainnetApiKeyName}
+                      onChange={(e) => store.setMainnetApiKeyName(e.target.value)}
+                      placeholder="Name chosen when creating the API key (typically an EVM address)"
+                      icon={<Key size={14} />}
+                      hint="The name of the SoDEX API key you registered — sent as `X-API-Key` on every signed request."
+                    />
+
+                    <Input
+                      label="Agent Private Key (NOT your master wallet key)"
+                      type="password"
+                      value={store.mainnetPrivateKey}
+                      onChange={(e) => store.setMainnetPrivateKey(e.target.value)}
+                      placeholder="0x..."
+                      hint="Paste the API key's private key from the keypair you were given when creating the API key. Stored only in memory — never persisted to localStorage."
+                    />
+
+                    <Input
+                      label="Master EVM Address (used in REST URL paths)"
+                      type="text"
+                      value={store.mainnetEvmAddress}
+                      onChange={(e) => store.setMainnetEvmAddress(e.target.value)}
+                      placeholder="0x... (required on mainnet)"
+                      icon={<Wallet size={14} />}
+                      hint="Your master wallet address — the one actually connected to SoDEX. Required because the private key above belongs to the agent, not the master."
+                    />
+                    {!evmAddressLooksValid && (
+                      <p className="text-[10px] text-danger">Invalid EVM address format.</p>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
+                        Derived address (from agent private key)
+                      </label>
+                      <div className="w-full bg-background/60 border border-border rounded-lg px-3 py-2.5 text-sm text-text-muted font-mono truncate">
+                        {derivedAddress || 'Will appear once a valid private key is entered...'}
+                      </div>
+                      {derivedAddress && store.mainnetEvmAddress && store.mainnetEvmAddress.toLowerCase() !== derivedAddress.toLowerCase() && (
+                        <p className="text-[10px] text-text-muted">
+                          Derived address (API agent) differs from master EVM address — this is expected on mainnet.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
+                        Effective URL address (used in GETs)
+                      </label>
+                      <div className="w-full bg-background/60 border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary font-mono truncate">
+                        {effectiveAddress || '—'}
+                      </div>
+                    </div>
+                  </form>
+                </Card>
+              )}
+
+              {/* ───── Testnet credentials (hidden on mainnet) ───── */}
+              {store.isTestnet && (
+                <Card>
+                  <div className="flex items-center gap-2 mb-5">
+                    <Shield size={16} className="text-primary" />
+                    <h3 className="text-sm font-semibold">Testnet Credentials</h3>
+                  </div>
+
+                  <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+                    <Input
+                      label="Master Wallet Private Key"
+                      type="password"
+                      value={store.testnetPrivateKey}
+                      onChange={(e) => store.setTestnetPrivateKey(e.target.value)}
+                      placeholder="0x..."
+                      hint="Paste your master EVM wallet private key. Testnet signs every write with this key directly. Stored only in memory — never persisted."
+                    />
+
+                    <Input
+                      label="Master EVM Address (optional)"
+                      type="text"
+                      value={store.testnetEvmAddress}
+                      onChange={(e) => store.setTestnetEvmAddress(e.target.value)}
+                      placeholder="Optional — defaults to derived address"
+                      icon={<Wallet size={14} />}
+                      hint="By default the address derived from the private key above is used in REST URL paths. Set this only if your testnet master wallet differs from the signing key's derived address."
+                    />
+                    {!evmAddressLooksValid && (
+                      <p className="text-[10px] text-danger">Invalid EVM address format.</p>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
+                        Derived address (from private key)
+                      </label>
+                      <div className="w-full bg-background/60 border border-border rounded-lg px-3 py-2.5 text-sm text-text-muted font-mono truncate">
+                        {derivedAddress || 'Will appear once a valid private key is entered...'}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider">
+                        Effective URL address (used in GETs)
+                      </label>
+                      <div className="w-full bg-background/60 border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary font-mono truncate">
+                        {effectiveAddress || '—'}
+                      </div>
+                    </div>
+                  </form>
+                </Card>
+              )}
 
               {/* SosoValue API */}
               <Card>
@@ -201,67 +319,6 @@ export const Settings: React.FC = () => {
                 />
               </Card>
 
-              <Card>
-                <div className="flex items-center gap-2 mb-5">
-                  <Globe size={16} className="text-primary" />
-                  <h3 className="text-sm font-semibold">Network</h3>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      store.setIsTestnet(false);
-                      wsService.switchNetwork(false);
-                      clearServiceCaches();
-                    }}
-                    className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
-                      !store.isTestnet
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-background/40 text-text-muted hover:border-border-hover'
-                    }`}
-                  >
-                    Mainnet
-                  </button>
-                  <button
-                    onClick={() => {
-                      store.setIsTestnet(true);
-                      wsService.switchNetwork(true);
-                      clearServiceCaches();
-                    }}
-                    className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
-                      store.isTestnet
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-background/40 text-text-muted hover:border-border-hover'
-                    }`}
-                  >
-                    Testnet
-                  </button>
-                </div>
-
-                {!store.isTestnet && (
-                  <div className="mt-3 flex items-start gap-2 p-3 bg-warning/5 border border-warning/20 rounded-lg">
-                    <Info size={14} className="text-warning shrink-0 mt-0.5" />
-                    <p className="text-xs text-warning leading-relaxed">
-                      Mainnet: real assets are used. Sign requests with your API key's private
-                      key (not the master wallet key) and put your master wallet address in the
-                      EVM Address field. Mainnet and Testnet account IDs are distinct.
-                    </p>
-                  </div>
-                )}
-
-                {store.isTestnet && (
-                  <div className="mt-3 flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
-                    <Info size={14} className="text-primary shrink-0 mt-0.5" />
-                    <p className="text-xs text-primary leading-relaxed">
-                      Testnet mode: registered API keys do not work here. Sign with the master
-                      wallet's private key; its derived address is used as the `X-API-Key`.
-                      Mainnet and Testnet account IDs are different — make sure you are using
-                      the right one for the network you are hitting.
-                    </p>
-                  </div>
-                )}
-              </Card>
-
               <div className="flex items-center gap-3 pt-2">
                 <Button
                   variant="outline"
@@ -277,8 +334,9 @@ export const Settings: React.FC = () => {
                   icon={<Unplug size={14} />}
                   onClick={store.disconnect}
                   className="ml-auto"
+                  title={store.isTestnet ? 'Clears testnet credentials only' : 'Clears mainnet credentials only'}
                 >
-                  Disconnect
+                  Disconnect {store.isTestnet ? 'Testnet' : 'Mainnet'}
                 </Button>
               </div>
             </div>

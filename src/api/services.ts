@@ -38,12 +38,54 @@ function isDemo(): boolean {
 
 /**
  * Throw if the exchange returned a body-level error even though HTTP was 200.
- * SoDEX perps API returns `{ code: -1, error: "..." }` on bad requests.
+ *
+ * SoDEX responses come in two shapes:
+ *   1. Envelope:  `{ code: -1, error: "..." }` — a whole-request failure.
+ *   2. Array-of-results (new order / cancel / replace):
+ *         `[{ code: 0, clOrdID, orderID: 123 }, { code: -2011, clOrdID, error: "insufficient margin" }, ...]`
+ *      Here the HTTP status is 200 even when individual orders were rejected.
+ *
+ * This helper throws a single combined error if ANY of the per-order
+ * results has `code != 0`, so the UI never logs "placed" for an order
+ * that the exchange actually rejected (e.g. margin check failure).
+ *
+ * @param data   The response body.
+ * @param label  Optional label prepended to the thrown message for context.
  */
-function assertNoBodyError(data: unknown): void {
-  if (data && typeof data === 'object' && 'code' in data && data.code !== 0) {
+function assertNoBodyError(data: unknown, label?: string): void {
+  const prefix = label ? `${label}: ` : '';
+
+  // Shape 1: single-envelope failure (`{ code, error }`).
+  if (data && typeof data === 'object' && !Array.isArray(data) && 'code' in data && (data as { code: unknown }).code !== 0) {
     const d = data as Record<string, unknown>;
-    throw new Error(String(d.error ?? d.message ?? `API error code ${d.code}`));
+    throw new Error(`${prefix}${d.error ?? d.message ?? `API error code ${d.code}`}`);
+  }
+
+  // Shape 2: array of per-order results — any item with code!=0 is a
+  // rejection. Surface every distinct error so the user can see which
+  // order(s) failed and why.
+  if (Array.isArray(data)) {
+    const failures: string[] = [];
+    for (const item of data) {
+      if (item && typeof item === 'object' && 'code' in item && (item as { code: unknown }).code !== 0) {
+        const it = item as Record<string, unknown>;
+        const msg = String(it.error ?? it.message ?? `code ${it.code}`);
+        const cl = it.clOrdID ? ` (clOrdID=${it.clOrdID})` : '';
+        failures.push(`${msg}${cl}`);
+      }
+    }
+    if (failures.length > 0) {
+      // De-dupe identical messages so batches rejected for the same reason
+      // (e.g. 5× "insufficient margin") read cleanly.
+      const unique = Array.from(new Set(failures));
+      throw new Error(`${prefix}${unique.join('; ')}`);
+    }
+  }
+
+  // Shape 3: `{ orders: [...] }` envelope where the list itself holds
+  // per-order results. Recurse into the inner array.
+  if (data && typeof data === 'object' && !Array.isArray(data) && Array.isArray((data as Record<string, unknown>).orders)) {
+    assertNoBodyError((data as Record<string, unknown>).orders, label);
   }
 }
 
@@ -839,7 +881,7 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<unknown> {
 
   const res = await withRetry(() => spotClient.post('/trade/orders/batch', payload));
   const data = res?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'placeSpotOrder');
 
   // Spot batch response is an array; unwrap first element
   const firstResult = Array.isArray(data) ? data[0] : data;
@@ -922,7 +964,7 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
 
   const res = await withRetry(() => perpsClient.post('/trade/orders', payload));
   const data = res?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'placePerpsOrder');
 
   // Unwrap the first order result from the response array
   const resultData = data as Record<string, unknown> | unknown[];
@@ -999,7 +1041,7 @@ export async function placeBatchOrders(
 
     const res = await withRetry(() => spotClient.post('/trade/orders/batch', payload));
     const data = res?.data ?? res ?? {};
-    assertNoBodyError(data);
+    assertNoBodyError(data, 'placeBatchOrders');
     return Array.isArray(data) ? data : [data];
   } else {
     // Perps
@@ -1047,7 +1089,7 @@ export async function placeBatchOrders(
 
     const res = await withRetry(() => perpsClient.post('/trade/orders', payload));
     const data = res?.data ?? res ?? {};
-    assertNoBodyError(data);
+    assertNoBodyError(data, 'placeBatchOrders');
     const resultArray = Array.isArray(data) ? data : (Array.isArray(data?.orders) ? data.orders : [data]);
     return resultArray;
   }
@@ -1089,7 +1131,7 @@ export async function updatePerpsLeverage(
 
   const res = await withRetry(() => perpsClient.post('/trade/leverage', payload));
   const data = (res as { data?: unknown } | null)?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'updatePerpsLeverage');
 }
 
 /**
@@ -1128,7 +1170,7 @@ export async function updatePerpsMargin(
 
   const res = await withRetry(() => perpsClient.post('/trade/margin', payload));
   const data = (res as { data?: unknown } | null)?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'updatePerpsMargin');
 }
 
 export async function cancelOrder(orderId: string, symbol: string, market: 'spot' | 'perps' = 'perps') {
@@ -1160,7 +1202,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
 
     const res = await withRetry(() => perpsClient.delete('/trade/orders', { data: payload }));
     const data = res?.data ?? res ?? {};
-    assertNoBodyError(data);
+    assertNoBodyError(data, 'cancelOrder');
     return data;
   } else {
     // Spot
@@ -1194,7 +1236,7 @@ export async function cancelOrder(orderId: string, symbol: string, market: 'spot
 
     const res = await withRetry(() => spotClient.delete('/trade/orders/batch', { data: payload }));
     const data = res?.data ?? res ?? {};
-    assertNoBodyError(data);
+    assertNoBodyError(data, 'cancelOrder');
     return data;
   }
 }
@@ -1480,7 +1522,7 @@ export async function batchCancelOrders(
     const payload = { accountID: Number(accountState.accountID), cancels };
     const res = await withRetry(() => perpsClient.delete('/trade/orders', { data: payload }));
     const data = res?.data ?? res ?? {};
-    assertNoBodyError(data);
+    assertNoBodyError(data, 'batchCancelOrders');
     return data;
   } else {
     // Spot
@@ -1495,7 +1537,7 @@ export async function batchCancelOrders(
     const payload = { accountID: Number(accountState.accountID), cancels };
     const res = await withRetry(() => spotClient.delete('/trade/orders/batch', { data: payload }));
     const data = res?.data ?? res ?? {};
-    assertNoBodyError(data);
+    assertNoBodyError(data, 'batchCancelOrders');
     return data;
   }
 }
@@ -1602,7 +1644,7 @@ export async function replaceOrders(
   const client = getClient(market);
   const res = await withRetry(() => client.post('/trade/orders/replace', payload));
   const data = res?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'replaceOrders');
   return data;
 }
 
@@ -1693,7 +1735,7 @@ export async function modifyPerpsOrder(params: {
 
   const res = await withRetry(() => perpsClient.post('/trade/orders/modify', payload));
   const data = res?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'modifyPerpsOrder');
   return data;
 }
 
@@ -1742,7 +1784,7 @@ export async function scheduleCancelAll(
   const client = getClient(market);
   const res = await withRetry(() => client.post('/trade/orders/schedule-cancel', payload));
   const data = res?.data ?? res ?? {};
-  assertNoBodyError(data);
+  assertNoBodyError(data, 'scheduleCancelAll');
   return data;
 }
 
