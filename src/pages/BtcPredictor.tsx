@@ -28,9 +28,8 @@ const LS_NEWS_KEY   = 'predictor_news_cache';
 const LS_ETF_KEY    = 'predictor_etf_cache';
 const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
 const BTC_SYMBOL_HINT = 'BTC';        // substring match against fetchTickers result
-const NEUTRAL_BASE  = 0.15;             // default neutral threshold
-const NEUTRAL_WIDE  = 0.20;             // self-correcting threshold when accuracy drops
-const MIN_CONFIDENCE = 40;             // skip prediction if below this
+const NEUTRAL_BASE  = 0.08;             // default neutral threshold (lowered so normal market produces signals)
+const NEUTRAL_WIDE  = 0.14;             // self-correcting threshold when accuracy drops
 
 // ─── Weights (must sum to 1.0) ────────────────────────────────────────────────
 const W = {
@@ -85,31 +84,41 @@ function computeIndicators(klines: { close: number; volume: number }[]): TechRes
 
   const last = closes.length - 1;
 
-  // RSI — only extreme readings matter
+  // RSI — gradient: extremes ±1, mid-range proportional signal
   const rsi = calcRSI(closes);
-  const rsiSignal = rsi < 30 ? 1 : rsi > 70 ? -1 : 0;
+  let rsiSignal: number;
+  if      (rsi <= 25) rsiSignal =  1.0;
+  else if (rsi <= 35) rsiSignal =  0.6;
+  else if (rsi <= 45) rsiSignal =  0.2;
+  else if (rsi >= 75) rsiSignal = -1.0;
+  else if (rsi >= 65) rsiSignal = -0.6;
+  else if (rsi >= 55) rsiSignal = -0.2;
+  else rsiSignal = 0;  // 45-55: truly neutral
 
-  // EMA 9/21 crossover + distance weighting
+  // EMA 9/21 — gradient signal based on % spread
   const ema9  = calcEMA(closes, 9);
   const ema21 = calcEMA(closes, 21);
   let emaSignal = 0;
   if (ema9.length && ema21.length) {
     const spread = (ema9[last] - ema21[last]) / ema21[last];
-    if (spread > 0.0005) emaSignal = 1;
-    else if (spread < -0.0005) emaSignal = -1;
+    // map: >0.002% → +1, 0.0001–0.002% → proportional, mirror for negative
+    emaSignal = Math.max(-1, Math.min(1, spread / 0.002));
   }
 
-  // MACD — zero-line cross only
+  // MACD — histogram direction (not just zero-cross)
   let macdSignal = 0;
   if (closes.length >= 26) {
     const ema12 = calcEMA(closes, 12);
     const ema26 = calcEMA(closes, 26);
     const macdLine = ema12.map((v, i) => v - ema26[i]);
     const sig9 = calcEMA(macdLine, 9);
-    const histNow  = macdLine[last] - sig9[last];
+    const histNow  = macdLine[last]     - sig9[last];
     const histPrev = macdLine[last - 1] - sig9[last - 1];
-    if (histPrev <= 0 && histNow > 0) macdSignal = 1;   // crossed above zero
-    else if (histPrev >= 0 && histNow < 0) macdSignal = -1; // crossed below zero
+    // zero-cross = full signal; histogram growing in direction = half signal
+    if      (histPrev <= 0 && histNow > 0)  macdSignal =  1;
+    else if (histPrev >= 0 && histNow < 0)  macdSignal = -1;
+    else if (histNow > 0 && histNow > histPrev) macdSignal =  0.5;
+    else if (histNow < 0 && histNow < histPrev) macdSignal = -0.5;
   }
 
   // Price microstructure: HH/HL pattern + velocity + volume
@@ -502,12 +511,14 @@ export const BtcPredictor: React.FC = () => {
         tech.macdSignal            * W.macd;
 
       const threshold = neutralThresholdRef.current;
-      const confidence = Math.min(100, Math.round((Math.abs(score) / 1.0) * 100));
+      // Normalise against realistic max (weighted sum if all signals fire = 1.0,
+      // but in practice max reachable is ~0.55 when funding is N/A)
+      const realisticMax = 0.55;
+      const confidence = Math.min(100, Math.round((Math.abs(score) / realisticMax) * 100));
 
-      // Only predict when confidence > MIN_CONFIDENCE
       const direction: PredictionDirection =
-        score > threshold && confidence >= MIN_CONFIDENCE  ? 'UP'  :
-        score < -threshold && confidence >= MIN_CONFIDENCE ? 'DOWN' : 'NEUTRAL';
+        score >  threshold ? 'UP'  :
+        score < -threshold ? 'DOWN' : 'NEUTRAL';
 
       // Count how many signals agree with the direction
       const signalValues = [obSignal, frSignal, news.score, tech.microstructureSignal,
