@@ -357,7 +357,7 @@ export const BtcPredictor: React.FC = () => {
       let klines: { close: number; volume: number }[] = [];
       try {
         const raw = await fetchKlines(BTC_SYMBOL, '1m', KLINES_LIMIT, 'perps');
-        klines = raw.map((k) => ({ close: Number(k.close ?? k.c ?? 0), volume: Number(k.volume ?? k.v ?? 0) }));
+        klines = (raw as Record<string, unknown>[]).map((k) => ({ close: Number(k.close ?? k.c ?? 0), volume: Number(k.volume ?? k.v ?? 0) }));
       } catch { /* proceed with empty */ }
 
       // 2. Technical indicators
