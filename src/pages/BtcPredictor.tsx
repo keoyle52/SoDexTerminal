@@ -4,8 +4,8 @@ import {
   CheckCircle2, XCircle, SkipForward, Target, Clock,
   Activity, Newspaper, BarChart3, Zap, AlertTriangle,
 } from 'lucide-react';
-import { wsService } from '../api/websocket';
 import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates } from '../api/services';
+import { useLiveTicker, type LiveTicker } from '../api/useLiveTicker';
 import { fetchSosoNews, fetchEtfCurrentMetrics, getNewsTitle } from '../api/sosoServices';
 import { analyzeSentiment } from '../api/geminiClient';
 import { useSettingsStore } from '../store/settingsStore';
@@ -251,60 +251,35 @@ const HistoryRow: React.FC<{ entry: PredictionEntry; idx: number }> = ({ entry, 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export const BtcPredictor: React.FC = () => {
-  const { sosoApiKey, geminiApiKey, isTestnet, isDemoMode } = useSettingsStore();
+  const { sosoApiKey, geminiApiKey, isTestnet: _isTestnet } = useSettingsStore();
 
-  // ── Discover real BTC symbol from REST, then subscribe WS miniTicker ─────
+  // ── Discover real BTC symbol from REST tickers, seed useLiveTicker ────────
+  const [rawTicker, setRawTicker] = useState<LiveTicker[]>([]);
   const [btcSymbol, setBtcSymbol] = useState('BTC-USDC');
-  const [btcPrice, setBtcPrice] = useState(0);
   const btcSymbolRef = useRef('BTC-USDC');
 
-  // Step 1: find real symbol from REST
   useEffect(() => {
     fetchTickers('perps').then((res) => {
       const arr = Array.isArray(res) ? res as Record<string, unknown>[] : [];
       const row = arr.find((t) => String(t.symbol ?? '').toUpperCase().includes(BTC_SYMBOL_HINT));
-      if (row) {
-        const sym = String(row.symbol);
-        const lp  = parseFloat(String(row.lastPrice ?? row.close ?? 0));
-        setBtcSymbol(sym);
-        btcSymbolRef.current = sym;
-        if (lp > 0) setBtcPrice(lp);
-      }
+      if (!row) return;
+      const sym = String(row.symbol);
+      const lp  = parseFloat(String(row.lastPrice ?? row.close ?? 0));
+      setBtcSymbol(sym);
+      btcSymbolRef.current = sym;
+      setRawTicker([{
+        symbol: sym,
+        lastPrice: lp > 0 ? lp : 0,
+        change24h: parseFloat(String(row.priceChangePercent ?? row.change ?? 0)),
+        volume24h: parseFloat(String(row.quoteVolume ?? row.volume ?? 0)),
+      }]);
     }).catch(() => {});
   }, []);
 
-  // Step 2: subscribe WS miniTicker with the real symbol
-  useEffect(() => {
-    if (!btcSymbol) return;
-    if (isDemoMode) return; // demo already polled via fetchTickers
-    try { wsService.connect(isTestnet); } catch { return; }
-    const ch = JSON.stringify({ channel: 'miniTicker', symbols: [btcSymbol] });
-    const unsub = wsService.subscribe(ch, (raw) => {
-      const d = raw as Record<string, unknown>;
-      const p = (d.data ?? d) as Record<string, unknown>;
-      const lp = parseFloat(String(p.c ?? p.lastPrice ?? p.close ?? 0));
-      if (lp > 0) setBtcPrice(lp);
-    });
-    return () => unsub();
-  }, [btcSymbol, isTestnet, isDemoMode]);
-
-  // Step 3: demo mode — poll fetchTickers every 2 s
-  useEffect(() => {
-    if (!isDemoMode) return;
-    const poll = () => {
-      fetchTickers('perps').then((res) => {
-        const arr = Array.isArray(res) ? res as Record<string, unknown>[] : [];
-        const row = arr.find((t) => String(t.symbol ?? '') === btcSymbolRef.current);
-        if (row) {
-          const lp = parseFloat(String(row.lastPrice ?? row.close ?? 0));
-          if (lp > 0) setBtcPrice(lp);
-        }
-      }).catch(() => {});
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => clearInterval(id);
-  }, [isDemoMode]);
+  // useLiveTicker handles both demo (subscribeToDemoTicks every ~1.2 s)
+  // and live WS mode (miniTicker) — same path as Dashboard
+  const liveTickers = useLiveTicker(rawTicker, [btcSymbol]);
+  const btcPrice = (liveTickers.find((t) => t.symbol === btcSymbol) ?? rawTicker[0])?.lastPrice ?? 0;
 
   const {
     currentPrediction, currentConfidence, currentSignals,
@@ -464,15 +439,22 @@ export const BtcPredictor: React.FC = () => {
       let frRate = 0;
       try {
         const rates = await fetchFundingRates() as Record<string, unknown>[];
-        const row = rates.find((r) => String(r.symbol ?? '').toUpperCase() === btcSymbolRef.current.toUpperCase());
-        if (row) frRate = parseFloat(String(row.fundingRate ?? row.fr ?? 0));
+        const sym = btcSymbolRef.current.toUpperCase();
+        const row = rates.find((r) =>
+          String(r.symbol ?? r.s ?? r.symbolName ?? '').toUpperCase() === sym ||
+          String(r.symbol ?? '').toUpperCase().includes('BTC'),
+        );
+        if (row) {
+          const raw = row.fundingRate ?? row.funding_rate ?? row.fr ?? row.rate ?? row.f;
+          frRate = raw !== undefined ? parseFloat(String(raw)) : 0;
+        }
       } catch { /* keep 0 */ }
       let frSignal = 0;
       const prevFr = prevFundingRef.current;
       if (frRate > 0.0001) frSignal = -1;
       else if (frRate < -0.0001) frSignal = 1;
       else if (prevFr !== 0) frSignal = frRate > prevFr ? -0.5 : frRate < prevFr ? 0.5 : 0;
-      prevFundingRef.current = frRate;
+      prevFundingRef.current = frRate !== 0 ? frRate : prevFr;
 
       // 4. News + ETF (cache-first, shared with other pages)
       setStatusMsg('Checking SoSoValue signals…');
