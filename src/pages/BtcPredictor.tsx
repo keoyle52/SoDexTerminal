@@ -4,9 +4,8 @@ import {
   CheckCircle2, XCircle, SkipForward, Target, Clock,
   Activity, Newspaper, BarChart3, Zap, AlertTriangle,
 } from 'lucide-react';
-import { useLiveTicker, type LiveTicker } from '../api/useLiveTicker';
-import { wsService } from '../api/websocket'; // used in useOrderBookImbalance + useFundingRate
-import { fetchKlines, fetchTickers } from '../api/services';
+import { wsService } from '../api/websocket';
+import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates } from '../api/services';
 import { fetchSosoNews, fetchEtfCurrentMetrics, getNewsTitle } from '../api/sosoServices';
 import { analyzeSentiment } from '../api/geminiClient';
 import { useSettingsStore } from '../store/settingsStore';
@@ -139,53 +138,6 @@ function computeIndicators(klines: { close: number; volume: number }[]): TechRes
   return { rsi, rsiSignal, emaSignal, macdSignal, microstructureSignal, volumeSpike };
 }
 
-// ─── WS Order Book Hook ───────────────────────────────────────────────────────
-interface OBState { imbalance: number; history: number[] }
-function useOrderBookImbalance(symbol: string): OBState {
-  const { isTestnet } = useSettingsStore();
-  const [state, setState] = useState<OBState>({ imbalance: 0.5, history: [] });
-  useEffect(() => {
-    try { wsService.connect(isTestnet); } catch { return; }
-    const ch = JSON.stringify({ channel: 'orderBook', symbols: [symbol] });
-    const unsub = wsService.subscribe(ch, (raw) => {
-      const d = (raw as Record<string, unknown>);
-      const payload = (d.data ?? d) as Record<string, unknown>;
-      const bids = payload.bids as [string, string][] | undefined;
-      const asks = payload.asks as [string, string][] | undefined;
-      if (!bids || !asks) return;
-      const bidVol = bids.slice(0, 10).reduce((s, [, v]) => s + parseFloat(v), 0);
-      const askVol = asks.slice(0, 10).reduce((s, [, v]) => s + parseFloat(v), 0);
-      const total = bidVol + askVol;
-      if (total === 0) return;
-      const imb = bidVol / total;
-      setState((prev) => ({
-        imbalance: imb,
-        history: [...prev.history.slice(-2), imb],
-      }));
-    });
-    return () => unsub();
-  }, [symbol, isTestnet]);
-  return state;
-}
-
-// ─── WS Funding Rate Hook ─────────────────────────────────────────────────────
-function useFundingRate(symbol: string): { rate: number; prev: number } {
-  const { isTestnet } = useSettingsStore();
-  const [state, setState] = useState({ rate: 0, prev: 0 });
-  useEffect(() => {
-    try { wsService.connect(isTestnet); } catch { return; }
-    const ch = JSON.stringify({ channel: 'funding', symbols: [symbol] });
-    const unsub = wsService.subscribe(ch, (raw) => {
-      const d = (raw as Record<string, unknown>);
-      const payload = (d.data ?? d) as Record<string, unknown>;
-      const fr = parseFloat(String(payload.fundingRate ?? payload.fr ?? payload.f ?? 0));
-      if (isNaN(fr)) return;
-      setState((prev) => ({ prev: prev.rate || fr, rate: fr }));
-    });
-    return () => unsub();
-  }, [symbol, isTestnet]);
-  return state;
-}
 
 // ─── Cache helpers (shared with other pages via sosoValueClient memory cache) ─
 interface CacheItem<T> { data: T; fetchedAt: number }
@@ -299,29 +251,60 @@ const HistoryRow: React.FC<{ entry: PredictionEntry; idx: number }> = ({ entry, 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export const BtcPredictor: React.FC = () => {
-  const { sosoApiKey, geminiApiKey } = useSettingsStore();
+  const { sosoApiKey, geminiApiKey, isTestnet, isDemoMode } = useSettingsStore();
 
-  // ── Discover BTC symbol + live price (same path as Dashboard) ──────────
-  const [rawTicker, setRawTicker] = useState<LiveTicker[]>([]);
+  // ── Discover real BTC symbol from REST, then subscribe WS miniTicker ─────
   const [btcSymbol, setBtcSymbol] = useState('BTC-USDC');
+  const [btcPrice, setBtcPrice] = useState(0);
+  const btcSymbolRef = useRef('BTC-USDC');
+
+  // Step 1: find real symbol from REST
   useEffect(() => {
     fetchTickers('perps').then((res) => {
       const arr = Array.isArray(res) ? res as Record<string, unknown>[] : [];
-      const btcRow = arr.find((t) => String(t.symbol ?? '').toUpperCase().includes(BTC_SYMBOL_HINT));
-      if (btcRow) {
-        const sym = String(btcRow.symbol);
+      const row = arr.find((t) => String(t.symbol ?? '').toUpperCase().includes(BTC_SYMBOL_HINT));
+      if (row) {
+        const sym = String(row.symbol);
+        const lp  = parseFloat(String(row.lastPrice ?? row.close ?? 0));
         setBtcSymbol(sym);
-        setRawTicker([{
-          symbol: sym,
-          lastPrice: parseFloat(String(btcRow.lastPrice ?? btcRow.close ?? 0)),
-          change24h: parseFloat(String(btcRow.priceChangePercent ?? btcRow.change ?? 0)),
-          volume24h: parseFloat(String(btcRow.quoteVolume ?? btcRow.volume ?? 0)),
-        }]);
+        btcSymbolRef.current = sym;
+        if (lp > 0) setBtcPrice(lp);
       }
     }).catch(() => {});
   }, []);
-  const liveTickers = useLiveTicker(rawTicker, [btcSymbol]);
-  const btcPrice = (liveTickers.find((t) => t.symbol === btcSymbol) ?? rawTicker[0])?.lastPrice ?? 0;
+
+  // Step 2: subscribe WS miniTicker with the real symbol
+  useEffect(() => {
+    if (!btcSymbol) return;
+    if (isDemoMode) return; // demo already polled via fetchTickers
+    try { wsService.connect(isTestnet); } catch { return; }
+    const ch = JSON.stringify({ channel: 'miniTicker', symbols: [btcSymbol] });
+    const unsub = wsService.subscribe(ch, (raw) => {
+      const d = raw as Record<string, unknown>;
+      const p = (d.data ?? d) as Record<string, unknown>;
+      const lp = parseFloat(String(p.c ?? p.lastPrice ?? p.close ?? 0));
+      if (lp > 0) setBtcPrice(lp);
+    });
+    return () => unsub();
+  }, [btcSymbol, isTestnet, isDemoMode]);
+
+  // Step 3: demo mode — poll fetchTickers every 2 s
+  useEffect(() => {
+    if (!isDemoMode) return;
+    const poll = () => {
+      fetchTickers('perps').then((res) => {
+        const arr = Array.isArray(res) ? res as Record<string, unknown>[] : [];
+        const row = arr.find((t) => String(t.symbol ?? '') === btcSymbolRef.current);
+        if (row) {
+          const lp = parseFloat(String(row.lastPrice ?? row.close ?? 0));
+          if (lp > 0) setBtcPrice(lp);
+        }
+      }).catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => clearInterval(id);
+  }, [isDemoMode]);
 
   const {
     currentPrediction, currentConfidence, currentSignals,
@@ -336,13 +319,12 @@ export const BtcPredictor: React.FC = () => {
   const [, setPendingEntryId] = useState<string | null>(null);
 
   const btcPriceRef      = useRef(btcPrice);
-  const btcSymbolRef     = useRef(btcSymbol);
   const isRunningRef     = useRef(false);
   const cycleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { btcPriceRef.current  = btcPrice;  }, [btcPrice]);
-  useEffect(() => { btcSymbolRef.current = btcSymbol; }, [btcSymbol]);
+  useEffect(() => { btcSymbolRef.current = btcSymbol; }, [btcSymbol]); // keep ref in sync
 
   // ── Fetch news sentiment via shared cache ──────────────────────────────────
   const fetchNewsSentiment = useCallback(async (): Promise<{ score: number; fetchedAt: number }> => {
@@ -399,13 +381,8 @@ export const BtcPredictor: React.FC = () => {
     }
   }, [sosoApiKey]);
 
-  // ── Order book + funding from WS ───────────────────────────────────────────
-  const obRef  = useRef<{ imbalance: number; history: number[] }>({ imbalance: 0.5, history: [] });
-  const frRef  = useRef<{ rate: number; prev: number }>({ rate: 0, prev: 0 });
-  const ob     = useOrderBookImbalance(btcSymbol);
-  const fr     = useFundingRate(btcSymbol);
-  useEffect(() => { obRef.current = ob; }, [ob]);
-  useEffect(() => { frRef.current = fr; }, [fr]);
+  // ── Order book + funding via REST (fetched each cycle) ───────────────────
+  const prevFundingRef = useRef(0);
 
   // ── Self-correcting neutral threshold ──────────────────────────────────
   const last20Decided = history.filter((e) => e.result === 'CORRECT' || e.result === 'WRONG').slice(0, 20);
@@ -438,29 +415,34 @@ export const BtcPredictor: React.FC = () => {
       } catch { /* proceed with empty */ }
       const tech = computeIndicators(klines);
 
-      // 2. Order book signal from WS ref (no extra API call)
-      const curOb = obRef.current;
-      const imb = curOb.imbalance;
+      // 2. Order book — REST fetch
+      let imb = 0.5;
+      try {
+        const ob = await fetchOrderbook(btcSymbolRef.current, 'perps', 20);
+        const bids = (ob.bids ?? []) as [string, string][];
+        const asks = (ob.asks ?? []) as [string, string][];
+        const bidVol = bids.slice(0, 10).reduce((s, [, v]) => s + parseFloat(v), 0);
+        const askVol = asks.slice(0, 10).reduce((s, [, v]) => s + parseFloat(v), 0);
+        const tot = bidVol + askVol;
+        if (tot > 0) imb = bidVol / tot;
+      } catch { /* keep default 0.5 */ }
       let obSignal = 0;
       if (imb >= 0.65) obSignal = 1;
       else if (imb <= 0.35) obSignal = -1;
-      else obSignal = 0;
-      // acceleration: rising imbalance = stronger signal
-      if (curOb.history.length >= 2) {
-        const trend = curOb.history[curOb.history.length - 1] - curOb.history[0];
-        if (Math.abs(trend) > 0.05) obSignal = Math.sign(trend) as -1 | 0 | 1;
-      }
 
-      // 3. Funding rate signal from WS ref (no extra API call)
-      const curFr = frRef.current;
+      // 3. Funding rate — REST fetch
+      let frRate = 0;
+      try {
+        const rates = await fetchFundingRates() as Record<string, unknown>[];
+        const row = rates.find((r) => String(r.symbol ?? '').toUpperCase() === btcSymbolRef.current.toUpperCase());
+        if (row) frRate = parseFloat(String(row.fundingRate ?? row.fr ?? 0));
+      } catch { /* keep 0 */ }
       let frSignal = 0;
-      const frRate = curFr.rate;
-      if (frRate > 0.0001) frSignal = -1;       // overleveraged longs → bearish
-      else if (frRate < -0.0001) frSignal = 1;  // overleveraged shorts → bullish squeeze
-      else if (curFr.prev !== 0) {
-        // momentum: rising = bearish pressure, falling = bullish squeeze
-        frSignal = frRate > curFr.prev ? -0.5 : frRate < curFr.prev ? 0.5 : 0;
-      }
+      const prevFr = prevFundingRef.current;
+      if (frRate > 0.0001) frSignal = -1;
+      else if (frRate < -0.0001) frSignal = 1;
+      else if (prevFr !== 0) frSignal = frRate > prevFr ? -0.5 : frRate < prevFr ? 0.5 : 0;
+      prevFundingRef.current = frRate;
 
       // 4. News + ETF (cache-first, shared with other pages)
       setStatusMsg('Checking SoSoValue signals…');
