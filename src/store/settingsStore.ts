@@ -41,7 +41,7 @@ interface SettingsState {
   // ───── Testnet credentials ─────
   /**
    * Master EVM wallet private key used on testnet to sign every write.
-   * The X-API-Key header is the derived address. Kept in memory only.
+   * The X-API-Key header defaults to the derived address. Kept in memory only.
    */
   testnetPrivateKey: string;
   /**
@@ -50,6 +50,14 @@ interface SettingsState {
    * separate master wallet and need to hit the matching account ID.
    */
   testnetEvmAddress: string;
+  /**
+   * Optional registered API key name sent as `X-API-Key` on testnet writes.
+   * When empty, the derived address of `testnetPrivateKey` is used (legacy
+   * behavior). Set this if the SoDEX testnet gateway rejects the derived
+   * address with an "api key not found" error — paste the name you used
+   * when registering the key. Persisted (public data, like the address).
+   */
+  testnetApiKeyName: string;
 
   // ───── Active-network passthrough fields ─────
   /**
@@ -82,6 +90,8 @@ interface SettingsState {
   setTestnetPrivateKey: (val: string) => void;
   /** Set the optional testnet EVM address override. */
   setTestnetEvmAddress: (val: string) => void;
+  /** Set the optional testnet registered API key name. */
+  setTestnetApiKeyName: (val: string) => void;
   /** Toggle between mainnet and testnet; swaps passthrough fields. */
   setIsTestnet: (val: boolean) => void;
   setDefaultSymbol: (val: string) => void;
@@ -120,12 +130,13 @@ function resolveActive(state: {
   mainnetEvmAddress: string;
   testnetPrivateKey: string;
   testnetEvmAddress: string;
+  testnetApiKeyName: string;
 }): { apiKeyName: string; privateKey: string; evmAddress: string } {
   if (state.isTestnet) {
     return {
-      // Testnet has no registered API key — the derived address of the
-      // private key is used at request time (see signer.resolveApiKey).
-      apiKeyName: '',
+      // If user registered an API key on testnet, use it. Otherwise fall
+      // back to the derived address at request time (see signer.resolveApiKey).
+      apiKeyName: state.testnetApiKeyName,
       privateKey: state.testnetPrivateKey,
       evmAddress: state.testnetEvmAddress,
     };
@@ -148,6 +159,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       testnetPrivateKey: '',
       testnetEvmAddress: '',
+      testnetApiKeyName: '',
 
       // Initial passthrough values — recomputed on every setter.
       apiKeyName: '',
@@ -192,6 +204,12 @@ export const useSettingsStore = create<SettingsState>()(
           return { ...next, ...resolveActive(next) };
         });
       },
+      setTestnetApiKeyName: (val) => {
+        set((s) => {
+          const next = { ...s, testnetApiKeyName: val.trim() };
+          return { ...next, ...resolveActive(next) };
+        });
+      },
       setIsTestnet: (val) => {
         set((s) => {
           const next = { ...s, isTestnet: val };
@@ -208,7 +226,7 @@ export const useSettingsStore = create<SettingsState>()(
       disconnect: () => {
         set((s) => {
           const cleared = s.isTestnet
-            ? { ...s, testnetPrivateKey: '', testnetEvmAddress: '' }
+            ? { ...s, testnetPrivateKey: '', testnetEvmAddress: '', testnetApiKeyName: '' }
             : { ...s, mainnetApiKeyName: '', mainnetPrivateKey: '', mainnetEvmAddress: '' };
           return { ...cleared, ...resolveActive(cleared) };
         });
@@ -219,8 +237,8 @@ export const useSettingsStore = create<SettingsState>()(
       // components that still call `setPrivateKey` etc.
       setApiKeyName: (val) => {
         const s = get();
-        if (s.isTestnet) return; // testnet has no apiKeyName concept
-        s.setMainnetApiKeyName(val);
+        if (s.isTestnet) s.setTestnetApiKeyName(val);
+        else s.setMainnetApiKeyName(val);
       },
       setPrivateKey: (val) => {
         const s = get();
@@ -242,8 +260,9 @@ export const useSettingsStore = create<SettingsState>()(
         // to persist. The private key is never written to disk.
         mainnetApiKeyName: state.mainnetApiKeyName,
         mainnetEvmAddress: state.mainnetEvmAddress,
-        // Testnet: EVM address is public too. Private key stays in memory.
+        // Testnet: EVM address + optional API key name are public. Private key stays in memory.
         testnetEvmAddress: state.testnetEvmAddress,
+        testnetApiKeyName: state.testnetApiKeyName,
         defaultSymbol: state.defaultSymbol,
         confirmOrders: state.confirmOrders,
         toastsEnabled: state.toastsEnabled,

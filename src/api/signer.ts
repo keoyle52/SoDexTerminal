@@ -179,22 +179,24 @@ export async function signPayload(
 }
 
 /**
- * Resolve the correct `X-API-Key` header value for the current network.
+ * Resolve the value sent as `X-API-Key` on every signed write.
  *
  * - **Mainnet**: the registered API key name (typically its EVM address).
  *   Falls back to the derived address when the user has not configured
  *   a name yet so unsigned GETs still work.
- * - **Testnet**: registered API keys do not exist; sign with the master
- *   wallet's private key and use its derived address as the X-API-Key.
+ * - **Testnet**: historically no registered API key was required — the
+ *   derived address of the master private key was used. Some SoDEX
+ *   testnet gateways now reject that with "api key not found", so when
+ *   the user provides an explicit `apiKeyName` (registered on testnet)
+ *   we honour it; otherwise we fall back to the derived address.
  */
 export function resolveApiKey(params: {
   apiKeyName?: string;
   privateKey?: string;
   isTestnet: boolean;
 }): string {
-  const { apiKeyName, privateKey, isTestnet } = params;
+  const { apiKeyName, privateKey } = params;
   const derived = deriveAddressFromPrivateKey(privateKey ?? '');
-  if (isTestnet) return derived;
   const name = (apiKeyName ?? '').trim();
   return name || derived;
 }

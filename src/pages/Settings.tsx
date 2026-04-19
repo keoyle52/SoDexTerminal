@@ -149,10 +149,11 @@ export const Settings: React.FC = () => {
                   <div className="mt-3 flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
                     <Info size={14} className="text-primary shrink-0 mt-0.5" />
                     <p className="text-xs text-primary leading-relaxed">
-                      Testnet: registered API keys do not exist here. Paste your master
-                      wallet private key — writes are signed with it and its derived
-                      address is used as X-API-Key. Mainnet credentials stay safely in
-                      a separate slot and are restored when you switch back.
+                      Testnet: paste your master wallet private key — writes are signed
+                      with it. By default its derived address is used as X-API-Key. If
+                      the gateway rejects it with “api key not found”, register an API
+                      key on testnet and paste its name below. Mainnet credentials stay
+                      safely in a separate slot and are restored when you switch back.
                     </p>
                   </div>
                 )}
@@ -241,6 +242,16 @@ export const Settings: React.FC = () => {
                       onChange={(e) => store.setTestnetPrivateKey(e.target.value)}
                       placeholder="0x..."
                       hint="Paste your master EVM wallet private key. Testnet signs every write with this key directly. Stored only in memory — never persisted."
+                    />
+
+                    <Input
+                      label="API Key Name (X-API-Key) — optional"
+                      type="text"
+                      value={store.testnetApiKeyName}
+                      onChange={(e) => store.setTestnetApiKeyName(e.target.value)}
+                      placeholder="Only needed if ‘api key not found’ errors appear"
+                      icon={<Key size={14} />}
+                      hint="Leave empty to use the derived address (legacy behaviour). Fill in only if the testnet gateway requires a registered API key — paste the name you used when registering it."
                     />
 
                     <Input
