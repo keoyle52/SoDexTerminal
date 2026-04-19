@@ -51,6 +51,15 @@ perpsClient.interceptors.request.use(async (config) => {
       config.headers['X-API-Key'] = effectiveApiKey;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
+
+      // Diagnostic: show the exact key/network used (helps debug
+      // "api key not found" on testnet). Only logs on writes.
+      if (typeof window !== 'undefined') {
+        console.debug(
+          `[perpsClient] ${method} ${config.url} → ${isTestnet ? 'TESTNET' : 'MAINNET'}`
+          + ` X-API-Key=${effectiveApiKey} action=${actionType}`,
+        );
+      }
     } catch (error) {
       return Promise.reject(error);
     }
@@ -63,5 +72,17 @@ perpsClient.interceptors.request.use(async (config) => {
 // Keeps the rest of the codebase simple: `const body = await perpsClient.get(...)`.
 perpsClient.interceptors.response.use(
   (response) => response.data,
-  (error) => Promise.reject(error),
+  (error) => {
+    // Surface SoDEX backend error message (often hidden in nested fields)
+    // so users see "api key not found" instead of generic 401/400.
+    const data = error?.response?.data;
+    const msg = data?.error ?? data?.message ?? data?.msg
+      ?? (typeof data === 'string' ? data : null)
+      ?? error?.message;
+    if (msg && typeof msg === 'string') {
+      // Replace the generic axios error with the actual backend reason
+      error.message = msg;
+    }
+    return Promise.reject(error);
+  },
 );

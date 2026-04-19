@@ -51,6 +51,13 @@ spotClient.interceptors.request.use(async (config) => {
       config.headers['X-API-Key'] = effectiveApiKey;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
+
+      if (typeof window !== 'undefined') {
+        console.debug(
+          `[spotClient] ${method} ${config.url} → ${isTestnet ? 'TESTNET' : 'MAINNET'}`
+          + ` X-API-Key=${effectiveApiKey} action=${actionType}`,
+        );
+      }
     } catch (error) {
       return Promise.reject(error);
     }
@@ -62,5 +69,14 @@ spotClient.interceptors.request.use(async (config) => {
 // Unwrap axios → the value we return to callers IS the JSON body.
 spotClient.interceptors.response.use(
   (response) => response.data,
-  (error) => Promise.reject(error),
+  (error) => {
+    const data = error?.response?.data;
+    const msg = data?.error ?? data?.message ?? data?.msg
+      ?? (typeof data === 'string' ? data : null)
+      ?? error?.message;
+    if (msg && typeof msg === 'string') {
+      error.message = msg;
+    }
+    return Promise.reject(error);
+  },
 );

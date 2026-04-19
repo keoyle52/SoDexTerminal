@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
   Brain, TrendingUp, TrendingDown, Minus, RefreshCw,
   CheckCircle2, XCircle, SkipForward, Target, Clock,
-  Activity, Newspaper, BarChart3, Zap, AlertTriangle,
+  Activity, Newspaper, BarChart3, Zap, AlertTriangle, Wallet,
 } from 'lucide-react';
-import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates } from '../api/services';
+import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates, placeOrder, updatePerpsLeverage } from '../api/services';
 import { useLiveTicker, type LiveTicker } from '../api/useLiveTicker';
 import { fetchSosoNews, fetchEtfCurrentMetrics, getNewsTitle } from '../api/sosoServices';
 import { analyzeSentiment } from '../api/geminiClient';
@@ -320,6 +320,8 @@ export const BtcPredictor: React.FC = () => {
     cycleStartTime, entryPrice,
     history, correct, wrong, skipped,
     setCurrentPrediction, resolvePrediction, addHistoryEntry, resetStats,
+    autoTradeEnabled, tradeQuantity, tradeLeverage, tradeOncePerStart,
+    setAutoTradeEnabled, setTradeQuantity, setTradeLeverage, setTradeOncePerStart,
   } = usePredictorStore();
 
   const [isRunning, setIsRunning] = useState(false);
@@ -331,6 +333,9 @@ export const BtcPredictor: React.FC = () => {
   const isRunningRef     = useRef(false);
   const cycleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether we've already placed an order during this Start session
+  // (used by tradeOncePerStart mode).
+  const hasOrderedThisRunRef = useRef(false);
 
   useEffect(() => { btcPriceRef.current  = btcPrice;  }, [btcPrice]);
   useEffect(() => { btcSymbolRef.current = btcSymbol; }, [btcSymbol]); // keep ref in sync
@@ -455,6 +460,63 @@ export const BtcPredictor: React.FC = () => {
   // ── Run full prediction cycle ───────────────────────────────────────────
   const neutralThresholdRef = useRef(neutralThreshold);
   useEffect(() => { neutralThresholdRef.current = neutralThreshold; }, [neutralThreshold]);
+
+  // ── Trade-settings refs (so the cycle reads latest values reactively) ──
+  const autoTradeEnabledRef = useRef(autoTradeEnabled);
+  const tradeQuantityRef    = useRef(tradeQuantity);
+  const tradeLeverageRef    = useRef(tradeLeverage);
+  const tradeOncePerStartRef = useRef(tradeOncePerStart);
+  useEffect(() => { autoTradeEnabledRef.current  = autoTradeEnabled;  }, [autoTradeEnabled]);
+  useEffect(() => { tradeQuantityRef.current     = tradeQuantity;     }, [tradeQuantity]);
+  useEffect(() => { tradeLeverageRef.current     = tradeLeverage;     }, [tradeLeverage]);
+  useEffect(() => { tradeOncePerStartRef.current = tradeOncePerStart; }, [tradeOncePerStart]);
+
+  /**
+   * Place a market order on the active perps symbol matching the predicted
+   * direction. UP → BUY (long), DOWN → SELL (short). Sets leverage first.
+   * Errors are caught and surfaced via toast — they never crash the cycle.
+   */
+  const placePredictorOrder = useCallback(async (direction: PredictionDirection): Promise<void> => {
+    if (direction === 'NEUTRAL') return;
+    const symbol = btcSymbolRef.current;
+    const qty    = tradeQuantityRef.current;
+    const lev    = tradeLeverageRef.current;
+    if (!symbol) {
+      toast.error('Auto-trade: BTC symbol not resolved yet');
+      return;
+    }
+    const qtyNum = parseFloat(qty);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
+      toast.error(`Auto-trade: invalid quantity "${qty}"`);
+      return;
+    }
+    try {
+      // 1. Set leverage (server may reject if open orders/positions exist —
+      //    we surface but still attempt the order).
+      try {
+        await updatePerpsLeverage(symbol, lev, 2);
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        toast(`Leverage update skipped: ${m}`, { icon: 'ℹ️' });
+      }
+      // 2. Place market order
+      await placeOrder(
+        {
+          symbol,
+          side: direction === 'UP' ? 1 : 2,  // 1=BUY, 2=SELL
+          type: 2,                            // 2=MARKET
+          quantity: qty,
+        },
+        'perps',
+      );
+      toast.success(
+        `Order placed: ${direction === 'UP' ? 'LONG' : 'SHORT'} ${qty} ${symbol} @ ${lev}x`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Auto-trade failed: ${msg}`);
+    }
+  }, []);
 
   const runPredictionCycle = useCallback(async () => {
     if (!isRunningRef.current) return;
@@ -598,6 +660,16 @@ export const BtcPredictor: React.FC = () => {
           : `↑ ${direction} predicted (score ${score.toFixed(3)}, ${agreementCount}/${totalSignals} signals agree) — resolving in 5 min…`,
       );
 
+      // 6.5. Auto-trade: place market order if enabled
+      if (direction !== 'NEUTRAL' && autoTradeEnabledRef.current) {
+        const onceMode = tradeOncePerStartRef.current;
+        if (!onceMode || !hasOrderedThisRunRef.current) {
+          hasOrderedThisRunRef.current = true;
+          // Fire-and-forget — don't block the cycle on order completion.
+          void placePredictorOrder(direction);
+        }
+      }
+
       // 7. Schedule resolution after 5 minutes
       if (direction !== 'NEUTRAL') {
         if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current);
@@ -627,7 +699,7 @@ export const BtcPredictor: React.FC = () => {
       if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
       cycleTimerRef.current = setTimeout(runPredictionCycle, CYCLE_MS);
     }
-  }, [fetchNewsSentiment, fetchEtfSignal, setCurrentPrediction, addHistoryEntry, resolvePrediction]);
+  }, [fetchNewsSentiment, fetchEtfSignal, setCurrentPrediction, addHistoryEntry, resolvePrediction, placePredictorOrder]);
 
   const handleStart = useCallback(() => {
     if (!sosoApiKey) {
@@ -635,6 +707,8 @@ export const BtcPredictor: React.FC = () => {
     }
     isRunningRef.current = true;
     setIsRunning(true);
+    // New session — reset the once-per-start order flag
+    hasOrderedThisRunRef.current = false;
     setStatusMsg('Starting first prediction cycle…');
 
     // Restore timers for any PENDING predictions (in case we stopped then restarted)
@@ -854,6 +928,90 @@ export const BtcPredictor: React.FC = () => {
           </span>
         )}
       </div>
+
+      {/* ── Auto-Trade settings (collapsed by default) ── */}
+      <Card className="p-4">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
+              <Wallet size={16} className="text-amber-400" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-text-primary">Auto-Trade</div>
+              <div className="text-[10px] text-text-muted">
+                {autoTradeEnabled
+                  ? `Will ${tradeOncePerStart ? 'open one trade per Start' : 'trade every prediction'}`
+                  : 'Place an order with the prediction'}
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer ml-auto">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={autoTradeEnabled}
+                onChange={(e) => setAutoTradeEnabled(e.target.checked)}
+                disabled={isRunning}
+              />
+              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white/30 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500/80" />
+            </label>
+          </div>
+
+          {autoTradeEnabled && (
+            <>
+              <div className="flex flex-col gap-1 min-w-[140px]">
+                <label className="text-[10px] text-text-muted uppercase tracking-wider">Quantity (BTC)</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={tradeQuantity}
+                  onChange={(e) => setTradeQuantity(e.target.value)}
+                  disabled={isRunning}
+                  className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm font-mono text-text-primary focus:outline-none focus:border-primary disabled:opacity-50"
+                  placeholder="0.001"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+                <label className="text-[10px] text-text-muted uppercase tracking-wider flex items-center justify-between">
+                  <span>Leverage</span>
+                  <span className="font-mono text-amber-400">{tradeLeverage}x</span>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={50}
+                  step={1}
+                  value={tradeLeverage}
+                  onChange={(e) => setTradeLeverage(parseInt(e.target.value, 10))}
+                  disabled={isRunning}
+                  className="accent-amber-500 disabled:opacity-50"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tradeOncePerStart}
+                  onChange={(e) => setTradeOncePerStart(e.target.checked)}
+                  disabled={isRunning}
+                  className="accent-amber-500"
+                />
+                <span>One order per Start</span>
+              </label>
+            </>
+          )}
+        </div>
+        {autoTradeEnabled && (
+          <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-[11px] text-amber-300/90">
+            <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+            <span>
+              <strong>Live trading.</strong> When the predictor produces UP, it places a market BUY (long); DOWN places a market SELL (short).
+              Leverage is applied via <code>updateLeverage</code> before each order. Disable to run signal-only.
+            </span>
+          </div>
+        )}
+      </Card>
 
       {/* Main layout: 2/3 left + 1/3 right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

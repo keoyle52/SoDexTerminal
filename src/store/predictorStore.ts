@@ -60,11 +60,25 @@ interface PredictorState {
   wrong: number;
   skipped: number;
 
+  // ── Trading settings (optional auto-order placement) ──
+  /** When true, predictor places a market order on each non-neutral prediction. */
+  autoTradeEnabled: boolean;
+  /** Order quantity in BTC. */
+  tradeQuantity: string;
+  /** Leverage applied before placing the order (1-50). */
+  tradeLeverage: number;
+  /** When true, only place order on the very first prediction after Start. */
+  tradeOncePerStart: boolean;
+
   // actions
   setCurrentPrediction: (d: PredictionDirection, conf: number, signals: SignalSnapshot, price: number) => void;
   resolvePrediction: (id: string, exitPrice: number) => void;
   addHistoryEntry: (entry: PredictionEntry) => void;
   resetStats: () => void;
+  setAutoTradeEnabled: (v: boolean) => void;
+  setTradeQuantity: (v: string) => void;
+  setTradeLeverage: (v: number) => void;
+  setTradeOncePerStart: (v: boolean) => void;
 }
 
 export const usePredictorStore = create<PredictorState>()(
@@ -79,6 +93,17 @@ export const usePredictorStore = create<PredictorState>()(
       correct: 0,
       wrong: 0,
       skipped: 0,
+
+      // Trading defaults: disabled, conservative size + leverage
+      autoTradeEnabled: false,
+      tradeQuantity: '0.001',
+      tradeLeverage: 5,
+      tradeOncePerStart: true,
+
+      setAutoTradeEnabled: (v) => set({ autoTradeEnabled: v }),
+      setTradeQuantity: (v) => set({ tradeQuantity: v }),
+      setTradeLeverage: (v) => set({ tradeLeverage: Math.max(1, Math.min(50, v)) }),
+      setTradeOncePerStart: (v) => set({ tradeOncePerStart: v }),
 
       setCurrentPrediction: (direction, confidence, signals, price) =>
         set({
@@ -131,6 +156,10 @@ export const usePredictorStore = create<PredictorState>()(
         correct: s.correct,
         wrong: s.wrong,
         skipped: s.skipped,
+        autoTradeEnabled: s.autoTradeEnabled,
+        tradeQuantity: s.tradeQuantity,
+        tradeLeverage: s.tradeLeverage,
+        tradeOncePerStart: s.tradeOncePerStart,
       }),
     },
   ),
