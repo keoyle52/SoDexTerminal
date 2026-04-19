@@ -251,9 +251,9 @@ const HistoryRow: React.FC<{ entry: PredictionEntry; idx: number }> = ({ entry, 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export const BtcPredictor: React.FC = () => {
-  const { sosoApiKey, geminiApiKey, isTestnet: _isTestnet } = useSettingsStore();
+  const { sosoApiKey, geminiApiKey, isDemoMode } = useSettingsStore();
 
-  // ── Discover real BTC symbol from REST tickers, seed useLiveTicker ────────
+  // ── Symbol discovery from SoDEX REST (used for klines/orderbook/funding) ──
   const [rawTicker, setRawTicker] = useState<LiveTicker[]>([]);
   const [btcSymbol, setBtcSymbol] = useState('BTC-USDC');
   const btcSymbolRef = useRef('BTC-USDC');
@@ -276,10 +276,35 @@ export const BtcPredictor: React.FC = () => {
     }).catch(() => {});
   }, []);
 
-  // useLiveTicker handles both demo (subscribeToDemoTicks every ~1.2 s)
-  // and live WS mode (miniTicker) — same path as Dashboard
+  // Demo mode: useLiveTicker drives price via subscribeToDemoTicks
   const liveTickers = useLiveTicker(rawTicker, [btcSymbol]);
-  const btcPrice = (liveTickers.find((t) => t.symbol === btcSymbol) ?? rawTicker[0])?.lastPrice ?? 0;
+  const demoPrice   = (liveTickers.find((t) => t.symbol === btcSymbol) ?? rawTicker[0])?.lastPrice ?? 0;
+
+  // Live mode: Binance public WebSocket — no API key, sub-second updates
+  const [binancePrice, setBinancePrice] = useState(0);
+  useEffect(() => {
+    if (isDemoMode) return;
+    // REST seed
+    fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
+      .then((r) => r.json())
+      .then((d: Record<string, unknown>) => {
+        const p = parseFloat(String(d.price ?? 0));
+        if (p > 0) setBinancePrice(p);
+      })
+      .catch(() => {});
+    // Live stream
+    const ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@aggTrade');
+    ws.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data as string) as Record<string, unknown>;
+        const p = parseFloat(String(d.p ?? 0));
+        if (p > 0) setBinancePrice(p);
+      } catch { /* ignore */ }
+    };
+    return () => { try { ws.close(); } catch { /* ignore */ } };
+  }, [isDemoMode]);
+
+  const btcPrice = isDemoMode ? demoPrice : (binancePrice || demoPrice);
 
   const {
     currentPrediction, currentConfidence, currentSignals,
