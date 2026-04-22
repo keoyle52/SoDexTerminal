@@ -44,14 +44,22 @@ export const Topbar: React.FC = () => {
           onClick={() => store.setIsDemoMode(!store.isDemoMode)}
           title={store.isDemoMode ? 'Exit Demo Mode' : 'Enable Demo Mode'}
           className={cn(
-            'flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all',
+            'flex items-center gap-2 font-bold px-4 py-2 rounded-xl transition-all shadow-lg hover:scale-105 active:scale-95',
             store.isDemoMode
-              ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
-              : 'bg-white/5 border-white/10 text-text-muted hover:text-text-primary hover:border-white/20'
+              ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white border-none shadow-amber-500/20'
+              : !isConnected
+                ? 'bg-gradient-to-r from-blue-600 to-primary text-white animate-pulse border-none shadow-primary/30'
+                : 'bg-white/5 border-white/10 text-text-muted hover:text-text-primary hover:border-white/20 text-xs px-3 py-1.5 rounded-full shadow-none font-semibold'
           )}
         >
-          <FlaskConical size={13} />
-          <span className="hidden sm:inline">{store.isDemoMode ? 'Demo' : 'Demo'}</span>
+          <FlaskConical size={!isConnected && !store.isDemoMode || store.isDemoMode ? 16 : 13} />
+          <span className="hidden sm:inline tracking-wide">
+            {store.isDemoMode 
+              ? 'Demo Active' 
+              : !isConnected 
+                ? '🚀 Try Demo Mode' 
+                : 'Demo'}
+          </span>
         </button>
 
         {/* Theme Toggle */}
