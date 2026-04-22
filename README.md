@@ -1,6 +1,6 @@
 # SoDEX PowerOps Terminal
 
-A professional-grade, browser-based trading toolset built on top of the [SoDEX](https://sodex.dev) decentralised perpetuals exchange. Crafted for the **SoDEX Buildathon Wave 1** — every feature runs entirely in the browser with zero backend, using EIP-712 signing and the SoDEX REST + WebSocket APIs directly.
+A professional-grade, browser-based trading toolset built on top of the [SoDEX]([https://sodex.com/join/KEOLE]) decentralised perpetuals exchange. Crafted for the **SoDEX Buildathon Wave 1** — every feature runs entirely in the browser with zero backend, using EIP-712 signing and the SoDEX REST + WebSocket APIs directly.
 
 ---
 
