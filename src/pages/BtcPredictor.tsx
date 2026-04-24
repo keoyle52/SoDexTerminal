@@ -29,9 +29,9 @@ const LS_NEWS_KEY   = 'predictor_news_cache';
 const LS_ETF_KEY    = 'predictor_etf_cache';
 const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
 const BTC_SYMBOL_HINT = 'BTC';        // substring match against fetchTickers result
-const NEUTRAL_WIDE  = 0.22;             // self-correcting threshold when accuracy drops
+const NEUTRAL_WIDE  = 0.18;             // self-correcting threshold when accuracy drops
 const ORDERBOOK_HISTORY = 30;           // rolling window for dynamic imbalance z-score
-const MIN_CONVICTION_SIGNALS = 4;       // min non-neutral signals agreeing before a trade fires
+const MIN_CONVICTION_SIGNALS = 3;       // min non-neutral signals agreeing before a trade fires
 
 // ─── Weights ──────────────────────────────────────────────────────────────────
 // Designed for the 5-minute horizon, where technical momentum
@@ -64,11 +64,11 @@ const W = {
  */
 function computeNeutralThreshold(atrPct: number, accuracyBelow45: boolean): number {
   if (accuracyBelow45) return NEUTRAL_WIDE;
-  if (!Number.isFinite(atrPct) || atrPct <= 0) return 0.14;
-  if (atrPct < 0.15) return 0.18;   // very quiet → demand strong consensus
-  if (atrPct < 0.25) return 0.15;
-  if (atrPct < 0.35) return 0.12;
-  return 0.10;                       // active → smaller scores already actionable
+  if (!Number.isFinite(atrPct) || atrPct <= 0) return 0.11;
+  if (atrPct < 0.15) return 0.14;   // very quiet → demand moderate consensus
+  if (atrPct < 0.25) return 0.11;
+  if (atrPct < 0.35) return 0.09;
+  return 0.08;                       // active → small scores already actionable
 }
 
 // ─── Technical Indicator Helpers ─────────────────────────────────────────────
@@ -214,8 +214,10 @@ function computeIndicators(klines: Kline[]): TechResult {
       const vwap = pvSum / vSum;
       vwapDeviation = vwap > 0 ? (closes[last] - vwap) / vwap : 0;
       // Mean reversion: price above VWAP → expect down, below → expect up.
-      // Sign is inverted.
-      vwapSignal = Math.max(-1, Math.min(1, -vwapDeviation / 0.0015));
+      // Sign is inverted. Scale 0.3% — only produces a meaningful signal
+      // when price has genuinely stretched far from VWAP, so it doesn't
+      // constantly fight ROC in trending regimes.
+      vwapSignal = Math.max(-1, Math.min(1, -vwapDeviation / 0.003));
     }
   }
 
@@ -792,16 +794,18 @@ export const BtcPredictor: React.FC = () => {
         console.warn('[BtcPredictor] fetchFundingRates failed:', err);
       }
       // Absolute-rate signal (contrarian: positive funding = longs paying,
-      // expect mean-reverting pullback). Scaled so ±0.01% → saturate ±1.
+      // expect mean-reverting pullback). Scaled so ±0.005% → saturate ±1;
+      // BTC perp funding typically sits in the 0.003–0.01% range so the
+      // previous 0.01% scale produced near-zero signals in normal markets.
       const prevFr = prevFundingRef.current;
-      const frSignal = Math.max(-1, Math.min(1, -frRate / 0.0001));
+      const frSignal = Math.max(-1, Math.min(1, -frRate / 0.00005));
       // Momentum signal — change in funding between cycles. Rising funding
       // often precedes a squeeze in the OPPOSITE direction to the crowd.
       let fundingMomentum = 0;
       let fundingMomentumSignal = 0;
       if (prevFr !== 0 && frRate !== 0) {
         fundingMomentum = frRate - prevFr;
-        fundingMomentumSignal = Math.max(-1, Math.min(1, -fundingMomentum / 0.00005));
+        fundingMomentumSignal = Math.max(-1, Math.min(1, -fundingMomentum / 0.00003));
       }
       prevFundingRef.current = frRate !== 0 ? frRate : prevFr;
 
@@ -844,10 +848,13 @@ export const BtcPredictor: React.FC = () => {
         tech.microstructureSignal, tech.rocSignal, tech.emaSignal, tech.macdSignal, tech.rsiSignal,
         obSignal, news.score, etf.score, tech.vwapSignal, frSignal, fundingMomentumSignal,
       ];
-      const dirSign = direction === 'UP' ? 1 : direction === 'DOWN' ? -1 : 0;
+      // When the proposed direction is NEUTRAL we still want a "what's
+      // the bias?" agreement count for the UI, so count along the sign
+      // of the raw score rather than zeroing out.
+      const dirSign = direction === 'UP' ? 1 : direction === 'DOWN' ? -1 : Math.sign(score);
       const nonNeutral = signalValues.filter((v) => Math.abs(v) > 0.05);
       const agreeing   = nonNeutral.filter((v) => Math.sign(v) === dirSign);
-      let agreementCount = direction === 'NEUTRAL' ? 0 : agreeing.length;
+      const agreementCount = agreeing.length;
       const totalSignals = nonNeutral.length;
 
       // Conviction filter — even if the weighted score clears the
@@ -857,9 +864,38 @@ export const BtcPredictor: React.FC = () => {
       let convictionFailed = false;
       if (direction !== 'NEUTRAL' && agreeing.length < MIN_CONVICTION_SIGNALS) {
         direction = 'NEUTRAL';
-        agreementCount = 0;
         convictionFailed = true;
       }
+      const neutralReason: 'weak_score' | 'low_conviction' | null =
+        direction === 'NEUTRAL'
+          ? (convictionFailed ? 'low_conviction' : 'weak_score')
+          : null;
+
+      // Debug log — always on so the user can open devtools (F12 →
+      // Console) and see exactly why each cycle went NEUTRAL or fired.
+      // Strips to a single line per cycle.
+      console.log(
+        `[Predictor] score=${score.toFixed(3)} `
+        + `threshold=±${threshold.toFixed(2)} `
+        + `agreeing=${agreeing.length}/${nonNeutral.length} `
+        + `(min ${MIN_CONVICTION_SIGNALS}) `
+        + `atr=${tech.atrPct.toFixed(2)}% `
+        + `→ ${direction}`
+        + (convictionFailed ? ' [conviction fail]' : ''),
+        {
+          microstructure: +tech.microstructureSignal.toFixed(2),
+          roc:            +tech.rocSignal.toFixed(2),
+          ema:            +tech.emaSignal.toFixed(2),
+          macd:           +tech.macdSignal.toFixed(2),
+          rsi:            +tech.rsiSignal.toFixed(2),
+          orderbook:      +obSignal.toFixed(2),
+          news:           +news.score.toFixed(2),
+          etf:            +etf.score.toFixed(2),
+          vwap:           +tech.vwapSignal.toFixed(2),
+          fundingRate:    +frSignal.toFixed(2),
+          fundingMom:     +fundingMomentumSignal.toFixed(2),
+        },
+      );
 
       const signals: SignalSnapshot = {
         newsSentiment: news.score,
@@ -888,6 +924,7 @@ export const BtcPredictor: React.FC = () => {
         weightedScore: score,
         agreementCount,
         totalSignals,
+        neutralReason,
       };
 
       setCurrentPrediction(direction, confidence, signals, price);
@@ -1436,13 +1473,32 @@ export const BtcPredictor: React.FC = () => {
                   {currentPrediction === 'UP'   && <TrendingUp  size={40} className="text-emerald-400" />}
                   {currentPrediction === 'DOWN' && <TrendingDown size={40} className="text-red-400" />}
                   {currentPrediction === 'NEUTRAL' && <Minus size={40} className="text-text-muted" />}
-                  <span className={cn(
-                    'text-2xl font-black tracking-wider',
-                    currentPrediction === 'UP' ? 'text-emerald-400' :
-                    currentPrediction === 'DOWN' ? 'text-red-400' : 'text-text-muted',
-                  )}>
-                    {currentPrediction === 'UP' ? '↑ UP' : currentPrediction === 'DOWN' ? '↓ DOWN' : '— NEUTRAL'}
-                  </span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={cn(
+                      'text-2xl font-black tracking-wider',
+                      currentPrediction === 'UP' ? 'text-emerald-400' :
+                      currentPrediction === 'DOWN' ? 'text-red-400' : 'text-text-muted',
+                    )}>
+                      {currentPrediction === 'UP' ? '↑ UP' : currentPrediction === 'DOWN' ? '↓ DOWN' : '— NEUTRAL'}
+                    </span>
+                    {currentPrediction === 'NEUTRAL' && signals?.neutralReason && (
+                      <span
+                        className={cn(
+                          'text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full border',
+                          signals.neutralReason === 'weak_score'
+                            ? 'bg-white/5 text-text-muted border-white/10'
+                            : 'bg-amber-400/10 text-amber-400 border-amber-400/30',
+                        )}
+                        title={
+                          signals.neutralReason === 'weak_score'
+                            ? `|score| ${Math.abs(signals.weightedScore).toFixed(3)} did not clear ±${neutralThreshold.toFixed(2)}`
+                            : `Score cleared threshold but only ${signals.agreementCount}/${MIN_CONVICTION_SIGNALS} signals agreed`
+                        }
+                      >
+                        {signals.neutralReason === 'weak_score' ? 'Weak score' : 'Low conviction'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-center">
                   <div className="text-xs text-text-muted mb-1">Confidence</div>
@@ -1476,7 +1532,10 @@ export const BtcPredictor: React.FC = () => {
                   )}>
                     {signals ? `${signals.weightedScore >= 0 ? '+' : ''}${signals.weightedScore.toFixed(3)}` : '—'}
                   </div>
-                  <div className="text-[10px] text-text-muted">threshold ±0.1</div>
+                  <div className="text-[10px] text-text-muted" title="Volatility-adaptive. Widens when ATR is low or recent accuracy drops below 45%.">
+                    threshold ±{neutralThreshold.toFixed(2)}
+                    {signals && ` · ${signals.agreementCount}/${signals.totalSignals} agree (min ${MIN_CONVICTION_SIGNALS})`}
+                  </div>
                 </div>
                 {signals && (
                   <div className="flex items-center gap-3 text-[11px] text-text-muted">

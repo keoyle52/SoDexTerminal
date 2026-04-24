@@ -36,8 +36,12 @@ export interface SignalSnapshot {
   atrPct?: number;              // ATR as % of price (volatility regime)
   // Composite
   weightedScore: number;
-  agreementCount: number;       // how many signals agree with direction
+  agreementCount: number;       // how many signals agree with proposed direction (pre-conviction)
   totalSignals: number;         // total non-neutral signals counted
+  /** Populated only when the cycle resolved to NEUTRAL; null otherwise.
+   *  'weak_score'     — |weightedScore| did not clear the threshold
+   *  'low_conviction' — score cleared threshold but too few signals agreed */
+  neutralReason?: 'weak_score' | 'low_conviction' | null;
 }
 
 export interface PredictionEntry {
