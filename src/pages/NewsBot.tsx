@@ -53,10 +53,15 @@ const MANUAL_POLL_MIN_INTERVAL_MS = 30_000;
 // without this cap we'd burn 10 Gemini calls in one tick.
 const SENTIMENT_PER_POLL_LIMIT = 5;
 
-// ── Trade-management defaults ───────────────────────────────────────────────
+// ── Trade-management defaults ──────────────────────────────────────────────
 // Sane starting values for a news-spike scalp on a perp. The user can
 // override every one of these in the UI; only the leverage cap is hard.
-const DEFAULT_NOTIONAL_USDT  = '50';
+//
+// Margin is the collateral the user actually puts up out of their
+// wallet. Effective exposure = margin × leverage. So a 10 USDT margin
+// at 10× opens a 100 USDT position — which means 10× the airdrop
+// volume per trade vs treating the same number as raw notional.
+const DEFAULT_MARGIN_USDT    = '10';
 const DEFAULT_LEVERAGE       = 5;
 const DEFAULT_HOLD_MINUTES   = 3;
 const DEFAULT_TP_PCT         = 1.5;
@@ -125,9 +130,10 @@ export const NewsBot: React.FC = () => {
   const [newSide, setNewSide] = useState<'BUY' | 'SELL'>('BUY');
   const [newCat, setNewCat] = useState(0);
   // ── Trade execution settings (per-trade risk knobs) ────────────────────
-  // Notional in USDT, leverage cap, hold window, TP/SL percentages and a
-  // fallback coin used when the headline contains no recognisable ticker.
-  const [notionalUsdt, setNotionalUsdt] = useState(DEFAULT_NOTIONAL_USDT);
+  // Margin = collateral pulled from wallet. Position size on the book =
+  // marginUsdt × leverage. The other knobs (TP%, SL%, hold time, fallback
+  // coin) work on top of that resolved position size.
+  const [marginUsdt,   setMarginUsdt]   = useState(DEFAULT_MARGIN_USDT);
   const [leverage,     setLeverage]     = useState<number>(DEFAULT_LEVERAGE);
   const [holdMinutes,  setHoldMinutes]  = useState<number>(DEFAULT_HOLD_MINUTES);
   const [takeProfitPct,setTakeProfitPct]= useState<number>(DEFAULT_TP_PCT);
@@ -156,7 +162,7 @@ export const NewsBot: React.FC = () => {
   // Track every user-tunable trade param in a ref so executeTrade() can
   // read the latest value without being recreated each render.
   const filterCoinRef    = useRef('');
-  const notionalRef      = useRef(DEFAULT_NOTIONAL_USDT);
+  const marginRef        = useRef(DEFAULT_MARGIN_USDT);
   const leverageRef      = useRef<number>(DEFAULT_LEVERAGE);
   const holdMinutesRef   = useRef<number>(DEFAULT_HOLD_MINUTES);
   const takeProfitPctRef = useRef<number>(DEFAULT_TP_PCT);
@@ -181,7 +187,7 @@ export const NewsBot: React.FC = () => {
   // Keep refs synced with their state counterparts so callbacks always read
   // the freshest user input without invalidating themselves on each change.
   useEffect(() => { filterCoinRef.current    = filterCoin;    }, [filterCoin]);
-  useEffect(() => { notionalRef.current      = notionalUsdt;  }, [notionalUsdt]);
+  useEffect(() => { marginRef.current        = marginUsdt;    }, [marginUsdt]);
   useEffect(() => { leverageRef.current      = leverage;      }, [leverage]);
   useEffect(() => { holdMinutesRef.current   = holdMinutes;   }, [holdMinutes]);
   useEffect(() => { takeProfitPctRef.current = takeProfitPct; }, [takeProfitPct]);
@@ -306,9 +312,9 @@ export const NewsBot: React.FC = () => {
       addLog('error', `Price unavailable for ${symbol} — skipping`);
       return;
     }
-    const usdt = parseFloat(notionalRef.current);
-    if (!Number.isFinite(usdt) || usdt <= 0) {
-      addLog('error', `Invalid notional "${notionalRef.current}" — set a positive USDT amount`);
+    const margin = parseFloat(marginRef.current);
+    if (!Number.isFinite(margin) || margin <= 0) {
+      addLog('error', `Invalid margin "${marginRef.current}" — set a positive USDT amount`);
       return;
     }
     // Clamp the user's leverage to the symbol's actual exchange cap.
@@ -321,9 +327,13 @@ export const NewsBot: React.FC = () => {
       addLog('info', `ℹ ${symbol} caps leverage at ${meta.maxLeverage}× — using ${lev}× instead of ${requested}×`);
     }
 
+    // Effective position size = margin × leverage. This is the notional
+    // exposure the order book actually sees — the user only puts up
+    // `margin` from their wallet as collateral.
+    const positionUsdt = margin * lev;
     // qty rounded to 4 decimals — conservative for most SoDEX step sizes;
     // the server may re-round inside placePerpsOrder.
-    const qty = Math.max(0.0001, +(usdt / price).toFixed(4));
+    const qty = Math.max(0.0001, +(positionUsdt / price).toFixed(4));
     const side = rule.side; // 'BUY' or 'SELL'
 
     try {
@@ -363,7 +373,7 @@ export const NewsBot: React.FC = () => {
 
       addLog(
         'trade',
-        `🚀 ${newPos.side} ${qty.toFixed(4)} ${symbol} @ ${price.toFixed(4)} — ${lev}× — TP +${takeProfitPctRef.current}% / SL −${stopLossPctRef.current}% / hold ${holdMinutesRef.current}m`,
+        `🚀 ${newPos.side} ${qty.toFixed(4)} ${symbol} @ ${price.toFixed(4)} — ${margin.toFixed(2)} USDT margin × ${lev}× = ${positionUsdt.toFixed(2)} USDT position — TP +${takeProfitPctRef.current}% / SL −${stopLossPctRef.current}% / hold ${holdMinutesRef.current}m`,
       );
       toast.success(`${newPos.side} ${symbol} opened`);
     } catch (err) {
@@ -646,14 +656,33 @@ export const NewsBot: React.FC = () => {
           </div>
           <div className="space-y-3">
             <Input
-              label="Notional per trade (USDT)"
+              label="Margin per trade (USDT)"
               type="number"
               min="1"
               step="1"
-              value={notionalUsdt}
-              onChange={(e) => setNotionalUsdt(e.target.value)}
-              placeholder="50"
+              value={marginUsdt}
+              onChange={(e) => setMarginUsdt(e.target.value)}
+              placeholder="10"
             />
+
+            {/* Live exposure preview — makes the margin×leverage relationship
+                explicit so the user knows exactly what size order will hit
+                the book. The wallet only loses `margin` USDT as collateral. */}
+            {(() => {
+              const m  = parseFloat(marginUsdt) || 0;
+              const lv = Math.min(leverage, effectiveLeverageCap);
+              const pos = m * lv;
+              return (
+                <div className="flex items-center justify-between text-[10px] -mt-1.5 px-1">
+                  <span className="text-text-muted">
+                    Position size on book
+                  </span>
+                  <span className="font-mono font-bold text-primary">
+                    {m.toFixed(2)} × {lv}× = {pos.toFixed(2)} USDT
+                  </span>
+                </div>
+              );
+            })()}
 
             {/* Leverage slider — hard-bounded by the fallback coin's actual
                 exchange cap from getPerpsSymbolMeta(). When the bot opens a
@@ -733,7 +762,9 @@ export const NewsBot: React.FC = () => {
             <div className="text-[10px] text-text-muted leading-relaxed bg-white/[0.02] rounded-md p-2 border border-white/5">
               <span className="text-primary font-semibold">How it works:</span> headline → ticker (e.g. "SOL ETF approved" → SOL)
               → SoDEX perps symbol → leverage applied → MARKET open with{' '}
-              <span className="text-text-secondary">{notionalUsdt || 0} USDT</span> notional. Position auto-closes on{' '}
+              <span className="text-text-secondary">{marginUsdt || 0} USDT</span> margin{' '}
+              × <span className="text-text-secondary">{leverage}×</span> ={' '}
+              <span className="text-text-secondary">{((parseFloat(marginUsdt) || 0) * leverage).toFixed(2)} USDT</span> position. Auto-closes on{' '}
               <span className="text-emerald-400">+{takeProfitPct}%</span> TP,{' '}
               <span className="text-red-400">−{stopLossPct}%</span> SL, or after{' '}
               <span className="text-text-secondary">{holdMinutes}m</span>.
