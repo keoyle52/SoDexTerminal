@@ -238,3 +238,64 @@ export function getNewsTitle(item: SosoNewsItem): string {
   const en = item.multilanguageContent?.find((c) => c.language === 'en');
   return en?.title ?? item.author ?? '(no title)';
 }
+
+// ─── Coin extraction ─────────────────────────────────────────────────────────
+// Map of full names → tickers so headlines like "Bitcoin ETF approved"
+// resolve to BTC instead of falling through to the default. Add to this
+// list as new tradable coins emerge.
+const NAME_TO_TICKER: Record<string, string> = {
+  bitcoin: 'BTC',     ethereum: 'ETH',    solana:   'SOL',
+  ripple:  'XRP',     cardano:  'ADA',    dogecoin: 'DOGE',
+  avalanche: 'AVAX',  polkadot: 'DOT',    chainlink:'LINK',
+  binance: 'BNB',     tron:     'TRX',    litecoin: 'LTC',
+  bitcoincash: 'BCH', uniswap:  'UNI',    cosmos:   'ATOM',
+  stellar: 'XLM',     internet: 'ICP',    filecoin: 'FIL',
+  aptos:   'APT',     arbitrum: 'ARB',    optimism: 'OP',
+  near:    'NEAR',    hedera:   'HBAR',   vechain:  'VET',
+  algorand:'ALGO',    sandbox:  'SAND',   decentraland:'MANA',
+  aave:    'AAVE',    apecoin:  'APE',    shiba:    'SHIB',
+  pepe:    'PEPE',    sui:      'SUI',    toncoin:  'TON',
+  celestia:'TIA',     sei:      'SEI',    injective:'INJ',
+  thorchain:'RUNE',   render:   'RNDR',   bittensor:'TAO',
+  ordinals:'ORDI',    bonk:     'BONK',   jupiter:  'JUP',
+  worldcoin:'WLD',    pendle:   'PENDLE', polygon:  'MATIC',
+};
+
+// Tradable tickers in priority order. The FIRST ticker that appears in a
+// headline (with word-boundary matching to avoid false hits) wins. We
+// rank majors first so a headline like "Solana and Bitcoin both rally"
+// resolves to BTC over SOL.
+const COMMON_COINS = [
+  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'TRX',
+  'LINK', 'DOT', 'MATIC', 'TON', 'SHIB', 'LTC', 'BCH', 'NEAR', 'UNI',
+  'APT', 'ATOM', 'ICP', 'FIL', 'ARB', 'OP', 'XLM', 'ETC', 'HBAR', 'VET',
+  'ALGO', 'SAND', 'MANA', 'AAVE', 'APE', 'PEPE', 'SUI', 'TIA', 'SEI',
+  'INJ', 'RUNE', 'RNDR', 'TAO', 'ORDI', 'WIF', 'BONK', 'JUP', 'WLD',
+  'PENDLE', 'GRT',
+];
+
+/**
+ * Pull the most-likely tradable ticker out of a news headline.
+ *
+ *  1. Word-boundary match against every entry in COMMON_COINS, in
+ *     priority order — the first hit wins.
+ *  2. Fallback: long-form name lookup (Bitcoin → BTC, etc.).
+ *  3. If nothing matches, return the caller-provided fallback ticker
+ *     (typically the user's "default coin" setting).
+ *
+ * The function is case-insensitive but the result is always upper-case.
+ */
+export function extractCoinFromNews(title: string, fallback = 'BTC'): string {
+  if (!title) return fallback.toUpperCase();
+  const upper = title.toUpperCase();
+  for (const ticker of COMMON_COINS) {
+    // \b...\b ensures "ATOM" won't match the inside of "PLATFORM",
+    // and "BTC" won't match the inside of "BTCUSDT" (rare, but cheap).
+    if (new RegExp(`\\b${ticker}\\b`).test(upper)) return ticker;
+  }
+  const lower = title.toLowerCase();
+  for (const [name, ticker] of Object.entries(NAME_TO_TICKER)) {
+    if (new RegExp(`\\b${name}\\b`).test(lower)) return ticker;
+  }
+  return fallback.toUpperCase();
+}

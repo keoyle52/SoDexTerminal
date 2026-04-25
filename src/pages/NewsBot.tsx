@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Play, Square, Zap, RefreshCw, Settings2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { Play, Square, Zap, RefreshCw, Settings2, TrendingUp, TrendingDown, AlertCircle, X as XIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   fetchSosoNews,
@@ -7,9 +7,10 @@ import {
   fetchSosoCoins,
   NEWS_CATEGORIES,
   getNewsTitle,
+  extractCoinFromNews,
 } from '../api/sosoServices';
 import type { SosoCoin, SosoNewsItem } from '../api/sosoServices';
-import { placeOrder } from '../api/services';
+import { placeOrder, fetchTickers, fetchSymbols, updatePerpsLeverage } from '../api/services';
 import { useSettingsStore } from '../store/settingsStore';
 import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
@@ -52,6 +53,42 @@ const MANUAL_POLL_MIN_INTERVAL_MS = 30_000;
 // without this cap we'd burn 10 Gemini calls in one tick.
 const SENTIMENT_PER_POLL_LIMIT = 5;
 
+// ── Trade-management defaults ───────────────────────────────────────────────
+// Sane starting values for a news-spike scalp on a perp. The user can
+// override every one of these in the UI; only the leverage cap is hard.
+const DEFAULT_NOTIONAL_USDT  = '50';
+const DEFAULT_LEVERAGE       = 5;
+const DEFAULT_HOLD_MINUTES   = 3;
+const DEFAULT_TP_PCT         = 1.5;
+const DEFAULT_SL_PCT         = 0.8;
+const DEFAULT_FALLBACK_COIN  = 'BTC';
+// Position monitor cadence. Hits the cached fetchTickers() so cost is
+// effectively one network round-trip per 30s regardless of how many
+// open positions exist.
+const POSITION_TRACK_MS      = 15_000;
+// Hard cap exposed to the slider. SoDEX's per-symbol max varies (BTC/ETH
+// up to ~50×, alts lower). updatePerpsLeverage() returns an error if the
+// requested leverage exceeds the symbol cap; we surface the message and
+// proceed with the order anyway since the server will normalise.
+const LEVERAGE_MIN = 1;
+const LEVERAGE_MAX = 50;
+
+interface NewsBotPosition {
+  id: string;
+  symbol: string;
+  side: 'LONG' | 'SHORT';
+  qty: number;
+  entryPrice: number;
+  leverage: number;
+  openedAt: number;
+  tpPrice: number;
+  slPrice: number;
+  expiresAt: number;
+  triggerHeadline: string;
+  triggerKeyword: string;
+  lastPrice: number;     // updated each tracker tick for live PnL display
+}
+
 async function analyzeSentimentWithTimeout(title: string, timeoutMs = AI_TIMEOUT_MS): Promise<'BULLISH' | 'BEARISH' | 'NEUTRAL'> {
   return Promise.race([
     analyzeSentiment(title),
@@ -85,21 +122,38 @@ export const NewsBot: React.FC = () => {
   const [newKeyword, setNewKeyword] = useState('');
   const [newSide, setNewSide] = useState<'BUY' | 'SELL'>('BUY');
   const [newCat, setNewCat] = useState(0);
-  const [symbol, setSymbol] = useState('BTC-USD');
-  const [market, setMarket] = useState<'perps' | 'spot'>('perps');
-  const [quantity, setQuantity] = useState('0.001');
+  // ── Trade execution settings (per-trade risk knobs) ────────────────────
+  // Notional in USDT, leverage cap, hold window, TP/SL percentages and a
+  // fallback coin used when the headline contains no recognisable ticker.
+  const [notionalUsdt, setNotionalUsdt] = useState(DEFAULT_NOTIONAL_USDT);
+  const [leverage,     setLeverage]     = useState<number>(DEFAULT_LEVERAGE);
+  const [holdMinutes,  setHoldMinutes]  = useState<number>(DEFAULT_HOLD_MINUTES);
+  const [takeProfitPct,setTakeProfitPct]= useState<number>(DEFAULT_TP_PCT);
+  const [stopLossPct,  setStopLossPct]  = useState<number>(DEFAULT_SL_PCT);
+  const [fallbackCoin, setFallbackCoin] = useState<string>(DEFAULT_FALLBACK_COIN);
+
   const [coins, setCoins] = useState<SosoCoin[]>([]);
-  const [filterCoin, setFilterCoin] = useState<string>(''); // currencyId
+  const [filterCoin, setFilterCoin] = useState<string>(''); // SoSoValue currencyId
+  const [openPositions, setOpenPositions] = useState<NewsBotPosition[]>([]);
   const [triggeredIds] = useState(() => new Map<string, number>());
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runningRef = useRef(false);
   const useAiRef = useRef(false); // needed for closure in interval
   const pollInFlightRef = useRef(false);
   const lastManualPollRef = useRef(0);
-  // Track filterCoin in a ref so the bootstrap fetch (run inside `start`)
-  // and the interval-driven poll always see the latest selection without
-  // forcing `start` to recompute every time the user changes the filter.
-  const filterCoinRef = useRef('');
+
+  // Track every user-tunable trade param in a ref so executeTrade() can
+  // read the latest value without being recreated each render.
+  const filterCoinRef    = useRef('');
+  const notionalRef      = useRef(DEFAULT_NOTIONAL_USDT);
+  const leverageRef      = useRef<number>(DEFAULT_LEVERAGE);
+  const holdMinutesRef   = useRef<number>(DEFAULT_HOLD_MINUTES);
+  const takeProfitPctRef = useRef<number>(DEFAULT_TP_PCT);
+  const stopLossPctRef   = useRef<number>(DEFAULT_SL_PCT);
+  const fallbackCoinRef  = useRef<string>(DEFAULT_FALLBACK_COIN);
+  const openPositionsRef = useRef<NewsBotPosition[]>([]);
 
   const addLog = useCallback((type: LogEntry['type'], message: string) => {
     setLogs((prev) => [
@@ -115,6 +169,17 @@ export const NewsBot: React.FC = () => {
     }
   }, [sosoApiKey]);
 
+  // Keep refs synced with their state counterparts so callbacks always read
+  // the freshest user input without invalidating themselves on each change.
+  useEffect(() => { filterCoinRef.current    = filterCoin;    }, [filterCoin]);
+  useEffect(() => { notionalRef.current      = notionalUsdt;  }, [notionalUsdt]);
+  useEffect(() => { leverageRef.current      = leverage;      }, [leverage]);
+  useEffect(() => { holdMinutesRef.current   = holdMinutes;   }, [holdMinutes]);
+  useEffect(() => { takeProfitPctRef.current = takeProfitPct; }, [takeProfitPct]);
+  useEffect(() => { stopLossPctRef.current   = stopLossPct;   }, [stopLossPct]);
+  useEffect(() => { fallbackCoinRef.current  = fallbackCoin;  }, [fallbackCoin]);
+  useEffect(() => { openPositionsRef.current = openPositions; }, [openPositions]);
+
   const matchesRules = useCallback((item: SosoNewsItem): TriggerRule | null => {
     const title = getNewsTitle(item).toLowerCase();
     for (const rule of rules) {
@@ -126,26 +191,151 @@ export const NewsBot: React.FC = () => {
     return null;
   }, [rules]);
 
+  /**
+   * Resolve a ticker ("BTC") to a SoDEX perps symbol that actually
+   * exists. Caches the result on the in-memory symbols cache exposed
+   * by services.ts. Returns null when no compatible market is listed
+   * — the caller logs and skips the trade.
+   */
+  const resolvePerpsSymbol = useCallback(async (ticker: string): Promise<string | null> => {
+    const candidates = [`${ticker}-USD`, `${ticker}-USDC`, `${ticker}-USDT`];
+    try {
+      const symbols = await fetchSymbols('perps');
+      const list = (Array.isArray(symbols) ? symbols : ((symbols as Record<string, unknown>)?.symbols ?? (symbols as Record<string, unknown>)?.data ?? [])) as Record<string, unknown>[];
+      for (const cand of candidates) {
+        if (list.some((s) => String(s.symbol ?? s.name ?? s.ticker ?? '').toUpperCase() === cand)) {
+          return cand;
+        }
+      }
+    } catch { /* fall through to null */ }
+    return null;
+  }, []);
+
+  /**
+   * Look up the latest mark/last price for a perps symbol via the
+   * (cached) ticker payload. Returns 0 on any failure so callers can
+   * safely guard against that sentinel.
+   */
+  const fetchSymbolPrice = useCallback(async (symbol: string): Promise<number> => {
+    try {
+      const tickers = await fetchTickers('perps') as Record<string, unknown>[];
+      const row = tickers.find((t) => String(t.symbol ?? '').toUpperCase() === symbol.toUpperCase());
+      const price = parseFloat(String(row?.lastPrice ?? row?.markPrice ?? row?.lastPx ?? 0));
+      return Number.isFinite(price) && price > 0 ? price : 0;
+    } catch { return 0; }
+  }, []);
+
+  /**
+   * Close a single managed position with a reduce-only market order.
+   * Removes it from `openPositions` on success, surfaces the realised
+   * PnL in the activity log.
+   */
+  const closeManagedPosition = useCallback(async (pos: NewsBotPosition, reason: string): Promise<void> => {
+    try {
+      await placeOrder(
+        {
+          symbol: pos.symbol,
+          side: pos.side === 'LONG' ? 2 : 1,   // opposite
+          type: 2,                              // MARKET
+          quantity: pos.qty.toString(),
+          reduceOnly: true,
+        },
+        'perps',
+      );
+      const exitPrice = pos.lastPrice > 0 ? pos.lastPrice : pos.entryPrice;
+      const pnlPct = pos.side === 'LONG'
+        ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * 100
+        : ((pos.entryPrice - exitPrice) / pos.entryPrice) * 100;
+      const pnlLeveraged = pnlPct * pos.leverage;
+      addLog('trade', `🏁 Closed ${pos.side} ${pos.qty.toFixed(4)} ${pos.symbol} @ ${exitPrice.toFixed(4)} (${reason}) — PnL ${pnlLeveraged >= 0 ? '+' : ''}${pnlLeveraged.toFixed(2)}% (leveraged)`);
+      setOpenPositions((prev) => prev.filter((p) => p.id !== pos.id));
+    } catch (err) {
+      addLog('error', `❌ Close failed for ${pos.symbol}: ${getErrorMessage(err)}`);
+    }
+  }, [addLog]);
+
   const executeTrade = useCallback(async (rule: TriggerRule, item: SosoNewsItem) => {
     const title = getNewsTitle(item);
-    addLog('trade', `🔔 Trigger: "${rule.keyword}" → ${rule.side} ${quantity} ${symbol}`);
+    if (!privateKey) {
+      addLog('error', 'No wallet configured — set Private Key in Settings');
+      return;
+    }
+
+    // 1. Resolve the coin from the headline (with the user's fallback).
+    const ticker = extractCoinFromNews(title, fallbackCoinRef.current);
+    addLog('info', `� Trigger "${rule.keyword}" on ${ticker} — "${title.slice(0, 60)}"`);
+
+    // 2. Map ticker → SoDEX perps symbol that actually exists.
+    const symbol = await resolvePerpsSymbol(ticker);
+    if (!symbol) {
+      addLog('error', `${ticker} not listed on SoDEX perps — skipping`);
+      return;
+    }
+
+    // 3. Fetch latest price + sanity-check user inputs.
+    const price = await fetchSymbolPrice(symbol);
+    if (price <= 0) {
+      addLog('error', `Price unavailable for ${symbol} — skipping`);
+      return;
+    }
+    const usdt = parseFloat(notionalRef.current);
+    if (!Number.isFinite(usdt) || usdt <= 0) {
+      addLog('error', `Invalid notional "${notionalRef.current}" — set a positive USDT amount`);
+      return;
+    }
+    const lev = Math.max(LEVERAGE_MIN, Math.min(LEVERAGE_MAX, leverageRef.current | 0));
+
+    // qty rounded to 4 decimals — conservative for most SoDEX step sizes;
+    // the server may re-round inside placePerpsOrder.
+    const qty = Math.max(0.0001, +(usdt / price).toFixed(4));
+    const side = rule.side; // 'BUY' or 'SELL'
+
     try {
-      if (!privateKey) {
-        addLog('error', 'No wallet configured — set Private Key in Settings');
-        return;
+      // 4. Set leverage best-effort (server rejects when there's an open
+      //    position on the same symbol; we surface and continue).
+      try {
+        await updatePerpsLeverage(symbol, lev, 2);
+      } catch (e) {
+        addLog('info', `ℹ Leverage set skipped for ${symbol}: ${getErrorMessage(e)}`);
       }
+
+      // 5. Open the position.
       await placeOrder(
-        { symbol, side: rule.side === 'BUY' ? 1 : 2, type: 2, quantity },
-        market,
+        { symbol, side: side === 'BUY' ? 1 : 2, type: 2, quantity: qty.toString() },
+        'perps',
       );
-      addLog('trade', `✅ ${rule.side} MARKET ${quantity} ${symbol} placed — "${title.slice(0, 60)}"`);
-      toast.success(`News Bot: ${rule.side} order placed!`);
+
+      // 6. Register it for the tracker so TP/SL/time-exit fire.
+      const tpMul = side === 'BUY' ? 1 + takeProfitPctRef.current / 100 : 1 - takeProfitPctRef.current / 100;
+      const slMul = side === 'BUY' ? 1 - stopLossPctRef.current   / 100 : 1 + stopLossPctRef.current   / 100;
+      const newPos: NewsBotPosition = {
+        id: `nb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        symbol,
+        side: side === 'BUY' ? 'LONG' : 'SHORT',
+        qty,
+        entryPrice: price,
+        leverage: lev,
+        openedAt: Date.now(),
+        tpPrice: price * tpMul,
+        slPrice: price * slMul,
+        expiresAt: Date.now() + holdMinutesRef.current * 60_000,
+        triggerHeadline: title,
+        triggerKeyword: rule.keyword,
+        lastPrice: price,
+      };
+      setOpenPositions((prev) => [...prev, newPos]);
+
+      addLog(
+        'trade',
+        `🚀 ${newPos.side} ${qty.toFixed(4)} ${symbol} @ ${price.toFixed(4)} — ${lev}× — TP +${takeProfitPctRef.current}% / SL −${stopLossPctRef.current}% / hold ${holdMinutesRef.current}m`,
+      );
+      toast.success(`${newPos.side} ${symbol} opened`);
     } catch (err) {
       const msg = getErrorMessage(err);
       addLog('error', `❌ Order failed: ${msg}`);
       toast.error(`News Bot: ${msg}`);
     }
-  }, [symbol, quantity, market, privateKey, addLog]);
+  }, [privateKey, addLog, resolvePerpsSymbol, fetchSymbolPrice]);
 
   const poll = useCallback(async () => {
     if (!runningRef.current) return;
@@ -274,10 +464,67 @@ export const NewsBot: React.FC = () => {
     runningRef.current = false;
     setRunning(false);
     if (pollRef.current) clearInterval(pollRef.current);
-    addLog('info', '■ Bot stopped');
+    const remaining = openPositionsRef.current.length;
+    if (remaining > 0) {
+      addLog('info', `■ Bot stopped — ${remaining} open position(s) will continue to be monitored for TP/SL/time-exit`);
+    } else {
+      addLog('info', '■ Bot stopped');
+    }
   }, [addLog]);
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+  // Position tracker — polls once every POSITION_TRACK_MS while there is
+  // at least one managed open position. Each tick fetches the (cached)
+  // perps tickers, updates `lastPrice` for the live PnL display, and
+  // closes any position whose TP / SL / hold-time exit condition has
+  // fired. Runs independently of the news-poll loop so positions remain
+  // watched even after the bot is stopped.
+  useEffect(() => {
+    if (openPositions.length === 0) {
+      if (trackerRef.current) { clearInterval(trackerRef.current); trackerRef.current = null; }
+      return;
+    }
+    const tick = async () => {
+      try {
+        const tickers = await fetchTickers('perps') as Record<string, unknown>[];
+        const tickerBySymbol = new Map<string, Record<string, unknown>>();
+        for (const t of tickers) tickerBySymbol.set(String(t.symbol ?? '').toUpperCase(), t);
+
+        const now = Date.now();
+        const updates: NewsBotPosition[] = [];
+        const toClose: { pos: NewsBotPosition; reason: string }[] = [];
+        for (const pos of openPositionsRef.current) {
+          const row = tickerBySymbol.get(pos.symbol.toUpperCase());
+          const px  = parseFloat(String(row?.lastPrice ?? row?.markPrice ?? row?.lastPx ?? 0));
+          const lastPrice = Number.isFinite(px) && px > 0 ? px : pos.lastPrice;
+          updates.push({ ...pos, lastPrice });
+
+          if (pos.side === 'LONG'  && lastPrice >= pos.tpPrice) toClose.push({ pos, reason: `TP +${takeProfitPctRef.current}%` });
+          else if (pos.side === 'SHORT' && lastPrice <= pos.tpPrice) toClose.push({ pos, reason: `TP +${takeProfitPctRef.current}%` });
+          else if (pos.side === 'LONG'  && lastPrice <= pos.slPrice) toClose.push({ pos, reason: `SL −${stopLossPctRef.current}%` });
+          else if (pos.side === 'SHORT' && lastPrice >= pos.slPrice) toClose.push({ pos, reason: `SL −${stopLossPctRef.current}%` });
+          else if (now >= pos.expiresAt)                              toClose.push({ pos, reason: `${holdMinutesRef.current}m hold expired` });
+        }
+        // Update lastPrice for every still-open position in a single render.
+        setOpenPositions(updates);
+        // Sequentially fire close orders so we don't slam the exchange.
+        for (const { pos, reason } of toClose) {
+          await closeManagedPosition(pos, reason);
+        }
+      } catch (err) {
+        addLog('error', `Tracker error: ${getErrorMessage(err)}`);
+      }
+    };
+    void tick();
+    trackerRef.current = setInterval(() => { void tick(); }, POSITION_TRACK_MS);
+    return () => {
+      if (trackerRef.current) { clearInterval(trackerRef.current); trackerRef.current = null; }
+    };
+  }, [openPositions.length, closeManagedPosition, addLog]);
+
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (trackerRef.current) clearInterval(trackerRef.current);
+  }, []);
 
   const addRule = () => {
     if (!newKeyword.trim()) return;
@@ -353,36 +600,81 @@ export const NewsBot: React.FC = () => {
           </div>
         </Card>
 
-        {/* Trade settings */}
+        {/* Trade settings — risk knobs only. Symbol is auto-derived from
+            the news headline; quantity is derived from notional + price. */}
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <Settings2 size={14} className="text-primary" />
             <h3 className="text-sm font-semibold">Trade Settings</h3>
+            <span className="ml-auto text-[9px] text-text-muted uppercase tracking-wider">Perps · auto-coin</span>
           </div>
           <div className="space-y-3">
             <Input
-              label="Symbol"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="BTC-USD"
-            />
-            <Input
-              label="Quantity"
+              label="Notional per trade (USDT)"
               type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
+              min="1"
+              step="1"
+              value={notionalUsdt}
+              onChange={(e) => setNotionalUsdt(e.target.value)}
+              placeholder="50"
             />
-            <Select
-              label="Market"
-              value={market}
-              onChange={(e) => setMarket(e.target.value as 'perps' | 'spot')}
-              options={[
-                { value: 'perps', label: 'Perps' },
-                { value: 'spot', label: 'Spot' },
-              ]}
+
+            {/* Leverage slider — capped at SoDEX's typical headroom. The
+                server still re-validates per symbol and may downscale. */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold">Leverage</span>
+                <span className="text-xs font-mono font-bold text-primary">{leverage}×</span>
+              </div>
+              <input
+                type="range"
+                min={LEVERAGE_MIN}
+                max={LEVERAGE_MAX}
+                step={1}
+                value={leverage}
+                onChange={(e) => setLeverage(parseInt(e.target.value, 10))}
+                className="w-full accent-primary"
+              />
+              <div className="flex items-center justify-between text-[9px] text-text-muted mt-0.5">
+                <span>{LEVERAGE_MIN}×</span>
+                <span>SoDEX cap (per-symbol may be lower)</span>
+                <span>{LEVERAGE_MAX}×</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                label="TP %"
+                type="number"
+                step="0.1"
+                value={takeProfitPct}
+                onChange={(e) => setTakeProfitPct(parseFloat(e.target.value) || 0)}
+              />
+              <Input
+                label="SL %"
+                type="number"
+                step="0.1"
+                value={stopLossPct}
+                onChange={(e) => setStopLossPct(parseFloat(e.target.value) || 0)}
+              />
+              <Input
+                label="Hold (m)"
+                type="number"
+                step="1"
+                value={holdMinutes}
+                onChange={(e) => setHoldMinutes(parseInt(e.target.value, 10) || 1)}
+              />
+            </div>
+
+            <Input
+              label="Fallback coin (when headline has no ticker)"
+              value={fallbackCoin}
+              onChange={(e) => setFallbackCoin(e.target.value.toUpperCase())}
+              placeholder="BTC"
             />
+
             <Select
-              label="Filter by Coin (optional)"
+              label="News filter (optional)"
               value={filterCoin}
               onChange={(e) => setFilterCoin(e.target.value)}
               options={[
@@ -390,8 +682,76 @@ export const NewsBot: React.FC = () => {
                 ...coins.slice(0, 30).map((c) => ({ value: c.id, label: `${c.name.toUpperCase()} — ${c.fullName}` })),
               ]}
             />
+
+            {/* Inline quick-reference — explains how the new auto-pipeline maps
+                a headline to a trade so the lack of Symbol / Quantity inputs
+                doesn't feel surprising. */}
+            <div className="text-[10px] text-text-muted leading-relaxed bg-white/[0.02] rounded-md p-2 border border-white/5">
+              <span className="text-primary font-semibold">How it works:</span> headline → ticker (e.g. "SOL ETF approved" → SOL)
+              → SoDEX perps symbol → leverage applied → MARKET open with{' '}
+              <span className="text-text-secondary">{notionalUsdt || 0} USDT</span> notional. Position auto-closes on{' '}
+              <span className="text-emerald-400">+{takeProfitPct}%</span> TP,{' '}
+              <span className="text-red-400">−{stopLossPct}%</span> SL, or after{' '}
+              <span className="text-text-secondary">{holdMinutes}m</span>.
+            </div>
           </div>
         </Card>
+
+        {/* Open Positions — visible only when something is being managed. */}
+        {openPositions.length > 0 && (
+          <Card>
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={14} className="text-primary animate-pulse" />
+              <h3 className="text-sm font-semibold">Open Positions</h3>
+              <span className="ml-auto text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-semibold">{openPositions.length}</span>
+            </div>
+            <div className="space-y-2">
+              {openPositions.map((pos) => {
+                const livePct = pos.side === 'LONG'
+                  ? ((pos.lastPrice - pos.entryPrice) / pos.entryPrice) * 100
+                  : ((pos.entryPrice - pos.lastPrice) / pos.entryPrice) * 100;
+                const livePctLev = livePct * pos.leverage;
+                const remainingMs = Math.max(0, pos.expiresAt - Date.now());
+                const remainingS  = Math.ceil(remainingMs / 1000);
+                const mm = Math.floor(remainingS / 60);
+                const ss = remainingS % 60;
+                return (
+                  <div
+                    key={pos.id}
+                    className="p-2.5 bg-surface rounded-lg border border-white/5 space-y-1.5"
+                    title={pos.triggerHeadline}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        'text-[10px] font-bold px-1.5 py-0.5 rounded',
+                        pos.side === 'LONG' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger',
+                      )}>{pos.side}</span>
+                      <span className="text-xs font-mono font-bold">{pos.symbol}</span>
+                      <span className="text-[10px] text-text-muted">{pos.leverage}×</span>
+                      <button
+                        onClick={() => closeManagedPosition(pos, 'manual close')}
+                        className="ml-auto text-text-muted hover:text-danger transition-colors p-0.5"
+                        title="Close now (reduce-only market)"
+                      >
+                        <XIcon size={12} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span className="text-text-muted">{pos.qty.toFixed(4)} @ {pos.entryPrice.toFixed(4)}</span>
+                      <span className={cn('font-bold', livePctLev >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                        {livePctLev >= 0 ? '+' : ''}{livePctLev.toFixed(2)}% (lev)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-text-muted">
+                      <span>TP {pos.tpPrice.toFixed(4)} · SL {pos.slPrice.toFixed(4)}</span>
+                      <span>{mm}:{ss.toString().padStart(2, '0')} left</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
         {/* Trigger Rules */}
         <Card className={cn(useAi && 'opacity-50 pointer-events-none grayscale')}>
