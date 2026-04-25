@@ -10,7 +10,7 @@ import {
   extractCoinFromNews,
 } from '../api/sosoServices';
 import type { SosoCoin, SosoNewsItem } from '../api/sosoServices';
-import { placeOrder, fetchTickers, fetchSymbols, updatePerpsLeverage } from '../api/services';
+import { placeOrder, fetchTickers, getPerpsSymbolMeta, updatePerpsLeverage, type PerpsSymbolMeta } from '../api/services';
 import { useSettingsStore } from '../store/settingsStore';
 import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
@@ -66,12 +66,14 @@ const DEFAULT_FALLBACK_COIN  = 'BTC';
 // effectively one network round-trip per 30s regardless of how many
 // open positions exist.
 const POSITION_TRACK_MS      = 15_000;
-// Hard cap exposed to the slider. SoDEX's per-symbol max varies (BTC/ETH
-// up to ~50×, alts lower). updatePerpsLeverage() returns an error if the
-// requested leverage exceeds the symbol cap; we surface the message and
-// proceed with the order anyway since the server will normalise.
+// Lower bound on the leverage slider. The upper bound is dynamic —
+// derived from getPerpsSymbolMeta(fallbackCoin) so it always reflects
+// the exchange's actual per-symbol cap (BTC may allow 25× while alts
+// cap at 10×, etc.). Until the first metadata fetch resolves we use
+// a conservative initial cap so the slider isn't accidentally usable
+// at a value SoDEX would reject.
 const LEVERAGE_MIN = 1;
-const LEVERAGE_MAX = 50;
+const LEVERAGE_INITIAL_CAP = 10;
 
 interface NewsBotPosition {
   id: string;
@@ -137,6 +139,13 @@ export const NewsBot: React.FC = () => {
   const [openPositions, setOpenPositions] = useState<NewsBotPosition[]>([]);
   const [triggeredIds] = useState(() => new Map<string, number>());
 
+  // Resolved metadata for the currently-selected fallback coin so the
+  // slider's max + 'cap' label always reflect the real exchange limit.
+  // null = lookup pending or symbol not listed.
+  const [fallbackMeta, setFallbackMeta] = useState<PerpsSymbolMeta | null>(null);
+  const [fallbackMetaErr, setFallbackMetaErr] = useState<string | null>(null);
+  const effectiveLeverageCap = fallbackMeta?.maxLeverage ?? LEVERAGE_INITIAL_CAP;
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const trackerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runningRef = useRef(false);
@@ -180,6 +189,33 @@ export const NewsBot: React.FC = () => {
   useEffect(() => { fallbackCoinRef.current  = fallbackCoin;  }, [fallbackCoin]);
   useEffect(() => { openPositionsRef.current = openPositions; }, [openPositions]);
 
+  // Whenever the fallback coin changes, re-resolve its SoDEX metadata so
+  // the leverage slider can clamp to the exchange's actual cap. We also
+  // pull the slider value down if it now exceeds the new cap.
+  useEffect(() => {
+    let cancelled = false;
+    const ticker = fallbackCoin.trim().toUpperCase();
+    if (!ticker) {
+      setFallbackMeta(null);
+      setFallbackMetaErr(null);
+      return;
+    }
+    setFallbackMetaErr(null);
+    void (async () => {
+      const meta = await getPerpsSymbolMeta(ticker).catch(() => null);
+      if (cancelled) return;
+      setFallbackMeta(meta);
+      if (!meta) {
+        setFallbackMetaErr(`${ticker} not listed on SoDEX perps`);
+        return;
+      }
+      // Pull slider down if user-set leverage now exceeds exchange cap.
+      if (leverage > meta.maxLeverage) setLeverage(meta.maxLeverage);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fallbackCoin]);
+
   const matchesRules = useCallback((item: SosoNewsItem): TriggerRule | null => {
     const title = getNewsTitle(item).toLowerCase();
     for (const rule of rules) {
@@ -192,23 +228,14 @@ export const NewsBot: React.FC = () => {
   }, [rules]);
 
   /**
-   * Resolve a ticker ("BTC") to a SoDEX perps symbol that actually
-   * exists. Caches the result on the in-memory symbols cache exposed
-   * by services.ts. Returns null when no compatible market is listed
-   * — the caller logs and skips the trade.
+   * Resolve a ticker ("BTC") to its full SoDEX perps metadata (symbol +
+   * leverage caps). Returns null when no compatible market is listed
+   * — the caller logs and skips the trade. Wraps getPerpsSymbolMeta()
+   * so callers don't need to import it everywhere.
    */
-  const resolvePerpsSymbol = useCallback(async (ticker: string): Promise<string | null> => {
-    const candidates = [`${ticker}-USD`, `${ticker}-USDC`, `${ticker}-USDT`];
-    try {
-      const symbols = await fetchSymbols('perps');
-      const list = (Array.isArray(symbols) ? symbols : ((symbols as Record<string, unknown>)?.symbols ?? (symbols as Record<string, unknown>)?.data ?? [])) as Record<string, unknown>[];
-      for (const cand of candidates) {
-        if (list.some((s) => String(s.symbol ?? s.name ?? s.ticker ?? '').toUpperCase() === cand)) {
-          return cand;
-        }
-      }
-    } catch { /* fall through to null */ }
-    return null;
+  const resolvePerpsMeta = useCallback(async (ticker: string): Promise<PerpsSymbolMeta | null> => {
+    try { return await getPerpsSymbolMeta(ticker); }
+    catch { return null; }
   }, []);
 
   /**
@@ -265,12 +292,13 @@ export const NewsBot: React.FC = () => {
     const ticker = extractCoinFromNews(title, fallbackCoinRef.current);
     addLog('info', `� Trigger "${rule.keyword}" on ${ticker} — "${title.slice(0, 60)}"`);
 
-    // 2. Map ticker → SoDEX perps symbol that actually exists.
-    const symbol = await resolvePerpsSymbol(ticker);
-    if (!symbol) {
+    // 2. Map ticker → SoDEX perps metadata (symbol + leverage caps).
+    const meta = await resolvePerpsMeta(ticker);
+    if (!meta) {
       addLog('error', `${ticker} not listed on SoDEX perps — skipping`);
       return;
     }
+    const symbol = meta.symbol;
 
     // 3. Fetch latest price + sanity-check user inputs.
     const price = await fetchSymbolPrice(symbol);
@@ -283,7 +311,15 @@ export const NewsBot: React.FC = () => {
       addLog('error', `Invalid notional "${notionalRef.current}" — set a positive USDT amount`);
       return;
     }
-    const lev = Math.max(LEVERAGE_MIN, Math.min(LEVERAGE_MAX, leverageRef.current | 0));
+    // Clamp the user's leverage to the symbol's actual exchange cap.
+    // Prevents the order from getting rejected at submission time when
+    // the slider was set against a different coin's cap, or when the
+    // article-derived ticker has a tighter cap than the fallback coin.
+    const requested = Math.max(LEVERAGE_MIN, leverageRef.current | 0);
+    const lev = Math.min(requested, meta.maxLeverage);
+    if (lev < requested) {
+      addLog('info', `ℹ ${symbol} caps leverage at ${meta.maxLeverage}× — using ${lev}× instead of ${requested}×`);
+    }
 
     // qty rounded to 4 decimals — conservative for most SoDEX step sizes;
     // the server may re-round inside placePerpsOrder.
@@ -335,7 +371,7 @@ export const NewsBot: React.FC = () => {
       addLog('error', `❌ Order failed: ${msg}`);
       toast.error(`News Bot: ${msg}`);
     }
-  }, [privateKey, addLog, resolvePerpsSymbol, fetchSymbolPrice]);
+  }, [privateKey, addLog, resolvePerpsMeta, fetchSymbolPrice]);
 
   const poll = useCallback(async () => {
     if (!runningRef.current) return;
@@ -619,8 +655,10 @@ export const NewsBot: React.FC = () => {
               placeholder="50"
             />
 
-            {/* Leverage slider — capped at SoDEX's typical headroom. The
-                server still re-validates per symbol and may downscale. */}
+            {/* Leverage slider — hard-bounded by the fallback coin's actual
+                exchange cap from getPerpsSymbolMeta(). When the bot opens a
+                trade on a different coin (because the headline mentions one)
+                executeTrade() re-clamps to that symbol's specific cap. */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold">Leverage</span>
@@ -629,16 +667,22 @@ export const NewsBot: React.FC = () => {
               <input
                 type="range"
                 min={LEVERAGE_MIN}
-                max={LEVERAGE_MAX}
+                max={effectiveLeverageCap}
                 step={1}
-                value={leverage}
+                value={Math.min(leverage, effectiveLeverageCap)}
                 onChange={(e) => setLeverage(parseInt(e.target.value, 10))}
                 className="w-full accent-primary"
               />
               <div className="flex items-center justify-between text-[9px] text-text-muted mt-0.5">
                 <span>{LEVERAGE_MIN}×</span>
-                <span>SoDEX cap (per-symbol may be lower)</span>
-                <span>{LEVERAGE_MAX}×</span>
+                <span>
+                  {fallbackMeta
+                    ? <>{fallbackCoin} cap: <span className="text-text-secondary font-semibold">{fallbackMeta.maxLeverage}×</span> · default {fallbackMeta.initLeverage}×</>
+                    : fallbackMetaErr
+                      ? <span className="text-amber-400">{fallbackMetaErr}</span>
+                      : 'Resolving cap from SoDEX…'}
+                </span>
+                <span>{effectiveLeverageCap}×</span>
               </div>
             </div>
 

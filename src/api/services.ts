@@ -494,6 +494,47 @@ export async function fetchPerpsSymbolID(symbol: string): Promise<number | null>
 }
 
 /**
+ * Symbol metadata exposed to UIs that need to clamp leverage against the
+ * exchange's per-market cap (NewsBot's leverage slider, BtcPredictor's
+ * auto-trader, manual order forms, ...).
+ */
+export interface PerpsSymbolMeta {
+  /** Fully-qualified symbol that exists on SoDEX (e.g. "BTC-USD"). */
+  symbol: string;
+  /** Hard cap accepted by `updatePerpsLeverage` for this symbol. */
+  maxLeverage: number;
+  /** Exchange's default leverage if the user has never set one. */
+  initLeverage: number;
+}
+
+/**
+ * Resolve a bare ticker like "BTC" to the first matching SoDEX perps
+ * symbol AND its leverage limits. Probes BTC-USD → BTC-USDC → BTC-USDT
+ * in that order against the cached symbol list, so repeat calls within
+ * SYMBOL_CACHE_TTL are free.
+ *
+ * Returns null when none of the candidate quote variants are listed.
+ * The numeric fields fall back to conservative defaults (50 / 5) only
+ * when the API entry exists but doesn't expose the field.
+ */
+export async function getPerpsSymbolMeta(ticker: string): Promise<PerpsSymbolMeta | null> {
+  const upper = ticker.toUpperCase();
+  const candidates = [`${upper}-USD`, `${upper}-USDC`, `${upper}-USDT`];
+  for (const cand of candidates) {
+    const entry = await fetchSymbolEntry(cand, 'perps');
+    if (!entry) continue;
+    const max  = Number(entry.maxLeverage  ?? entry.maxLev          ?? 0);
+    const init = Number(entry.initLeverage ?? entry.defaultLeverage ?? 0);
+    return {
+      symbol:       String(entry.symbol ?? cand),
+      maxLeverage:  Number.isFinite(max)  && max  > 0 ? max  : 50,
+      initLeverage: Number.isFinite(init) && init > 0 ? init : 5,
+    };
+  }
+  return null;
+}
+
+/**
  * Attempt to extract the numeric account ID from a raw API response.
  *
  * NOTE: `perpsClient` / `spotClient` response interceptors already unwrap
