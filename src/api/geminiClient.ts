@@ -10,7 +10,12 @@ export async function analyzeSentiment(title: string): Promise<Sentiment> {
     throw new Error('Gemini API key is not set in Settings.');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+  // gemini-1.5-flash was retired by Google in late 2025 (returns 404). The
+  // 2.5 family is the current low-cost / low-latency tier and is well
+  // suited to single-word sentiment classification. Keep this in sync with
+  // https://ai.google.dev/gemini-api/docs/models — when 2.5 is itself
+  // retired, bump to the latest -flash alias.
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
 
   const prompt = `Analyze the potential crypto market sentiment for this news headline. 
 Return ONLY one of these three words: BULLISH, BEARISH, or NEUTRAL. 

@@ -31,7 +31,7 @@ const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
 const BTC_SYMBOL_HINT = 'BTC';        // substring match against fetchTickers result
 const NEUTRAL_WIDE  = 0.18;             // self-correcting threshold when accuracy drops
 const ORDERBOOK_HISTORY = 30;           // rolling window for dynamic imbalance z-score
-const MIN_CONVICTION_SIGNALS = 3;       // min non-neutral signals agreeing before a trade fires
+const MIN_CONVICTION_SIGNALS = 2;       // min non-neutral signals agreeing before a trade fires
 
 // ─── Weights ──────────────────────────────────────────────────────────────────
 // Designed for the 5-minute horizon, where technical momentum
@@ -57,18 +57,30 @@ const W = {
 } as const;
 
 /**
- * Volatility-adaptive neutral threshold. Low ATR → raise threshold to
- * avoid firing on noise (fees would exceed expected move). High ATR →
- * lower threshold because a weak composite score can still translate
- * to a real move worth trading.
+ * Volatility-adaptive neutral threshold tuned for a "fee-aware airdrop
+ * volume" goal: produce as many trades as possible while keeping
+ * expected value positive after the round-trip taker fee (~0.08%).
+ *
+ *   ATR < 0.05%  → 0.30  refuse outright — 5-min move ≪ fee, EV is
+ *                       structurally negative no matter how strong
+ *                       the composite score looks.
+ *   ATR < 0.10%  → 0.14  near-dead market, demand strong consensus.
+ *   ATR < 0.20%  → 0.08  normal regime, fire frequently.
+ *   ATR < 0.30%  → 0.06  active, fire on most decent scores.
+ *   ATR ≥ 0.30%  → 0.05  volatile, almost any directional bias is tradable.
+ *
+ * If recent accuracy collapses (<45% over the last 20 decided trades)
+ * the threshold widens to NEUTRAL_WIDE regardless of ATR — a circuit
+ * breaker that pauses aggression until the engine recovers.
  */
 function computeNeutralThreshold(atrPct: number, accuracyBelow45: boolean): number {
   if (accuracyBelow45) return NEUTRAL_WIDE;
-  if (!Number.isFinite(atrPct) || atrPct <= 0) return 0.11;
-  if (atrPct < 0.15) return 0.14;   // very quiet → demand moderate consensus
-  if (atrPct < 0.25) return 0.11;
-  if (atrPct < 0.35) return 0.09;
-  return 0.08;                       // active → small scores already actionable
+  if (!Number.isFinite(atrPct) || atrPct <= 0) return 0.10;
+  if (atrPct < 0.05) return 0.30;   // dead market — fee guard
+  if (atrPct < 0.10) return 0.14;
+  if (atrPct < 0.20) return 0.08;
+  if (atrPct < 0.30) return 0.06;
+  return 0.05;                       // volatile → fire often
 }
 
 // ─── Technical Indicator Helpers ─────────────────────────────────────────────
