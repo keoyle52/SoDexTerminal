@@ -114,6 +114,16 @@ const SYMBOL_CACHE_TTL = 60_000;
 const _accountStateCache = new Map<string, { state: { accountID: number | string; [key: string]: unknown }; ts: number }>();
 const ACCOUNT_STATE_CACHE_TTL = 30_000;
 
+// Public market-data caches — 30 second TTL. Predictor + sibling pages
+// often fetch the same tickers / orderbook / klines payload within the
+// same render tick (double effect mount, stop/start, parallel widgets).
+// 30s is short enough that next prediction cycle always sees fresh
+// data, but long enough to absorb back-to-back duplicates.
+const _tickersCache   = new Map<string, { data: unknown; ts: number }>();
+const _orderbookCache = new Map<string, { data: unknown; ts: number }>();
+const _klinesCache    = new Map<string, { data: unknown; ts: number }>();
+const QUOTE_CACHE_TTL = 30_000;
+
 /** Short network tag used to namespace caches so testnet/mainnet do not share entries. */
 function getNetworkTag(): 'test' | 'main' {
   return useSettingsStore.getState().isTestnet ? 'test' : 'main';
@@ -127,6 +137,9 @@ function getNetworkTag(): 'test' | 'main' {
 export function clearServiceCaches(): void {
   _symbolCache.clear();
   _accountStateCache.clear();
+  _tickersCache.clear();
+  _orderbookCache.clear();
+  _klinesCache.clear();
 }
 
 // ---------- helpers ----------
@@ -657,13 +670,18 @@ export async function fetchSpotSymbolID(symbol: string): Promise<number | null> 
 
 export async function fetchTickers(market: 'spot' | 'perps' = 'perps') {
   if (isDemo()) return getDemoTickers(market);
+  const cacheKey = `${getNetworkTag()}:${market}`;
+  const cached = _tickersCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < QUOTE_CACHE_TTL) {
+    return cached.data as Record<string, unknown>[];
+  }
   const client = getClient(market);
   const res = await withRetry(() => client.get('/markets/tickers'));
   const raw = res?.data ?? res ?? [];
   const arr = Array.isArray(raw) ? raw : [];
   // Normalize SoDEX field names to common aliases expected by consumers.
   // API uses: lastPx, changePct, bidPx, askPx
-  return arr.map((t: Record<string, unknown>) => ({
+  const data = arr.map((t: Record<string, unknown>) => ({
     ...t,
     lastPrice: t.lastPx ?? t.lastPrice,
     close: t.lastPx ?? t.close,
@@ -671,6 +689,8 @@ export async function fetchTickers(market: 'spot' | 'perps' = 'perps') {
     bidPrice: t.bidPx ?? t.bidPrice,
     askPrice: t.askPx ?? t.askPrice,
   }));
+  _tickersCache.set(cacheKey, { data, ts: Date.now() });
+  return data;
 }
 
 export async function fetchMiniTickers(market: 'spot' | 'perps' = 'perps') {
@@ -698,10 +718,17 @@ export async function fetchBookTickers(market: 'spot' | 'perps' = 'perps') {
 
 export async function fetchOrderbook(symbol: string, market: 'spot' | 'perps' = 'perps', limit = 20) {
   if (isDemo()) return getDemoOrderbook(symbol, market, limit);
-  const client = getClient(market);
   const sym = normalizeSymbol(symbol, market);
+  const cacheKey = `${getNetworkTag()}:${market}:${sym}:${limit}`;
+  const cached = _orderbookCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < QUOTE_CACHE_TTL) {
+    return cached.data as { bids: unknown[]; asks: unknown[] };
+  }
+  const client = getClient(market);
   const res = await withRetry(() => client.get(`/markets/${sym}/orderbook`, { params: { limit } }));
-  return res?.data ?? res ?? { bids: [], asks: [] };
+  const data = res?.data ?? res ?? { bids: [], asks: [] };
+  _orderbookCache.set(cacheKey, { data, ts: Date.now() });
+  return data;
 }
 
 export async function fetchKlines(
@@ -711,14 +738,19 @@ export async function fetchKlines(
   market: 'spot' | 'perps' = 'perps',
 ) {
   if (isDemo()) return getDemoKlines(symbol, interval, limit);
-  const client = getClient(market);
   const sym = normalizeSymbol(symbol, market);
+  const cacheKey = `${getNetworkTag()}:${market}:${sym}:${interval}:${limit}`;
+  const cached = _klinesCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < QUOTE_CACHE_TTL) {
+    return cached.data as Record<string, unknown>[];
+  }
+  const client = getClient(market);
   const res = await withRetry(() => client.get(`/markets/${sym}/klines`, { params: { interval, limit } }));
   const raw = res?.data ?? res ?? [];
   const arr = Array.isArray(raw) ? raw : [];
   // SoDEX RPCKline uses single-char field names: t, o, h, l, c, v, q
   // Normalize to common aliases expected by consumers.
-  return arr.map((k: Record<string, unknown>) => ({
+  const data = arr.map((k: Record<string, unknown>) => ({
     ...k,
     time: k.t ?? k.time ?? k.openTime,
     openTime: k.t ?? k.openTime ?? k.time,
@@ -728,6 +760,8 @@ export async function fetchKlines(
     close: k.c ?? k.close,
     volume: k.v ?? k.volume,
   }));
+  _klinesCache.set(cacheKey, { data, ts: Date.now() });
+  return data;
 }
 
 export async function fetchCoins(market: 'spot' | 'perps' = 'perps') {

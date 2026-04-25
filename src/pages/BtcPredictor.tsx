@@ -23,8 +23,12 @@ import toast from 'react-hot-toast';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CYCLE_MS      = 5 * 60 * 1000;
-const NEWS_TTL_MS   = 3 * 60 * 1000;
-const ETF_TTL_MS    = 5 * 60 * 1000;
+// Both TTLs MUST exceed CYCLE_MS, otherwise the predictor cache misses
+// every cycle and we re-hit SoSoValue (and Gemini for news) needlessly.
+// 6 / 8 minutes give us guaranteed hits on consecutive cycles while
+// staying short enough that data refreshes within ~one extra cycle.
+const NEWS_TTL_MS   = 6 * 60 * 1000;
+const ETF_TTL_MS    = 8 * 60 * 1000;
 const LS_NEWS_KEY   = 'predictor_news_cache';
 const LS_ETF_KEY    = 'predictor_etf_cache';
 const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
