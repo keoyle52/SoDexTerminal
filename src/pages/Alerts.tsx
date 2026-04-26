@@ -303,7 +303,7 @@ export const Alerts: React.FC = () => {
                   <button
                     onClick={() => removeAlert(alert.id)}
                     className="text-text-muted hover:text-danger transition-colors p-1.5 rounded-lg hover:bg-danger/10"
-                    title="Alarmi sil"
+                    title="Delete alert"
                   >
                     <Trash2 size={14} />
                   </button>

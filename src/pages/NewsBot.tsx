@@ -12,9 +12,11 @@ import {
 import type { SosoCoin, SosoNewsItem } from '../api/sosoServices';
 import { placeOrder, fetchTickers, getPerpsSymbolMeta, updatePerpsLeverage, type PerpsSymbolMeta } from '../api/services';
 import { useSettingsStore } from '../store/settingsStore';
+import { useBotPnlStore } from '../store/botPnlStore';
 import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
+import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { cn, getErrorMessage } from '../lib/utils';
 import { analyzeSentiment } from '../api/geminiClient';
 
@@ -280,7 +282,18 @@ export const NewsBot: React.FC = () => {
         ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * 100
         : ((pos.entryPrice - exitPrice) / pos.entryPrice) * 100;
       const pnlLeveraged = pnlPct * pos.leverage;
-      addLog('trade', `🏁 Closed ${pos.side} ${pos.qty.toFixed(4)} ${pos.symbol} @ ${exitPrice.toFixed(4)} (${reason}) — PnL ${pnlLeveraged >= 0 ? '+' : ''}${pnlLeveraged.toFixed(2)}% (leveraged)`);
+      // Convert leveraged-% PnL into a USDT figure using the position's
+      // notional × leverage relationship: PnL% (leveraged) is already
+      // expressed against the user's margin, so we multiply by margin
+      // (= qty × entryPrice ÷ leverage) to get the USD result.
+      const margin = (pos.qty * pos.entryPrice) / Math.max(1, pos.leverage);
+      const pnlUsdt = (pnlLeveraged / 100) * margin;
+      useBotPnlStore.getState().recordTrade('news', {
+        pnlUsdt,
+        ts: Date.now(),
+        note: `${pos.side} ${pos.symbol} closed (${reason})`,
+      });
+      addLog('trade', `🏁 Closed ${pos.side} ${pos.qty.toFixed(4)} ${pos.symbol} @ ${exitPrice.toFixed(4)} (${reason}) — PnL ${pnlLeveraged >= 0 ? '+' : ''}${pnlLeveraged.toFixed(2)}% (leveraged) ${pnlUsdt >= 0 ? '+' : ''}${pnlUsdt.toFixed(2)} USDT`);
       setOpenPositions((prev) => prev.filter((p) => p.id !== pos.id));
     } catch (err) {
       addLog('error', `❌ Close failed for ${pos.symbol}: ${getErrorMessage(err)}`);
@@ -584,6 +597,8 @@ export const NewsBot: React.FC = () => {
     <div className="flex h-[calc(100vh-52px)] overflow-hidden gap-4 p-5">
       {/* Config panel */}
       <div className="w-80 shrink-0 space-y-4 overflow-y-auto">
+        {/* Live PnL strip — shows live aggregate of every News Bot close */}
+        <BotPnlStrip botKey="news" compact />
         {/* Status */}
         <Card>
           <div className="flex items-center justify-between mb-4">

@@ -3,7 +3,8 @@ import toast from 'react-hot-toast';
 import { Play, Square, Clock, Hash, DollarSign, BarChart3 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { ConfirmModal } from '../components/common/ConfirmModal';
+import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
@@ -185,12 +186,43 @@ export const TwapBot: React.FC = () => {
   const totalSlicesNum = parseInt(slices) || 1;
   const progress = totalSlicesNum > 0 ? (executedSlices / totalSlicesNum) * 100 : 0;
 
+  // Build risk-summary rows so the launch modal mirrors the rest of the suite.
+  const buildTwapRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
+    const total = parseFloat(totalAmount) || 0;
+    const numSlices = parseInt(slices) || 0;
+    const interval = parseInt(intervalSec) || 0;
+    const sliceAmt = numSlices > 0 ? total / numSlices : 0;
+    const totalDurationSec = interval * Math.max(0, numSlices - 1);
+    const durationLabel = totalDurationSec >= 3600
+      ? `${(totalDurationSec / 3600).toFixed(1)} hours`
+      : totalDurationSec >= 60 ? `${Math.round(totalDurationSec / 60)} minutes`
+      : `${totalDurationSec} seconds`;
+    const rows: RiskSummaryRow[] = [
+      { label: 'Pair', value: symbol, hint: isSpot ? 'Spot market' : 'Perpetual futures' },
+      { label: 'Direction', value: side, tone: side === 'BUY' ? 'positive' : 'warning' },
+      { label: 'Total order size', value: `${total} ${symbol.split(/[_-]/)[0]}` },
+      { label: 'Slices', value: `${numSlices} × ${sliceAmt.toFixed(6)}` },
+      { label: 'Interval', value: `${interval}s between slices` },
+      { label: 'Total run time', value: durationLabel || '—' },
+    ];
+    const risk: 'Low' | 'Medium' | 'High' =
+      numSlices < 5 || interval < 5 ? 'Medium' : 'Low';
+    const totalRisk = `${total} ${symbol.split(/[_-]/)[0]} ${side === 'BUY' ? 'buy' : 'sell'} pressure spread over ${durationLabel || 'the run'}`;
+    return { rows, totalRisk, risk };
+  };
+  const twapRiskSummary = buildTwapRiskRows();
+
   return (
     <div className="flex h-[calc(100vh-52px)]">
-      <ConfirmModal
+      <RiskSummaryModal
         isOpen={showConfirm}
-        title="Start TWAP Bot"
-        message={`TWAP ${side} order will start for ${symbol}.\nTotal: ${totalAmount}\nSlices: ${slices}\nInterval: ${intervalSec}s\nMarket: ${isSpot ? 'Spot' : 'Perps'}`}
+        title="TWAP Bot Summary"
+        subtitle="Confirm the slice schedule and total capital before submitting orders to the book."
+        rows={twapRiskSummary.rows}
+        risk={twapRiskSummary.risk}
+        totalRisk={twapRiskSummary.totalRisk}
+        disclaimer="Each slice is sent as a market order at the prevailing book price. Stopping the bot cancels remaining slices but does not unwind already-executed ones."
+        confirmLabel="Confirm & Start TWAP"
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -281,6 +313,7 @@ export const TwapBot: React.FC = () => {
 
       {/* Live Status Panel */}
       <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
+        <BotPnlStrip botKey="twap" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Completed Slices"

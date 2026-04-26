@@ -94,7 +94,7 @@ export const FundingTracker: React.FC = () => {
 
       setRows(mapped);
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, 'Funding verileri yüklenemedi'));
+      toast.error(getErrorMessage(err, 'Failed to load funding data'));
     } finally {
       setLoading(false);
     }
@@ -132,7 +132,7 @@ export const FundingTracker: React.FC = () => {
 
       setPersonalRows(mapped);
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, 'Pozisyon verileri yüklenemedi'));
+      toast.error(getErrorMessage(err, 'Failed to load position data'));
     } finally {
       setPersonalLoading(false);
     }

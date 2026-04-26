@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
  * Safely extract an error message from an unknown error value.
  * Handles Axios-style error shapes and standard Error objects.
  */
-export function getErrorMessage(err: unknown, fallback = 'Bilinmeyen hata'): string {
+export function getErrorMessage(err: unknown, fallback = 'Unknown error'): string {
   if (err && typeof err === 'object') {
     const e = err as Record<string, unknown>;
     const response = e.response as Record<string, unknown> | undefined;

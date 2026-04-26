@@ -34,6 +34,11 @@ export interface SignalSnapshot {
   vwapSignal?: number;          // -1 to +1 (mean-reversion)
   rocSignal?: number;           // rate-of-change signal, -1 to +1
   atrPct?: number;              // ATR as % of price (volatility regime)
+  // 9th signal — institutional BTC treasury flow (last 30d)
+  treasuryNetBtc?: number;      // raw BTC accumulated by treasury cos. in 30d
+  treasurySignal?: number;      // -1 to +1, normalised
+  treasuryTopBuyer?: string;    // ticker of biggest 30d buyer
+  treasuryFallback?: boolean;   // true when SoSoValue treasury data unavailable
   // Composite
   weightedScore: number;
   agreementCount: number;       // how many signals agree with proposed direction (pre-conviction)

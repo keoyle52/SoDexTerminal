@@ -3,7 +3,8 @@ import toast from 'react-hot-toast';
 import { Play, Square, Repeat, Hash, DollarSign, TrendingUp, Activity } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { ConfirmModal } from '../components/common/ConfirmModal';
+import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
@@ -169,12 +170,52 @@ export const DcaBot: React.FC = () => {
     ? ((currentPrice - avgPrice) / avgPrice) * 100 * (side === 'BUY' ? 1 : -1)
     : 0;
 
+  // Build risk summary rows so the modal can show a structured digest
+  // before launching the DCA bot. Mirrors GridBot's approach.
+  const buildDcaRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
+    const amount = parseFloat(amountPerOrder) || 0;
+    const interval = parseInt(intervalSec) || 0;
+    const max = parseInt(maxOrders) || 0;
+    const totalAmount = max > 0 ? amount * max : 0; // unbounded if max=0
+    // Capital exposure proxy: amount × current price (if known) × max orders.
+    const totalCapitalNotional = totalAmount * (currentPrice || 0);
+    const intervalLabel = interval >= 3600
+      ? `${(interval / 3600).toFixed(1)} hours`
+      : interval >= 60 ? `${Math.round(interval / 60)} minutes`
+      : `${interval} seconds`;
+    const rows: RiskSummaryRow[] = [
+      { label: 'Pair', value: symbol, hint: isSpot ? 'Spot market' : 'Perpetual futures' },
+      { label: 'Direction', value: side, tone: side === 'BUY' ? 'positive' : 'warning' },
+      { label: 'Order size', value: `${amount} ${symbol.split(/[_-]/)[0]}` },
+      { label: 'Interval', value: intervalLabel },
+      {
+        label: 'Max orders',
+        value: max > 0 ? max.toString() : 'Unbounded — bot runs until stopped',
+        tone: max === 0 ? 'warning' : 'default',
+        hint: max === 0 ? 'Without a cap, capital deployed grows over time.' : undefined,
+      },
+    ];
+    const risk: 'Low' | 'Medium' | 'High' =
+      max === 0 ? 'High'
+        : (max > 50 ? 'Medium' : 'Low');
+    const totalRisk = totalCapitalNotional > 0
+      ? `~$${totalCapitalNotional.toLocaleString(undefined, { maximumFractionDigits: 0 })} max ${side.toLowerCase()} exposure`
+      : (max === 0 ? 'Open-ended (no cap)' : `${totalAmount} ${symbol.split(/[_-]/)[0]} total`);
+    return { rows, totalRisk, risk };
+  };
+  const dcaRiskSummary = buildDcaRiskRows();
+
   return (
     <div className="flex h-[calc(100vh-52px)]">
-      <ConfirmModal
+      <RiskSummaryModal
         isOpen={showConfirm}
-        title="Start DCA Bot"
-        message={`DCA ${side} order will start for ${symbol}.\nAmount/Order: ${amountPerOrder}\nInterval: ${intervalSec}s\nMax Orders: ${maxOrders === '0' ? 'Unlimited' : maxOrders}\nMarket: ${isSpot ? 'Spot' : 'Perps'}`}
+        title="DCA Bot Summary"
+        subtitle="Confirm the DCA cadence and exposure before the bot starts placing orders."
+        rows={dcaRiskSummary.rows}
+        risk={dcaRiskSummary.risk}
+        totalRisk={dcaRiskSummary.totalRisk}
+        disclaimer="Each tick places one market order. Stopping the bot prevents future orders but does not unwind already-filled positions."
+        confirmLabel="Confirm & Start DCA"
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -267,6 +308,7 @@ export const DcaBot: React.FC = () => {
 
       {/* Live Status Panel */}
       <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
+        <BotPnlStrip botKey="dca" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Orders Executed"

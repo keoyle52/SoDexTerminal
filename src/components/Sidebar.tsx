@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Grid2X2, Clock, Repeat, Users, LineChart, Coins, 
   TimerOff, Bell, FlaskConical, Settings, Zap, BarChart2, Bot, Wrench, Brain,
-  Sparkles, Newspaper
+  Sparkles, Newspaper, Calendar, Building, Banknote, Flame, Building2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -47,6 +47,22 @@ const NAV_MENU = [
     items: [
       { to: '/funding', icon: Coins, label: 'Funding Rates' },
       { to: '/etf-tracker', icon: BarChart2, label: 'ETF Tracker' },
+      { to: '/macro', icon: Calendar, label: 'Macro Calendar' },
+    ]
+  },
+  // SoSoValue-powered analytical pages — purposely grouped together so the
+  // jury can read them as a connected "intel suite" instead of being
+  // sprinkled across the menu.
+  {
+    groupId: 'intel',
+    icon: Sparkles,
+    label: 'SoSoValue Intel',
+    items: [
+      { to: '/ssi-indices',     icon: Sparkles,  label: 'SSI Indices' },
+      { to: '/btc-treasuries',  icon: Building2, label: 'BTC Treasuries' },
+      { to: '/sector-spotlight',icon: Flame,     label: 'Sector Spotlight' },
+      { to: '/fundraising',     icon: Banknote,  label: 'Fundraising' },
+      { to: '/crypto-stocks',   icon: Building,  label: 'Crypto Stocks' },
     ]
   },
   {

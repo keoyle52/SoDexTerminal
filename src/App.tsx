@@ -42,6 +42,12 @@ const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ d
 const EtfTracker   = lazyFrom(() => import('./pages/EtfTracker').then(m => ({ default: m.EtfTracker })), 'EtfTracker');
 const NewsBot      = lazyFrom(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })), 'NewsBot');
 const BtcPredictor = lazyFrom(() => import('./pages/BtcPredictor').then(m => ({ default: m.BtcPredictor })), 'BtcPredictor');
+const MacroCalendar  = lazyFrom(() => import('./pages/MacroCalendar').then(m => ({ default: m.MacroCalendar })),  'MacroCalendar');
+const SsiIndices     = lazyFrom(() => import('./pages/SsiIndices').then(m => ({ default: m.SsiIndices })),       'SsiIndices');
+const BtcTreasuries  = lazyFrom(() => import('./pages/BtcTreasuries').then(m => ({ default: m.BtcTreasuries })), 'BtcTreasuries');
+const Fundraising    = lazyFrom(() => import('./pages/Fundraising').then(m => ({ default: m.Fundraising })),     'Fundraising');
+const SectorSpotlight = lazyFrom(() => import('./pages/SectorSpotlight').then(m => ({ default: m.SectorSpotlight })), 'SectorSpotlight');
+const CryptoStocks   = lazyFrom(() => import('./pages/CryptoStocks').then(m => ({ default: m.CryptoStocks })),   'CryptoStocks');
 
 /**
  * Non-blocking Suspense fallback — a subtle top progress shimmer instead of
@@ -149,6 +155,12 @@ function App() {
                       <Route path="/etf-tracker"     element={<EtfTracker />} />
                       <Route path="/news-bot"        element={<NewsBot />} />
                       <Route path="/btc-predictor"   element={<BtcPredictor />} />
+                      <Route path="/macro"           element={<MacroCalendar />} />
+                      <Route path="/ssi-indices"     element={<SsiIndices />} />
+                      <Route path="/btc-treasuries"  element={<BtcTreasuries />} />
+                      <Route path="/fundraising"     element={<Fundraising />} />
+                      <Route path="/sector-spotlight" element={<SectorSpotlight />} />
+                      <Route path="/crypto-stocks"   element={<CryptoStocks />} />
                       <Route path="*"                element={<Navigate to="/dashboard" replace />} />
                     </Routes>
                   </Suspense>

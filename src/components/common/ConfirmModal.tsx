@@ -30,7 +30,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, messa
         </div>
         <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-background/30">
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            İptal
+            Cancel
           </Button>
           <Button
             variant="primary"
@@ -40,7 +40,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, messa
               onCancel();
             }}
           >
-            Onayla
+            Confirm
           </Button>
         </div>
       </div>

@@ -108,7 +108,7 @@ export const CopyTrader: React.FC = () => {
           status: 'SUCCESS',
           market,
         });
-        toast.success(`Kopyalandı: ${sideLabel} ${order.symbol} x${qty.toFixed(4)}`);
+        toast.success(`Copied: ${sideLabel} ${order.symbol} x${qty.toFixed(4)}`);
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error';
         addLog({
@@ -378,7 +378,7 @@ export const CopyTrader: React.FC = () => {
 
               <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
                 <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Son İşlemleri</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Recent Trades</span>
                   <span className="badge badge-neutral">{targetOrders.length}</span>
                 </div>
                 {targetOrders.length > 0 ? (

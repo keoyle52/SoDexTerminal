@@ -7,8 +7,10 @@ import {
 import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates, placeOrder, updatePerpsLeverage } from '../api/services';
 import { useLiveTicker, type LiveTicker } from '../api/useLiveTicker';
 import { fetchSosoNews, fetchEtfCurrentMetrics, getNewsTitle } from '../api/sosoServices';
+import { aggregateInstitutionalBtcFlow } from '../api/sosoExtraServices';
 import { analyzeSentiment } from '../api/geminiClient';
 import { useSettingsStore } from '../store/settingsStore';
+import { useBotPnlStore } from '../store/botPnlStore';
 import {
   usePredictorStore,
   computeNetPerformance,
@@ -18,6 +20,7 @@ import {
 } from '../store/predictorStore';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 
@@ -29,8 +32,12 @@ const CYCLE_MS      = 5 * 60 * 1000;
 // staying short enough that data refreshes within ~one extra cycle.
 const NEWS_TTL_MS   = 6 * 60 * 1000;
 const ETF_TTL_MS    = 8 * 60 * 1000;
+// Treasury aggregation runs through ~8 SoSoValue calls per refresh, so we
+// cache aggressively (30 min) — institutional buys aren't intra-day data.
+const TREASURY_TTL_MS = 30 * 60 * 1000;
 const LS_NEWS_KEY   = 'predictor_news_cache';
 const LS_ETF_KEY    = 'predictor_etf_cache';
+const LS_TREASURY_KEY = 'predictor_treasury_cache';
 const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
 const BTC_SYMBOL_HINT = 'BTC';        // substring match against fetchTickers result
 const NEUTRAL_WIDE  = 0.18;             // self-correcting threshold when accuracy drops
@@ -46,18 +53,23 @@ const MIN_CONVICTION_SIGNALS = 2;       // min non-neutral signals agreeing befo
 //   Mean reversion = 0.08  — VWAP deviation
 //   Funding        = 0.10  — absolute rate + change momentum
 // Sum = 1.00
+// 12 weights now — tech cluster trimmed slightly to make room for the
+// new institutional-treasury macro signal (sourced from
+// /btc-treasuries). MicroStrategy/Tesla/etc. tend to forecast 1–3 day
+// drifts; on the 5-min horizon the weight is intentionally small (0.05).
 const W = {
-  microstructure:  0.18,
-  roc:             0.15,
-  ema:             0.12,
+  microstructure:  0.17,
+  roc:             0.14,
+  ema:             0.11,
   macd:            0.06,
   rsi:             0.04,
   orderBook:       0.12,
   news:            0.08,
   etf:             0.07,
-  vwap:            0.08,
+  vwap:            0.07,
   fundingRate:     0.04,
-  fundingMomentum: 0.06,
+  fundingMomentum: 0.05,
+  treasury:        0.05,
 } as const;
 
 /**
@@ -586,6 +598,31 @@ export const BtcPredictor: React.FC = () => {
     }
   }, [sosoApiKey, etfFallbackScore]);
 
+  // ── Fetch institutional BTC treasury flow (9th signal) ─────────────────
+  // Aggregates the last 30 days of MSTR/TSLA/MARA/etc. treasury buys.
+  // Cached aggressively — the underlying data changes daily at most.
+  const fetchTreasurySignal = useCallback(async (): Promise<{
+    signal: number; netBtc: number; topBuyer: string | null; fromFallback?: boolean; fetchedAt: number;
+  }> => {
+    const cached = lsRead<{ signal: number; netBtc: number; topBuyer: string | null }>(LS_TREASURY_KEY);
+    if (cached && Date.now() - cached.fetchedAt < TREASURY_TTL_MS) {
+      return { ...cached.data, fetchedAt: cached.fetchedAt };
+    }
+    try {
+      const agg = await aggregateInstitutionalBtcFlow(30);
+      const result = {
+        signal: agg.signal,
+        netBtc: agg.totalBtc,
+        topBuyer: agg.topBuyer?.ticker ?? null,
+      };
+      lsWrite(LS_TREASURY_KEY, result);
+      return { ...result, fetchedAt: Date.now() };
+    } catch {
+      // Demo synth always returns a valid number; real failures land here.
+      return { signal: 0, netBtc: 0, topBuyer: null, fromFallback: true, fetchedAt: Date.now() };
+    }
+  }, []);
+
   // ── Order book + funding via REST (fetched each cycle) ───────────────────
   const prevFundingRef = useRef(0);
   // Rolling history of bid/(bid+ask) imbalance, used to derive a dynamic
@@ -649,6 +686,15 @@ export const BtcPredictor: React.FC = () => {
       const pnlUsdt = exitPrice > 0
         ? (exitPrice - pos.entryPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1)
         : 0;
+      // Record into the global per-bot PnL store so the dashboard /
+      // strip widgets pick up the close immediately.
+      if (exitPrice > 0) {
+        useBotPnlStore.getState().recordTrade('predictor', {
+          pnlUsdt,
+          ts: Date.now(),
+          note: `${pos.side} ${pos.symbol} closed (${reason})`,
+        });
+      }
       toast.success(
         `Closed ${pos.side} ${pos.quantity.toFixed(4)} ${pos.symbol}`
         + (exitPrice > 0 ? ` — PnL ${pnlUsdt >= 0 ? '+' : ''}${pnlUsdt.toFixed(2)} USDT` : '')
@@ -825,16 +871,18 @@ export const BtcPredictor: React.FC = () => {
       }
       prevFundingRef.current = frRate !== 0 ? frRate : prevFr;
 
-      // 4. News + ETF (cache-first, shared with other pages)
+      // 4. News + ETF + Treasury (cache-first, shared with other pages)
       setStatusMsg('Checking SoSoValue signals…');
-      const [newsResult, etfResult] = await Promise.allSettled([
+      const [newsResult, etfResult, treasuryResult] = await Promise.allSettled([
         fetchNewsSentiment(),
         fetchEtfSignal(),
+        fetchTreasurySignal(),
       ]);
       const news = newsResult.status === 'fulfilled' ? newsResult.value : { score: newsFallbackScore(), fromFallback: true, fetchedAt: Date.now() };
       const etf  = etfResult.status === 'fulfilled'  ? etfResult.value  : { score: etfFallbackScore(),  fromFallback: true, fetchedAt: Date.now() };
+      const treasury = treasuryResult.status === 'fulfilled' ? treasuryResult.value : { signal: 0, netBtc: 0, topBuyer: null, fromFallback: true, fetchedAt: Date.now() };
 
-      // 5. Weighted score — full 11-signal ensemble.
+      // 5. Weighted score — full 12-signal ensemble (incl. treasury flow).
       const score =
         tech.microstructureSignal * W.microstructure +
         tech.rocSignal            * W.roc            +
@@ -846,7 +894,8 @@ export const BtcPredictor: React.FC = () => {
         etf.score                 * W.etf            +
         tech.vwapSignal           * W.vwap           +
         frSignal                  * W.fundingRate    +
-        fundingMomentumSignal     * W.fundingMomentum;
+        fundingMomentumSignal     * W.fundingMomentum +
+        treasury.signal           * W.treasury;
 
       const threshold = neutralThresholdRef.current;
       // Realistic max — empirical ceiling for the score when signals are
@@ -859,10 +908,11 @@ export const BtcPredictor: React.FC = () => {
         score < -threshold ? 'DOWN' : 'NEUTRAL';
 
       // Count how many signals agree with the proposed direction. Uses the
-      // full 11-signal vector so conviction reflects real consensus.
+      // full 12-signal vector so conviction reflects real consensus.
       const signalValues = [
         tech.microstructureSignal, tech.rocSignal, tech.emaSignal, tech.macdSignal, tech.rsiSignal,
         obSignal, news.score, etf.score, tech.vwapSignal, frSignal, fundingMomentumSignal,
+        treasury.signal,
       ];
       // When the proposed direction is NEUTRAL we still want a "what's
       // the bias?" agreement count for the UI, so count along the sign
@@ -910,6 +960,7 @@ export const BtcPredictor: React.FC = () => {
           vwap:           +tech.vwapSignal.toFixed(2),
           fundingRate:    +frSignal.toFixed(2),
           fundingMom:     +fundingMomentumSignal.toFixed(2),
+          treasury:       +treasury.signal.toFixed(2),
         },
       );
 
@@ -937,6 +988,10 @@ export const BtcPredictor: React.FC = () => {
         vwapSignal: tech.vwapSignal,
         rocSignal: tech.rocSignal,
         atrPct: tech.atrPct,
+        treasuryNetBtc: treasury.netBtc,
+        treasurySignal: treasury.signal,
+        treasuryTopBuyer: treasury.topBuyer ?? undefined,
+        treasuryFallback: !!(treasury as { fromFallback?: boolean }).fromFallback,
         weightedScore: score,
         agreementCount,
         totalSignals,
@@ -1031,7 +1086,7 @@ export const BtcPredictor: React.FC = () => {
       if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
       cycleTimerRef.current = setTimeout(runPredictionCycle, CYCLE_MS);
     }
-  }, [fetchNewsSentiment, fetchEtfSignal, newsFallbackScore, etfFallbackScore, setCurrentPrediction, addHistoryEntry, resolvePrediction, placePredictorOrder, closePredictorPosition]);
+  }, [fetchNewsSentiment, fetchEtfSignal, fetchTreasurySignal, newsFallbackScore, etfFallbackScore, setCurrentPrediction, addHistoryEntry, resolvePrediction, placePredictorOrder, closePredictorPosition]);
 
   const handleStart = useCallback(() => {
     if (!sosoApiKey) {
@@ -1184,6 +1239,16 @@ export const BtcPredictor: React.FC = () => {
       signal: signals.rsiSignal,
       weight: W.rsi,
     },
+    {
+      label: 'Institutional Treasury (30d)',
+      value: signals.treasuryNetBtc != null && signals.treasuryNetBtc !== 0
+        ? `+${Math.round(signals.treasuryNetBtc).toLocaleString()} BTC${signals.treasuryTopBuyer ? ` (${signals.treasuryTopBuyer} lead)` : ''}`
+        : 'No recent buys',
+      signal: signals.treasurySignal ?? 0,
+      weight: W.treasury,
+      poweredBy: !signals.treasuryFallback,
+      isFallback: !!signals.treasuryFallback,
+    },
   ] : [];
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1263,6 +1328,9 @@ export const BtcPredictor: React.FC = () => {
           })() : <span className="text-lg font-bold font-mono text-text-muted">—</span>}
         </div>
       </div>
+
+      {/* Bot PnL strip — live performance widget shared across pages */}
+      <BotPnlStrip botKey="predictor" />
 
       {/* Status bar */}
       <div className={cn(
@@ -1568,6 +1636,108 @@ export const BtcPredictor: React.FC = () => {
 
             </div>
           </Card>
+
+          {/* ── Transparent Reasoning Panel ──
+              Surfaces every signal as a horizontal bar (length = |contribution|,
+              colour = direction) plus a plain-English narrative. Designed to
+              answer the "why this prediction?" question at a glance. */}
+          {signals && signalRows.length > 0 && (() => {
+            const verdictTone =
+              currentPrediction === 'UP' ? 'text-emerald-400' :
+              currentPrediction === 'DOWN' ? 'text-red-400' : 'text-text-muted';
+            const verdictBg =
+              currentPrediction === 'UP' ? 'bg-emerald-500/10 border-emerald-500/30' :
+              currentPrediction === 'DOWN' ? 'bg-red-500/10 border-red-500/30' :
+              'bg-white/5 border-white/15';
+
+            const sortedRows = [...signalRows].sort(
+              (a, b) => Math.abs(b.signal * b.weight) - Math.abs(a.signal * a.weight),
+            );
+            const maxAbs = Math.max(0.001, ...sortedRows.map((r) => Math.abs(r.signal * r.weight)));
+
+            const reasoningPhrase = (signal: number, value: string): string => {
+              const dir = signal > 0.05 ? 'Bullish' : signal < -0.05 ? 'Bearish' : 'Neutral';
+              return `${value} → ${dir}`;
+            };
+
+            return (
+              <Card className="p-0 overflow-hidden">
+                <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Brain size={16} className="text-violet-400" />
+                    <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">Why this prediction?</h2>
+                  </div>
+                  <div className={cn(
+                    'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold',
+                    verdictBg,
+                  )}>
+                    <span className="text-text-muted">Result:</span>
+                    <span className={cn('font-mono', verdictTone)}>
+                      {currentConfidence}%
+                      {' '}
+                      {currentPrediction === 'UP' ? 'UP' : currentPrediction === 'DOWN' ? 'DOWN' : 'NEUTRAL'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5 flex flex-col gap-2.5">
+                  {sortedRows.map((row) => {
+                    const contribution = row.signal * row.weight;
+                    const positive = contribution >= 0;
+                    const fillPct = (Math.abs(contribution) / maxAbs) * 100;
+                    return (
+                      <div key={row.label} className="flex items-center gap-3">
+                        <span className="text-[11px] text-text-secondary w-44 shrink-0 truncate" title={row.label}>
+                          {row.label}
+                        </span>
+                        {/* Centered bar gauge: left half = bearish, right half = bullish */}
+                        <div className="flex-1 h-5 relative bg-white/[0.02] border border-white/5 rounded-md overflow-hidden">
+                          <div className="absolute inset-y-0 left-1/2 w-[1px] bg-white/15" />
+                          {positive ? (
+                            <div
+                              className="absolute inset-y-0 left-1/2 bg-gradient-to-r from-emerald-500/30 to-emerald-400/80 rounded-r-md transition-[width] duration-500"
+                              style={{ width: `${fillPct / 2}%` }}
+                            />
+                          ) : (
+                            <div
+                              className="absolute inset-y-0 right-1/2 bg-gradient-to-l from-red-500/30 to-red-400/80 rounded-l-md transition-[width] duration-500"
+                              style={{ width: `${fillPct / 2}%` }}
+                            />
+                          )}
+                          <div className="absolute inset-0 flex items-center justify-center text-[10px] text-text-muted font-mono pointer-events-none">
+                            <span className="truncate px-2">
+                              {reasoningPhrase(row.signal, row.value)}
+                              <span className="ml-1 opacity-60">· w {row.weight.toFixed(2)}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <span className={cn(
+                          'text-xs font-mono font-bold w-16 text-right shrink-0',
+                          positive && contribution > 0.005 ? 'text-emerald-400' :
+                          !positive && contribution < -0.005 ? 'text-red-400' :
+                          'text-text-muted',
+                        )}>
+                          {contribution >= 0 ? '+' : ''}{contribution.toFixed(3)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="px-5 py-3 border-t border-white/5 flex flex-wrap items-center gap-3 text-[11px] text-text-muted">
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-2 bg-emerald-400/80 rounded-sm" /> Right of centre = bullish push
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-2 bg-red-400/80 rounded-sm" /> Left of centre = bearish pull
+                  </span>
+                  <span className="ml-auto">
+                    Bar length ∝ <span className="text-text-secondary font-semibold">|signal × weight|</span>
+                  </span>
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* Signal Breakdown Table */}
           <Card className="p-0 overflow-hidden">

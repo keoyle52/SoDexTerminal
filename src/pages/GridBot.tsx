@@ -13,10 +13,12 @@ import {
 import { getErrorMessage } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { ConfirmModal } from '../components/common/ConfirmModal';
+import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
+import { useBotPnlStore } from '../store/botPnlStore';
 
 interface GridLevel {
   price: number;
@@ -162,6 +164,13 @@ export const GridBot: React.FC = () => {
           const fresh = useBotStore.getState().gridBot;
           fresh.setField('completedGrids', fresh.completedGrids + 1);
           fresh.setField('realizedPnl', fresh.realizedPnl + pnlPerGrid);
+          // Record into the global per-bot PnL store so the dashboard
+          // strip + sidebar metrics stay in sync across pages.
+          useBotPnlStore.getState().recordTrade('grid', {
+            pnlUsdt: pnlPerGrid,
+            ts: Date.now(),
+            note: `${filledSide} grid filled @ ${level.price.toFixed(2)}`,
+          });
 
           if (filledSide === 'BUY' && i + 1 < levels.length) {
             const orderId = await placeGridOrder(levels[i + 1].price, 'SELL');
@@ -336,12 +345,88 @@ export const GridBot: React.FC = () => {
 
   const isRunning = state.status === 'RUNNING';
 
+  // Build the structured risk-summary rows once per render. Computed
+  // outside JSX so the helper logic — total notional, capital at risk,
+  // grid step — is testable and easy to read.
+  const buildRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
+    const lower = parseFloat(state.lowerPrice) || 0;
+    const upper = parseFloat(state.upperPrice) || 0;
+    const count = parseInt(state.gridCount) || 0;
+    const amount = parseFloat(state.amountPerGrid) || 0;
+    const step = count > 0 && upper > lower ? (upper - lower) / count : 0;
+    const midPrice = lower > 0 && upper > 0 ? (lower + upper) / 2 : 0;
+    // Notional capital at risk = amount per grid × number of buy levels × mid price.
+    // This is the canonical "max long capital deployed" figure for a
+    // neutral grid; long/short modes use the same expression but only the
+    // applicable side fills.
+    const buyLevels = state.mode === 'SHORT' ? 0 : Math.max(1, Math.floor(count / 2));
+    const totalCapital = amount * buyLevels * midPrice;
+    const rangePct = midPrice > 0 ? ((upper - lower) / midPrice) * 100 : 0;
+    const tooWide = rangePct > 30;
+    const tooNarrow = rangePct < 4 && rangePct > 0;
+
+    const rows: RiskSummaryRow[] = [
+      { label: 'Pair', value: state.symbol, hint: state.isSpot ? 'Spot market' : 'Perpetual futures' },
+      { label: 'Direction', value: state.mode, tone: state.mode === 'NEUTRAL' ? 'default' : 'warning' },
+      {
+        label: 'Price range',
+        value: `${lower.toLocaleString()} – ${upper.toLocaleString()}`,
+        hint: rangePct > 0 ? `${rangePct.toFixed(1)}% wide` : undefined,
+        tone: tooWide || tooNarrow ? 'warning' : 'default',
+      },
+      {
+        label: 'Grid levels',
+        value: `${count} levels`,
+        hint: step > 0 ? `Step ≈ ${step.toFixed(2)} per level` : undefined,
+      },
+      {
+        label: 'Amount per grid',
+        value: `${amount} ${state.symbol.split(/[_-]/)[0]}`,
+      },
+      {
+        label: 'Approx. orders placed',
+        value: `${Math.max(0, count - 1)} initial limit orders`,
+      },
+    ];
+    if (tooWide) {
+      rows.push({
+        label: 'Heads-up',
+        value: 'Range > 30%',
+        tone: 'warning',
+        hint: 'Wide ranges trade less often — fewer fills per day.',
+      });
+    }
+    if (tooNarrow) {
+      rows.push({
+        label: 'Heads-up',
+        value: 'Range < 4%',
+        tone: 'warning',
+        hint: 'Narrow ranges break out frequently and may strand capital.',
+      });
+    }
+    const risk: 'Low' | 'Medium' | 'High' =
+      state.mode !== 'NEUTRAL' && (tooWide || tooNarrow) ? 'High'
+        : state.mode !== 'NEUTRAL' ? 'Medium'
+          : tooWide || tooNarrow ? 'Medium' : 'Low';
+    const totalRisk = totalCapital > 0
+      ? `~$${totalCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })} max long exposure`
+      : '— (configure parameters)';
+    return { rows, totalRisk, risk };
+  };
+
+  const riskSummary = buildRiskRows();
+
   return (
     <div className="flex h-[calc(100vh-52px)]">
-      <ConfirmModal
+      <RiskSummaryModal
         isOpen={showConfirm}
-        title="Start Grid Bot"
-        message={`Grid bot will start for ${state.symbol}.\nMarket: ${state.isSpot ? 'Spot' : 'Perps'}\nRange: ${state.lowerPrice} – ${state.upperPrice}\nGrids: ${state.gridCount}\nAmount/Grid: ${state.amountPerGrid}\nMode: ${state.mode}`}
+        title="Grid Bot Summary"
+        subtitle="Review the run before launch — these parameters cannot be changed while the bot is active."
+        rows={riskSummary.rows}
+        risk={riskSummary.risk}
+        totalRisk={riskSummary.totalRisk}
+        disclaimer="The bot will place limit orders at every grid level on start and re-balance them as fills occur. Stopping the bot cancels all open grid orders."
+        confirmLabel="Confirm & Start Bot"
         onConfirm={doStart}
         onCancel={() => setShowConfirm(false)}
       />
@@ -451,6 +536,7 @@ export const GridBot: React.FC = () => {
 
       {/* Live Status Panel */}
       <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
+        <BotPnlStrip botKey="grid" />
         <div className="grid grid-cols-4 gap-4">
           <StatCard
             label="Active Orders"

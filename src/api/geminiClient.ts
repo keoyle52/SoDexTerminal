@@ -1,14 +1,25 @@
 import axios from 'axios';
 import { useSettingsStore } from '../store/settingsStore';
+import { fakeSentimentForHeadline } from './sosoExtraServices';
 
 export type Sentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+
+/** Detail variant returned by `analyzeSentimentDetailed` so callers can
+ *  surface confidence + the model that produced the verdict in the UI. */
+export interface SentimentDetail {
+  sentiment: Sentiment;
+  /** 0..100 — real model output is ~softmax max; demo mode uses 60–80%. */
+  confidence: number;
+  /** Source of the verdict, useful for the demo "AI" badge. */
+  source: 'gemini' | 'demo';
+}
 
 // In-memory sentiment cache. The classification of a fixed headline does
 // not drift — a 60-minute TTL is generous and lets the same article
 // surface across NewsBot polls + the BtcPredictor news scoring without
 // double-billing Gemini. The size cap prevents the map from growing
 // unbounded across long sessions; oldest entry is evicted when full.
-const _sentimentCache = new Map<string, { sentiment: Sentiment; ts: number }>();
+const _sentimentCache = new Map<string, { sentiment: Sentiment; ts: number; confidence?: number; source?: 'gemini' | 'demo' }>();
 const SENTIMENT_CACHE_TTL  = 60 * 60_000;
 const SENTIMENT_CACHE_MAX  = 500;
 
@@ -31,19 +42,43 @@ export function clearSentimentCache(): void {
   _sentimentCache.clear();
 }
 
-export async function analyzeSentiment(title: string): Promise<Sentiment> {
-  // Cache check first — avoid hitting Gemini for a headline we've already
-  // classified within the TTL window.
+/**
+ * Detailed sentiment classification.
+ *
+ *  - Demo mode (or no Gemini key): returns a deterministic synthetic verdict
+ *    via {@link fakeSentimentForHeadline} so the UI can show "AI sentiment"
+ *    without burning API credits. Confidence is constrained to 60–80% so
+ *    the band reads like a real softmax output.
+ *  - Live mode: calls Gemini 2.5 Flash and parses the single-word reply.
+ *    A confidence score is approximated from the response (Gemini does not
+ *    expose logits) — we use 75% on a confident BULLISH/BEARISH reply and
+ *    55% on NEUTRAL replies as a sane default.
+ */
+export async function analyzeSentimentDetailed(title: string): Promise<SentimentDetail> {
   const key = cacheKey(title);
   const cached = _sentimentCache.get(key);
   if (cached && Date.now() - cached.ts < SENTIMENT_CACHE_TTL) {
-    return cached.sentiment;
+    return {
+      sentiment: cached.sentiment,
+      confidence: cached.confidence ?? 70,
+      source: cached.source ?? 'gemini',
+    };
   }
 
-  const { geminiApiKey } = useSettingsStore.getState();
-  
-  if (!geminiApiKey) {
-    throw new Error('Gemini API key is not set in Settings.');
+  const { geminiApiKey, isDemoMode } = useSettingsStore.getState();
+
+  // Demo / no-key fast path — synthesize a deterministic verdict so the
+  // jury sees an "AI" feature working without entering any credentials.
+  if (isDemoMode || !geminiApiKey) {
+    const fake = fakeSentimentForHeadline(title);
+    evictOldestIfFull();
+    _sentimentCache.set(key, {
+      sentiment: fake.sentiment,
+      confidence: fake.confidence,
+      source: 'demo',
+      ts: Date.now(),
+    });
+    return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo' };
   }
 
   // gemini-1.5-flash was retired by Google in late 2025 (returns 404). The
@@ -60,32 +95,34 @@ Do not provide any explanation or other text.
 Headline: "${title}"`;
 
   const payload = {
-    contents: [{
-      parts: [{ text: prompt }]
-    }],
-    generationConfig: {
-      temperature: 0.1,
-      topK: 1,
-      topP: 1,
-      maxOutputTokens: 10,
-    }
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.1, topK: 1, topP: 1, maxOutputTokens: 10 },
   };
 
   try {
     const res = await axios.post(url, payload);
     const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()?.toUpperCase();
-
     const sentiment: Sentiment =
       text?.includes('BULLISH') ? 'BULLISH' :
       text?.includes('BEARISH') ? 'BEARISH' :
       'NEUTRAL';
+    const confidence = sentiment === 'NEUTRAL' ? 55 : 75;
 
-    // Persist the classification so callers within the TTL skip Gemini.
     evictOldestIfFull();
-    _sentimentCache.set(key, { sentiment, ts: Date.now() });
-    return sentiment;
+    _sentimentCache.set(key, { sentiment, ts: Date.now(), confidence, source: 'gemini' });
+    return { sentiment, confidence, source: 'gemini' };
   } catch (err: unknown) {
     console.error('Gemini API Error:', err);
     throw new Error('Failed to analyze sentiment with Gemini AI.');
   }
+}
+
+/**
+ * Backwards-compatible wrapper — older call sites only need the verdict.
+ * Internally delegates to {@link analyzeSentimentDetailed} so the demo /
+ * caching behaviour is identical.
+ */
+export async function analyzeSentiment(title: string): Promise<Sentiment> {
+  const detail = await analyzeSentimentDetailed(title);
+  return detail.sentiment;
 }

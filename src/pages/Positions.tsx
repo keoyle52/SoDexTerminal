@@ -86,7 +86,7 @@ export const Positions: React.FC = () => {
 
       setPositions(mapped);
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, 'Pozisyonlar yüklenemedi'));
+      toast.error(getErrorMessage(err, 'Failed to load positions'));
     } finally {
       setLoading(false);
     }
@@ -237,7 +237,7 @@ export const Positions: React.FC = () => {
                   <td colSpan={9} className="px-5 py-16 text-center">
                     <div className="flex flex-col items-center gap-3 text-text-muted">
                       <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      <span className="text-sm">Yükleniyor...</span>
+                      <span className="text-sm">Loading…</span>
                     </div>
                   </td>
                 </tr>
