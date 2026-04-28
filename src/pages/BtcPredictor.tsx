@@ -42,10 +42,16 @@ const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
 const BTC_SYMBOL_HINT = 'BTC';        // substring match against fetchTickers result
 const NEUTRAL_WIDE  = 0.18;             // self-correcting threshold when accuracy drops
 const ORDERBOOK_HISTORY = 30;           // rolling window for dynamic imbalance z-score
-// 12 signals total → require 3 agreeing (was 2). At weights summing to 1.0,
-// any single >0.15 signal could previously drag two tiny aligned signals over
-// the line. Three independent agreements is a more honest consensus.
-const MIN_CONVICTION_SIGNALS = 3;
+// 12 signals total — the conviction floor is **dynamic**. Default 2 lets the
+// engine fire whenever the weighted score has crossed the threshold AND at
+// least two signals back it. After two consecutive losses the floor jumps
+// to 3 to demand stronger consensus until accuracy recovers; after a win it
+// relaxes back. Static "3" was producing zero trades in calm regimes.
+const MIN_CONVICTION_BASE = 2;
+const MIN_CONVICTION_AFTER_LOSSES = 3;
+function dynamicConvictionFloor(consecutiveLosses: number): number {
+  return consecutiveLosses >= 2 ? MIN_CONVICTION_AFTER_LOSSES : MIN_CONVICTION_BASE;
+}
 // Warmup gate — first N cycles after Start are observed but not traded so the
 // adaptive components (ATR baseline, orderbook z-score history) have data to
 // calibrate against. Without this, the first 5 trades fire with a default
@@ -86,15 +92,16 @@ const W = {
  * volume" goal: produce as many trades as possible while keeping
  * expected value positive after the round-trip taker fee (~0.08%).
  *
- *   ATR < 0.10%  → 0.30  refuse outright — 5-min move ≲ fee, EV is
- *                       structurally negative no matter how strong
- *                       the composite score looks. (Tightened from
- *                       0.05% after observing first-trade losses where
- *                       the best winning move was only +0.04% net.)
- *   ATR < 0.15%  → 0.16  near-dead market, demand strong consensus.
- *   ATR < 0.25%  → 0.10  normal regime, fire selectively.
- *   ATR < 0.35%  → 0.07  active, fire on most decent scores.
- *   ATR ≥ 0.35%  → 0.05  volatile, almost any directional bias is tradable.
+ * Calibrated against typical BTC 1-min ATR(14) which sits around
+ * 0.08-0.20% in calm regimes and >0.30% in active ones. The previous
+ * ladder cut at 0.10% which was killing the entire calm regime
+ * (~50% of market hours) and producing zero trades.
+ *
+ *   ATR < 0.04%  → 0.30  truly dead market — refuse outright.
+ *   ATR < 0.08%  → 0.13  calm regime — demand consensus.
+ *   ATR < 0.16%  → 0.09  normal regime — fire on decent scores.
+ *   ATR < 0.28%  → 0.06  active regime — almost any directional bias.
+ *   ATR ≥ 0.28%  → 0.04  volatile regime — fire often.
  *
  * If recent accuracy collapses (<45% over the last 20 decided trades)
  * the threshold widens to NEUTRAL_WIDE regardless of ATR — a circuit
@@ -102,12 +109,12 @@ const W = {
  */
 function computeNeutralThreshold(atrPct: number, accuracyBelow45: boolean): number {
   if (accuracyBelow45) return NEUTRAL_WIDE;
-  if (!Number.isFinite(atrPct) || atrPct <= 0) return 0.16;
-  if (atrPct < 0.10) return 0.30;   // dead market — fee guard
-  if (atrPct < 0.15) return 0.16;
-  if (atrPct < 0.25) return 0.10;
-  if (atrPct < 0.35) return 0.07;
-  return 0.05;                       // volatile → fire often
+  if (!Number.isFinite(atrPct) || atrPct <= 0) return 0.10;
+  if (atrPct < 0.04) return 0.30;   // dead market — fee guard
+  if (atrPct < 0.08) return 0.13;
+  if (atrPct < 0.16) return 0.09;
+  if (atrPct < 0.28) return 0.06;
+  return 0.04;                       // volatile → fire often
 }
 
 // ─── Technical Indicator Helpers ─────────────────────────────────────────────
@@ -663,10 +670,26 @@ export const BtcPredictor: React.FC = () => {
     : null;
   const accuracyBelow45 = acc20 !== null && acc20 < 0.45;
   const neutralThreshold = computeNeutralThreshold(lastAtrPct, accuracyBelow45);
+  // Count consecutive WRONG results from the most recent decided trade
+  // backward; stops at the first CORRECT. Drives the dynamic conviction
+  // floor — two losses in a row demand stronger consensus.
+  const consecutiveLosses = (() => {
+    let n = 0;
+    for (const e of last20Decided) {
+      if (e.result === 'WRONG') n += 1;
+      else break;
+    }
+    return n;
+  })();
+  const minConvictionFloor = dynamicConvictionFloor(consecutiveLosses);
 
   // ── Run full prediction cycle ───────────────────────────────────────────
   const neutralThresholdRef = useRef(neutralThreshold);
   useEffect(() => { neutralThresholdRef.current = neutralThreshold; }, [neutralThreshold]);
+  // Conviction floor mirrored into a ref so the async cycle reads the
+  // latest value without re-creating the callback every time it changes.
+  const minConvictionRef = useRef(minConvictionFloor);
+  useEffect(() => { minConvictionRef.current = minConvictionFloor; }, [minConvictionFloor]);
 
   // ── Trade-settings refs (so the cycle reads latest values reactively) ──
   const autoTradeEnabledRef = useRef(autoTradeEnabled);
@@ -950,8 +973,9 @@ export const BtcPredictor: React.FC = () => {
       // threshold, refuse to trade unless enough independent signals
       // agree. Saves against one large-weight outlier overpowering the
       // ensemble and opening a losing trade.
+      const minConviction = minConvictionRef.current;
       let convictionFailed = false;
-      if (direction !== 'NEUTRAL' && agreeing.length < MIN_CONVICTION_SIGNALS) {
+      if (direction !== 'NEUTRAL' && agreeing.length < minConviction) {
         direction = 'NEUTRAL';
         convictionFailed = true;
       }
@@ -978,7 +1002,7 @@ export const BtcPredictor: React.FC = () => {
         `[Predictor] score=${score.toFixed(3)} `
         + `threshold=±${threshold.toFixed(2)} `
         + `agreeing=${agreeing.length}/${nonNeutral.length} `
-        + `(min ${MIN_CONVICTION_SIGNALS}) `
+        + `(min ${minConviction}) `
         + `atr=${tech.atrPct.toFixed(2)}% `
         + `→ ${direction}`
         + (convictionFailed ? ' [conviction fail]' : ''),
@@ -1055,7 +1079,7 @@ export const BtcPredictor: React.FC = () => {
           ? (inWarmup
               ? `Warming up (${cycleCountRef.current}/${WARMUP_CYCLES}) — observing markets while indicators calibrate`
               : convictionFailed
-                ? `Score ${score.toFixed(3)} cleared ±${threshold.toFixed(2)} but only ${agreeing.length}/${MIN_CONVICTION_SIGNALS} signals agreed — NEUTRAL, skipped`
+                ? `Score ${score.toFixed(3)} cleared ±${threshold.toFixed(2)} but only ${agreeing.length}/${minConviction} signals agreed — NEUTRAL, skipped`
                 : `Score ${score.toFixed(3)} within ±${threshold.toFixed(2)} threshold — NEUTRAL, skipped`)
           : `↑ ${direction} predicted (score ${score.toFixed(3)}, ${agreementCount}/${totalSignals} signals agree) — resolving in 5 min…`,
       );
@@ -1616,7 +1640,7 @@ export const BtcPredictor: React.FC = () => {
                         title={
                           signals.neutralReason === 'weak_score'
                             ? `|score| ${Math.abs(signals.weightedScore).toFixed(3)} did not clear ±${neutralThreshold.toFixed(2)}`
-                            : `Score cleared threshold but only ${signals.agreementCount}/${MIN_CONVICTION_SIGNALS} signals agreed`
+                            : `Score cleared threshold but only ${signals.agreementCount}/${minConvictionFloor} signals agreed`
                         }
                       >
                         {signals.neutralReason === 'weak_score' ? 'Weak score' : 'Low conviction'}
@@ -1659,7 +1683,7 @@ export const BtcPredictor: React.FC = () => {
                   <div className="text-[10px] text-text-muted" title="Volatility-adaptive. Widens when ATR is low or recent accuracy drops below 45%.">
                     threshold ±{neutralThreshold.toFixed(2)}
                     {signals && ` · ATR ${signals.atrPct?.toFixed(2) ?? '?'}%`}
-                    {signals && ` · ${signals.agreementCount}/${signals.totalSignals} agree (min ${MIN_CONVICTION_SIGNALS})`}
+                    {signals && ` · ${signals.agreementCount}/${signals.totalSignals} agree (min ${minConvictionFloor})`}
                   </div>
                 </div>
                 {signals && (

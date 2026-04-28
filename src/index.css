@@ -278,6 +278,7 @@ input:focus, select:focus, textarea:focus {
 }
 .badge-success { background: rgba(0,230,118,0.1); color: var(--color-success); border: 1px solid rgba(0,230,118,0.3); box-shadow: inset 0 0 8px rgba(0,230,118,0.1); }
 .badge-danger { background: rgba(255,51,102,0.1); color: var(--color-danger); border: 1px solid rgba(255,51,102,0.3); box-shadow: inset 0 0 8px rgba(255,51,102,0.1); }
+.badge-warning { background: rgba(251,191,36,0.1); color: rgb(251,191,36); border: 1px solid rgba(251,191,36,0.3); box-shadow: inset 0 0 8px rgba(251,191,36,0.1); }
 .badge-primary { background: rgba(0,225,255,0.1); color: var(--color-primary); border: 1px solid rgba(0,225,255,0.3); box-shadow: inset 0 0 8px rgba(0,225,255,0.1); }
 .badge-neutral { background: rgba(255,255,255,0.05); color: var(--color-text-primary); border: 1px solid rgba(255,255,255,0.1); }
 

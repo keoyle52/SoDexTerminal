@@ -2,7 +2,8 @@ import React from 'react';
 import { cn } from '../../lib/utils';
 
 interface StatusBadgeProps {
-  status: 'STOPPED' | 'RUNNING' | 'ERROR';
+  /** Bot lifecycle. `ARMED` = waiting for a conditional trigger price. */
+  status: 'STOPPED' | 'RUNNING' | 'ERROR' | 'ARMED';
   className?: string;
 }
 
@@ -12,6 +13,11 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className }) =
       dotColor: 'bg-success',
       text: 'RUNNING',
       badgeClass: 'badge-success',
+    },
+    ARMED: {
+      dotColor: 'bg-amber-400',
+      text: 'ARMED',
+      badgeClass: 'badge-warning',
     },
     ERROR: {
       dotColor: 'bg-danger',
