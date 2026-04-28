@@ -45,10 +45,12 @@ export interface SignalSnapshot {
   totalSignals: number;         // total non-neutral signals counted
   /** Populated only when the cycle resolved to NEUTRAL; null otherwise.
    *  'weak_score'     — |weightedScore| did not clear the threshold
+   *  'marginal_score' — cleared threshold but by less than the margin
+   *                     multiplier required to overcome round-trip fee + noise
    *  'low_conviction' — score cleared threshold but too few signals agreed
    *  'warmup'         — observation-only cycle while the engine calibrates
    *                     adaptive components (first ~10 cycles after Start) */
-  neutralReason?: 'weak_score' | 'low_conviction' | 'warmup' | null;
+  neutralReason?: 'weak_score' | 'marginal_score' | 'low_conviction' | 'warmup' | null;
 }
 
 export interface PredictionEntry {

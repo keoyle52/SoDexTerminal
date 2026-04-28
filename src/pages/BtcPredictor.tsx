@@ -61,6 +61,17 @@ function dynamicConvictionFloor(consecutiveLosses: number): number {
 // total wait time short.
 const WARMUP_CYCLES = 3;
 
+// Score-margin gate — once the threshold is cleared, the score must clear
+// it by at least this multiplier before a trade fires. Stops "marginal
+// scores" (e.g. score=0.10 vs threshold=0.09 — only 11% over) from firing,
+// since those almost always resolve into noise that the round-trip taker
+// fee (~0.08%) eats. Empirically observed on a 4-trade live sample where
+// 3 of 4 firing trades had Math.abs(score)/threshold ≈ 1.05–1.20 and lost
+// by an average of −0.10%, while wins were +0.03% (asymmetric). 1.30
+// requires the score to be at least 30% past the threshold — which
+// corresponds to a meaningfully aligned ensemble, not a borderline edge.
+const SCORE_MARGIN_MULT = 1.30;
+
 // ─── Weights ──────────────────────────────────────────────────────────────────
 // Designed for the 5-minute horizon, where technical momentum
 // dominates and slow macro signals (news / ETF flow) only add edge at
@@ -971,6 +982,18 @@ export const BtcPredictor: React.FC = () => {
       const agreementCount = agreeing.length;
       const totalSignals = nonNeutral.length;
 
+      // Score-margin filter — once the score clears the threshold, demand
+      // it clear it by SCORE_MARGIN_MULT (e.g. 30%) before firing. This
+      // strips out the "barely-over" noise band where realised moves are
+      // statistically indistinguishable from the round-trip fee. The
+      // threshold itself is already volatility-adaptive, so we only need
+      // a fixed multiplicative margin on top.
+      let marginalScoreFailed = false;
+      if (direction !== 'NEUTRAL' && Math.abs(score) < threshold * SCORE_MARGIN_MULT) {
+        direction = 'NEUTRAL';
+        marginalScoreFailed = true;
+      }
+
       // Conviction filter — even if the weighted score clears the
       // threshold, refuse to trade unless enough independent signals
       // agree. Saves against one large-weight outlier overpowering the
@@ -992,9 +1015,12 @@ export const BtcPredictor: React.FC = () => {
         direction = 'NEUTRAL';
       }
 
-      const neutralReason: 'weak_score' | 'low_conviction' | 'warmup' | null =
+      const neutralReason: 'weak_score' | 'marginal_score' | 'low_conviction' | 'warmup' | null =
         direction === 'NEUTRAL'
-          ? (inWarmup ? 'warmup' : (convictionFailed ? 'low_conviction' : 'weak_score'))
+          ? (inWarmup ? 'warmup'
+            : convictionFailed ? 'low_conviction'
+            : marginalScoreFailed ? 'marginal_score'
+            : 'weak_score')
           : null;
 
       // Debug log — always on so the user can open devtools (F12 →
@@ -1003,10 +1029,12 @@ export const BtcPredictor: React.FC = () => {
       console.log(
         `[Predictor] score=${score.toFixed(3)} `
         + `threshold=±${threshold.toFixed(2)} `
+        + `(margin ${SCORE_MARGIN_MULT}× = ±${(threshold * SCORE_MARGIN_MULT).toFixed(3)}) `
         + `agreeing=${agreeing.length}/${nonNeutral.length} `
         + `(min ${minConviction}) `
         + `atr=${tech.atrPct.toFixed(2)}% `
         + `→ ${direction}`
+        + (marginalScoreFailed ? ' [marginal score]' : '')
         + (convictionFailed ? ' [conviction fail]' : ''),
         {
           microstructure: +tech.microstructureSignal.toFixed(2),
@@ -1639,13 +1667,28 @@ export const BtcPredictor: React.FC = () => {
                             ? 'bg-white/5 text-text-muted border-white/10'
                             : 'bg-amber-400/10 text-amber-400 border-amber-400/30',
                         )}
-                        title={
-                          signals.neutralReason === 'weak_score'
-                            ? `|score| ${Math.abs(signals.weightedScore).toFixed(3)} did not clear ±${neutralThreshold.toFixed(2)}`
-                            : `Score cleared threshold but only ${signals.agreementCount}/${minConvictionFloor} signals agreed`
-                        }
+                        title={(() => {
+                          const absScore = Math.abs(signals.weightedScore).toFixed(3);
+                          const thr = neutralThreshold.toFixed(2);
+                          const marginThr = (neutralThreshold * SCORE_MARGIN_MULT).toFixed(3);
+                          switch (signals.neutralReason) {
+                            case 'weak_score':
+                              return `|score| ${absScore} did not clear ±${thr}`;
+                            case 'marginal_score':
+                              return `|score| ${absScore} cleared ±${thr} but is below the ${SCORE_MARGIN_MULT}× safety margin (±${marginThr})`;
+                            case 'low_conviction':
+                              return `Score cleared threshold but only ${signals.agreementCount}/${minConvictionFloor} signals agreed`;
+                            case 'warmup':
+                              return 'Warmup cycle — observation only';
+                            default:
+                              return '';
+                          }
+                        })()}
                       >
-                        {signals.neutralReason === 'weak_score' ? 'Weak score' : 'Low conviction'}
+                        {signals.neutralReason === 'weak_score' ? 'Weak score'
+                         : signals.neutralReason === 'marginal_score' ? 'Marginal score'
+                         : signals.neutralReason === 'warmup' ? 'Warmup'
+                         : 'Low conviction'}
                       </span>
                     )}
                   </div>
