@@ -12,24 +12,24 @@ export interface LiveTicker {
 }
 
 // ─── Demo mode: subscribe to the demo engine's per-tick notification ─────────
-function useDemoTickers(): LiveTicker[] {
-  const [tickers, setTickers] = useState<LiveTicker[]>(() => mapDemoSnapshot());
+function useDemoTickers(market: 'spot' | 'perps'): LiveTicker[] {
+  const [tickers, setTickers] = useState<LiveTicker[]>(() => mapDemoSnapshot(market));
 
   useEffect(() => {
     // Initial snapshot + live subscription. The engine is started elsewhere
     // in the app boot sequence when `isDemoMode` flips on.
-    setTickers(mapDemoSnapshot());
+    setTickers(mapDemoSnapshot(market));
     const unsub = subscribeToDemoTicks(() => {
-      setTickers(mapDemoSnapshot());
+      setTickers(mapDemoSnapshot(market));
     });
     return unsub;
-  }, []);
+  }, [market]);
 
   return tickers;
 }
 
-function mapDemoSnapshot(): LiveTicker[] {
-  const rows = getDemoTickers('perps');
+function mapDemoSnapshot(market: 'spot' | 'perps'): LiveTicker[] {
+  const rows = getDemoTickers(market);
   return rows.map((t) => ({
     symbol: t.symbol,
     lastPrice: t.lastPrice,
@@ -87,10 +87,15 @@ function useWsTickers(symbols: string[], isTestnet: boolean): LiveTicker[] {
 export function useLiveTicker(
   initialTickers: LiveTicker[],
   symbols: string[],
+  /** Which venue to subscribe to. Defaults to 'perps' for back-compat
+   *  with existing call sites (Dashboard etc.). Spot pages should pass
+   *  'spot' explicitly so the demo snapshot and the WebSocket
+   *  channel target the right symbol set. */
+  market: 'spot' | 'perps' = 'perps',
 ): LiveTicker[] {
   const { isDemoMode, isTestnet } = useSettingsStore();
 
-  const demoTickers = useDemoTickers();
+  const demoTickers = useDemoTickers(market);
   const wsTickers   = useWsTickers(isDemoMode ? [] : symbols, isTestnet);
 
   if (isDemoMode) {
@@ -115,7 +120,14 @@ export function useLiveTicker(
  * Tracks a single symbol's live price.
  * Returns null until a price arrives.
  */
-export function useLivePrice(symbol: string, fallback = 0): number {
+export function useLivePrice(
+  symbol: string,
+  fallback = 0,
+  /** Venue to read from. Defaults to 'perps' for back-compat. Spot
+   *  symbols (e.g. BTC_USDC) won't be in the perps demo snapshot, so
+   *  spot consumers must opt in explicitly. */
+  market: 'spot' | 'perps' = 'perps',
+): number {
   const { isDemoMode, isTestnet } = useSettingsStore();
   const [price, setPrice] = useState(fallback);
   const baseRef = useRef(fallback);
@@ -128,7 +140,7 @@ export function useLivePrice(symbol: string, fallback = 0): number {
   useEffect(() => {
     if (!isDemoMode || !symbol) return;
     const readFromEngine = () => {
-      const rows = getDemoTickers('perps');
+      const rows = getDemoTickers(market);
       const target = rows.find((t) => t.symbol === symbol);
       if (target && target.lastPrice > 0) {
         setPrice(target.lastPrice);
@@ -138,7 +150,7 @@ export function useLivePrice(symbol: string, fallback = 0): number {
     readFromEngine();
     const unsub = subscribeToDemoTicks(readFromEngine);
     return unsub;
-  }, [isDemoMode, symbol]);
+  }, [isDemoMode, symbol, market]);
 
   // WS mode
   useEffect(() => {
