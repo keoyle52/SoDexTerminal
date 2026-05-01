@@ -125,6 +125,18 @@ export const MarketMakerBot: React.FC = () => {
   const managedRef = useRef<Map<string, ManagedOrder>>(new Map());
   const isRunningRef = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Re-entrancy guard for the reconcile loop. The polling timer fires
+  // every 5s but a reconcile can take longer than that (multiple
+  // network round-trips for orderbook → openOrders → placeOrder × N).
+  // Without this guard a slow tick gets overlapped by the next one,
+  // and both observe the same "missing slot" snapshot — double-placing
+  // BUYs against the same budget and tripping insufficient-balance.
+  const reconcileBusyRef = useRef(false);
+  // Wall-clock of the last successful cancel — used to give the
+  // exchange a tick to propagate the cancellation before we re-place
+  // into the same slot. Avoids the race where managedRef has dropped
+  // an order but the exchange still has it locked against our balance.
+  const lastCancelAtRef = useRef(0);
 
   // ── Logging helper. Bounded to MAX_LOG_ENTRIES. Newest first. ─────
   const pushLog = useCallback((type: LogEntry['type'], message: string) => {
@@ -223,6 +235,10 @@ export const MarketMakerBot: React.FC = () => {
   //    orders and reconciles against the desired ladder shape. */
   const reconcile = useCallback(async () => {
     if (!isRunningRef.current) return;
+    // Re-entrancy guard: skip the tick entirely if the previous one
+    // is still in flight. The next scheduled tick will run normally.
+    if (reconcileBusyRef.current) return;
+    reconcileBusyRef.current = true;
     setBusy(true);
     try {
       // 1. Order book snapshot — drives target prices.
@@ -339,10 +355,25 @@ export const MarketMakerBot: React.FC = () => {
           await batchCancelOrders(toCancel.map((c) => c.id), mm.symbol, 'spot');
           for (const { cloid } of toCancel) managedRef.current.delete(cloid);
           setField('ordersCancelled', mm.ordersCancelled + toCancel.length);
-          pushLog('cancel', `Re-quote: cancelled ${toCancel.length} stale order(s)`);
+          // Stamp the cancel time so the placement block below can
+          // skip this tick — exchange takes a moment to release the
+          // balance lock on the cancelled orders, and re-placing into
+          // the same slot too fast trips insufficient-balance.
+          lastCancelAtRef.current = nowMs();
+          pushLog('cancel', `Re-quote: cancelled ${toCancel.length} stale order(s) — settling`);
         } catch (err) {
           pushLog('error', `Cancel failed: ${getErrorMessage(err)}`);
         }
+      }
+
+      // Cancel-settle cooldown. If we cancelled within the last tick
+      // interval, the exchange may still be holding the budget locked
+      // against the cancelled orders. Re-placing now would either
+      // double-commit (if our managed map dropped the order) or hit
+      // insufficient-balance. Skip placement for one tick.
+      const cancelCooldownMs = RECONCILE_INTERVAL_MS;
+      if (nowMs() - lastCancelAtRef.current < cancelCooldownMs) {
+        return; // ladder gets refilled on the next clean tick
       }
 
       // 6. Re-fill the ladder. We aim for `layers` open orders on
@@ -362,35 +393,82 @@ export const MarketMakerBot: React.FC = () => {
       //    open SELL slots only up to whatever inventory has actually
       //    accumulated from filled BUYs. Each open SELL "reserves" its
       //    quantity so we don't double-commit the same coins.
-      const buys = [...managedRef.current.values()].filter((o) => o.side === 'BUY');
-      const sells = [...managedRef.current.values()].filter((o) => o.side === 'SELL');
+      //
+      //    AUTHORITATIVE COUNT: we use the exchange's openOrders snapshot
+      //    (openByCloid) rather than our in-memory managedRef when counting
+      //    how many of our orders are *actually* on the book. The
+      //    in-memory map can lag if a cancel hasn't propagated, which
+      //    would make us double-place into a slot the exchange still
+      //    has reserved against our balance.
+      const ourOpen = [...openByCloid.values()];
+      const sideOf = (o: Record<string, unknown>): 'BUY' | 'SELL' | null => {
+        const s = o.side;
+        if (s === 1 || s === '1') return 'BUY';
+        if (s === 2 || s === '2') return 'SELL';
+        const str = String(s ?? '').toUpperCase();
+        if (str === 'BUY' || str === 'SELL') return str;
+        return null;
+      };
+      const liveBuys  = ourOpen.filter((o) => sideOf(o) === 'BUY');
+      const liveSells = ourOpen.filter((o) => sideOf(o) === 'SELL');
       const targetLayers = layers;
       const offsetMul = (parseFloat(mm.spreadBps) || 0) * BPS;
 
       const qtyPerOrder = orderSize / topBid;       // base-asset qty for ~$orderSize notional
 
-      // Place missing buys (always allowed — buys grow inventory).
-      for (let i = buys.length; i < targetLayers; i++) {
+      // Budget cap for new BUYs. Sum the notional already committed
+      // to open BUY orders (price × qty) and only open new BUYs while
+      // the remaining budget covers another full slot. This prevents
+      // the bot from racing past its configured budget across cycles.
+      const committedBuyUsdt = liveBuys.reduce((acc, o) => {
+        const px = parseFloat(String(o.price ?? o.px ?? 0));
+        const qty = parseFloat(String(o.quantity ?? o.qty ?? o.sz ?? 0));
+        return Number.isFinite(px) && Number.isFinite(qty) ? acc + px * qty : acc;
+      }, 0);
+      const remainingBuyBudget = Math.max(0, budget - committedBuyUsdt);
+      const maxNewBuySlots = orderSize > 0
+        ? Math.floor(remainingBuyBudget / orderSize)
+        : 0;
+      const buyTargetLayers = Math.min(targetLayers, liveBuys.length + maxNewBuySlots);
+
+      // Place missing buys. Fail-fast on the first error: if one BUY
+      // hits insufficient-balance / rate-limit, every subsequent BUY
+      // in this tick will hit the same wall, so don't burn placements
+      // and don't spam the log.
+      for (let i = liveBuys.length; i < buyTargetLayers; i++) {
         // Layered prices step further outside the BBO by `i * tickSize`
         // so we don't stack multiple orders at the exact same price
         // (which would just make us our own queue priority competitor).
         const px = topBid * (1 - offsetMul) - i * tickSize;
         if (px <= 0) break;
-        await placeMakerOrder('BUY', px, qtyPerOrder);
+        const placed = await placeMakerOrder('BUY', px, qtyPerOrder);
+        if (!placed) break;
+      }
+
+      if (buyTargetLayers < targetLayers && liveBuys.length < targetLayers) {
+        // Inform user that the budget is fully committed, so they
+        // understand why the BUY ladder is short of `layers`.
+        pushLog('info',
+          `BUY budget at cap — $${committedBuyUsdt.toFixed(2)} of $${budget.toFixed(2)} committed`,
+        );
       }
 
       // Compute how many SELL slots we can safely open right now.
       // reservedSellQty = base asset already committed to open SELLs.
-      const reservedSellQty = sells.reduce((acc, o) => acc + o.quantity, 0);
+      const reservedSellQty = liveSells.reduce((acc, o) => {
+        const qty = parseFloat(String(o.quantity ?? o.qty ?? o.sz ?? 0));
+        return Number.isFinite(qty) ? acc + qty : acc;
+      }, 0);
       const availableInventory = Math.max(0, mm.inventoryBase - reservedSellQty);
       const maxNewSellSlots = qtyPerOrder > 0
         ? Math.floor(availableInventory / qtyPerOrder)
         : 0;
-      const sellTargetLayers = Math.min(targetLayers, sells.length + maxNewSellSlots);
+      const sellTargetLayers = Math.min(targetLayers, liveSells.length + maxNewSellSlots);
 
-      for (let i = sells.length; i < sellTargetLayers; i++) {
+      for (let i = liveSells.length; i < sellTargetLayers; i++) {
         const px = topAsk * (1 + offsetMul) + i * tickSize;
-        await placeMakerOrder('SELL', px, qtyPerOrder);
+        const placed = await placeMakerOrder('SELL', px, qtyPerOrder);
+        if (!placed) break;
       }
 
       // If we're holding back SELL slots because inventory hasn't
@@ -399,7 +477,7 @@ export const MarketMakerBot: React.FC = () => {
       // ladder is full — otherwise the missing SELLs are obviously
       // because BUYs haven't been placed yet either.
       const skippedSells = targetLayers - sellTargetLayers;
-      if (skippedSells > 0 && buys.length >= targetLayers) {
+      if (skippedSells > 0 && liveBuys.length >= targetLayers) {
         pushLog('info',
           `${skippedSells} SELL slot(s) waiting on inventory ` +
           `(have ${availableInventory.toFixed(qtyPrec)}, need ${qtyPerOrder.toFixed(qtyPrec)} per slot)`,
@@ -409,6 +487,7 @@ export const MarketMakerBot: React.FC = () => {
       pushLog('error', `Reconcile error: ${getErrorMessage(err)}`);
     } finally {
       setBusy(false);
+      reconcileBusyRef.current = false;
     }
     // The dependency list is intentionally narrow — the rest is read
     // through refs so the polling timer doesn't churn every render.
