@@ -18,7 +18,6 @@ import {
   type PerpsSymbolMeta,
 } from '../api/services';
 import { buildContext, recommendGridBot } from '../api/aiAutoConfig';
-import { SymbolSelector } from '../components/common/SymbolSelector';
 import { cn, getErrorMessage } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -694,14 +693,11 @@ export const GridBot: React.FC = () => {
           )}
           {/* ── Market ── */}
           <Section icon={<Layers size={12} />} label="Market">
-            {/* Symbol picker pulls the live list from SoDEX. Auto-falls
-                back to canned defaults if the API is unreachable, and
-                auto-corrects when the user toggles spot↔perps so the
-                value never sits on a symbol the venue rejects. */}
-            <SymbolSelector
+            <Input
+              label="Symbol"
               value={state.symbol}
-              onChange={(next) => state.setField('symbol', next)}
-              market={state.isSpot ? 'spot' : 'perps'}
+              onChange={(e) => state.setField('symbol', e.target.value.toUpperCase())}
+              placeholder="e.g. BTC-USDC"
               disabled={isLocked}
             />
             <div>

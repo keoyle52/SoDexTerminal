@@ -23,7 +23,6 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import { recommendMarketMakerBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
-import { SymbolSelector } from '../components/common/SymbolSelector';
 
 /**
  * ┌─────────────────────────────────────────────────────────────────────┐
@@ -549,11 +548,11 @@ export const MarketMakerBot: React.FC = () => {
             <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted">
               Pair &amp; Sizing
             </div>
-            <SymbolSelector
+            <Input
               label="Trading Pair"
               value={mm.symbol}
-              onChange={(next) => setField('symbol', next)}
-              market="spot"
+              onChange={(e) => setField('symbol', e.target.value.toUpperCase())}
+              placeholder="e.g. BTC-USDC"
               disabled={isRunning}
             />
             <Input
