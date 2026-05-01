@@ -946,6 +946,13 @@ export interface PlaceOrderParams {
   stopType?: 1 | 2;      // 1=STOP_LOSS, 2=TAKE_PROFIT
   triggerType?: 2;       // 2=MARK_PRICE
   reduceOnly?: boolean;  // defaults to false if omitted
+  /**
+   * Optional caller-provided client order ID. When supplied it is sent
+   * verbatim instead of the auto-generated one — used by the Market
+   * Maker bot to tag its own orders so it can recognise them in the
+   * open-orders snapshot via a known prefix (`mm_…`).
+   */
+  clOrdID?: string;
 }
 
 /**
@@ -990,7 +997,7 @@ async function placeSpotOrder(params: PlaceOrderParams): Promise<unknown> {
   // symbolID, clOrdID, side, type, timeInForce, price(omitempty), quantity(omitempty), funds(omitempty)
   const orderItem: Record<string, unknown> = {
     symbolID,
-    clOrdID: generateClOrdID(),
+    clOrdID: params.clOrdID ?? generateClOrdID(),
     side: params.side,
     type: params.type,
     timeInForce,
@@ -1058,7 +1065,7 @@ async function placePerpsOrder(params: PlaceOrderParams): Promise<unknown> {
   const modifier = isStop ? 2 : 1;
 
   const order: Record<string, unknown> = {
-    clOrdID: generateClOrdID(),
+    clOrdID: params.clOrdID ?? generateClOrdID(),
     modifier,
     side: params.side,
     type: params.type,
@@ -1153,7 +1160,7 @@ export async function placeBatchOrders(
       // BatchNewOrderItem in Go struct field order
       const orderItem: Record<string, unknown> = {
         symbolID,
-        clOrdID: generateClOrdID(),
+        clOrdID: params.clOrdID ?? generateClOrdID(),
         side: params.side,
         type: params.type,
         timeInForce,
@@ -1197,7 +1204,7 @@ export async function placeBatchOrders(
 
       // PerpsOrderItem in Go struct field order
       const order: Record<string, unknown> = {
-        clOrdID: generateClOrdID(),
+        clOrdID: params.clOrdID ?? generateClOrdID(),
         modifier: 1,
         side: params.side,
         type: params.type,

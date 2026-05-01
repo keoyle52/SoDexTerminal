@@ -202,6 +202,11 @@ export const MarketMakerBot: React.FC = () => {
         quantity: qtyBase.toFixed(qtyPrec),
         price: price.toFixed(pricePrec),
         timeInForce: 4,                // GTX = post-only — guarantees maker
+        // Tag the order with our session-prefixed cloid so the
+        // reconcile loop can recognise our own orders in the open-
+        // orders snapshot and avoid double-placing into a slot the
+        // exchange already has on the book.
+        clOrdID: cloid,
       }, 'spot') as Record<string, unknown>;
       const orderID = String(res?.orderID ?? res?.orderId ?? cloid);
       const order: ManagedOrder = {
