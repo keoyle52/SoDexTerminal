@@ -502,6 +502,21 @@ export const MarketMakerBot: React.FC = () => {
       tickSize, qtyPrec, pricePrec, layers, orderSize, feeRate,
       volTarget, feeBudget, placeMakerOrder, pushLog, setField, recordTrade]);
 
+  // ── Stale-closure guard ───────────────────────────────────────────
+  // `reconcile` is wrapped in useCallback with `mm.inventoryBase` (and
+  // other zustand-derived values) in its dependency list, which means
+  // a fresh reconcile reference is created every time the bot's state
+  // changes. The polling timer below was capturing the *first* reconcile
+  // reference at start-time and calling that forever — so it kept
+  // reading mm.inventoryBase = 0, never noticed the BUY fills, and
+  // therefore never opened any SELLs.
+  //
+  // Pattern: keep a ref pointing at the most recent reconcile, and
+  // have the timer dispatch through the ref rather than a closed-over
+  // variable. The timer itself is set up only once (in startBot).
+  const reconcileRef = useRef(reconcile);
+  useEffect(() => { reconcileRef.current = reconcile; }, [reconcile]);
+
   // Stop helper used by both manual button + auto-stop conditions.
   const stopBotInternal = useCallback(async (): Promise<void> => {
     isRunningRef.current = false;
@@ -554,11 +569,14 @@ export const MarketMakerBot: React.FC = () => {
     isRunningRef.current = true;
 
     pushLog('info', `▶ Started ${mm.symbol} • ${layers}×$${orderSize} ladder • spread ${mm.spreadBps}bps • requote ${mm.requoteBps}bps`);
-    void reconcile();
-    pollTimerRef.current = setInterval(() => { void reconcile(); }, RECONCILE_INTERVAL_MS);
+    // Dispatch reconcile through the ref so each tick uses the latest
+    // closure (with up-to-date mm.inventoryBase, etc.) rather than the
+    // one captured at start time.
+    void reconcileRef.current();
+    pollTimerRef.current = setInterval(() => { void reconcileRef.current(); }, RECONCILE_INTERVAL_MS);
   }, [mm.status, mm.symbol, mm.spreadBps, mm.requoteBps, isDemoMode, privateKey,
       budget, orderSize, overBudget, totalCommitment, layers,
-      setField, pushLog, reconcile]);
+      setField, pushLog]);
 
   // Auto-cleanup if the page unmounts while the bot is running.
   useEffect(() => {
