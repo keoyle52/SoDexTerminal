@@ -40,7 +40,15 @@ export const CryptoStocks: React.FC = () => {
     setErrMsg(null);
     try {
       const list = await fetchCryptoStocks();
-      // Fetch snapshots in small batches to avoid hammering the rate limiter.
+      // Demo: snapshots are generated synchronously — no async needed.
+      if (isDemoMode) {
+        const results: StockCard[] = await Promise.all(
+          list.map(async (l) => ({ list: l, snap: await fetchCryptoStockSnapshot(l.ticker) })),
+        );
+        setCards(results);
+        return;
+      }
+      // Live: fetch in small batches to respect rate limits.
       const results: StockCard[] = [];
       const BATCH = 3;
       for (let i = 0; i < list.length; i += BATCH) {

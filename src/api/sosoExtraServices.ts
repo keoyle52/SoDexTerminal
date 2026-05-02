@@ -485,35 +485,46 @@ export async function aggregateInstitutionalBtcFlow(daysWindow = 30): Promise<{
   /** -1..+1 — normalised flow signal for the BtcPredictor 9th input. */
   signal: number;
 }> {
+  // In demo mode compute synchronously from static data — no async chain.
+  if (isDemo() || !hasSosoKey()) {
+    const cutoff = Date.now() - daysWindow * 86_400_000;
+    let total = 0;
+    let buyers = 0;
+    const perTicker: Record<string, number> = {};
+    for (const co of DEMO_TREASURY_COMPANIES) {
+      const rows = generateDemoTreasuryHistory(co.ticker, daysWindow + 5);
+      const recent = rows.filter((r) => new Date(r.date).getTime() >= cutoff);
+      const sum = recent.reduce((s, r) => s + r.btcAcq, 0);
+      if (sum > 0) { total += sum; buyers += 1; perTicker[co.ticker] = sum; }
+    }
+    let topBuyer: { ticker: string; btc: number } | null = null;
+    for (const [t, b] of Object.entries(perTicker)) {
+      if (!topBuyer || b > topBuyer.btc) topBuyer = { ticker: t, btc: b };
+    }
+    const signal = Math.max(-1, Math.min(1, total / 5_000));
+    return { totalBtc: total, buyerCount: buyers, topBuyer, signal };
+  }
+
   const list = await fetchBtcTreasuries();
   const cutoff = Date.now() - daysWindow * 86_400_000;
   let total = 0;
   let buyers = 0;
   const perTicker: Record<string, number> = {};
-  // To keep API usage bounded we only sample the top-8 demo names; in live
-  // mode the same list is used so worst case = 8 calls per refresh.
-  const sample = list.slice(0, 8);
+  const sample = list.slice(0, 5);
   await Promise.all(
     sample.map(async (co) => {
       try {
         const rows = await fetchBtcPurchaseHistory(co.ticker, 30);
         const recent = rows.filter((r) => new Date(r.date).getTime() >= cutoff);
         const sum = recent.reduce((s, r) => s + r.btcAcq, 0);
-        if (sum > 0) {
-          total += sum;
-          buyers += 1;
-          perTicker[co.ticker] = sum;
-        }
-      } catch {
-        // skip
-      }
+        if (sum > 0) { total += sum; buyers += 1; perTicker[co.ticker] = sum; }
+      } catch { /* skip */ }
     }),
   );
   let topBuyer: { ticker: string; btc: number } | null = null;
   for (const [t, b] of Object.entries(perTicker)) {
     if (!topBuyer || b > topBuyer.btc) topBuyer = { ticker: t, btc: b };
   }
-  // Normalise: 5,000 BTC over 30 days ≈ saturated bullish.
   const signal = Math.max(-1, Math.min(1, total / 5_000));
   return { totalBtc: total, buyerCount: buyers, topBuyer, signal };
 }

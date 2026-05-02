@@ -36,7 +36,7 @@ export const BtcTreasuries: React.FC = () => {
 
   // Async load helper — wrapped in useCallback so the effect body has no
   // synchronous setState calls (React-Compiler purity rule).
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async () => { // eslint-disable-line react-hooks/exhaustive-deps
     try {
       const [list, agg] = await Promise.all([
         fetchBtcTreasuries(),
@@ -48,18 +48,22 @@ export const BtcTreasuries: React.FC = () => {
       // Pre-fetch a small sample of histories so the "all companies"
       // breakdown table can show recent activity per row without one
       // request-per-row when the user hovers them.
-      const sample = list.slice(0, 4);
-      const details = await Promise.all(sample.map(async (c) => ({
-        company: c,
-        rows: await fetchBtcPurchaseHistory(c.ticker, 10).catch(() => []),
-      })));
-      setAllDetails(details);
+      // In demo mode skip prefetch — history is generated synchronously on demand.
+      if (!isDemoMode) {
+        const sample = list.slice(0, 4);
+        const details = await Promise.all(sample.map(async (c) => ({
+          company: c,
+          rows: await fetchBtcPurchaseHistory(c.ticker, 10).catch(() => []),
+        })));
+        setAllDetails(details);
+      }
     } catch (e) {
       setErrMsg(e instanceof Error ? e.message : 'Failed to load BTC treasuries');
     } finally {
       setLoading(false);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemoMode]);
 
   // Initial company list + 30d aggregate — async work, no setState in body.
   useEffect(() => { void refresh(); }, [refresh, isDemoMode, sosoApiKey]);

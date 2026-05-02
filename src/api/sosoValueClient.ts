@@ -37,12 +37,19 @@ const endpointRateLimitReset = new Map<string, number>();
 //     so 4 min on the client cache means each scheduled poll always
 //     gets fresh data while ad-hoc / manual / parallel-page reads dedupe.
 const TTL: Record<string, number> = {
-  '/openapi/v1/data/default/coin/list':      10 * 60_000,
-  '/openapi/v2/etf/historicalInflowChart':   10 * 60_000,
-  '/openapi/v2/etf/currentEtfDataMetrics':    5 * 60_000,
-  '/api/v1/news/featured':                    4 * 60_000,
-  '/api/v1/news/featured/currency':           4 * 60_000,
-  '/api/v1/news':                             4 * 60_000,
+  '/openapi/v1/data/default/coin/list':        10 * 60_000,
+  '/openapi/v2/etf/historicalInflowChart':     10 * 60_000,
+  '/openapi/v2/etf/currentEtfDataMetrics':      5 * 60_000,
+  '/api/v1/news/featured':                      4 * 60_000,
+  '/api/v1/news/featured/currency':             4 * 60_000,
+  '/api/v1/news':                               4 * 60_000,
+  // Intelligence pages — data changes at most hourly
+  '/openapi/v1/indices':                        8 * 60_000,
+  '/openapi/v1/btc-treasuries':                 8 * 60_000,
+  '/openapi/v1/fundraising/projects':           8 * 60_000,
+  '/openapi/v1/currencies/sector-spotlight':    5 * 60_000,
+  '/openapi/v1/crypto-stocks':                  8 * 60_000,
+  '/openapi/v1/macro/events':                  15 * 60_000,
 };
 
 function getCacheTtl(url: string): number {
