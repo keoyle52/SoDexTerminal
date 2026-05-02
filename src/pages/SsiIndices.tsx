@@ -128,8 +128,8 @@ export const SsiIndices: React.FC = () => {
     <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-cyan-400 flex items-center justify-center shadow-[0_0_20px_rgba(168,85,247,0.5)]">
-            <Sparkles size={20} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Sparkles size={16} className="text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-text-primary">SSI Indices</h1>
@@ -162,10 +162,10 @@ export const SsiIndices: React.FC = () => {
             key={t}
             onClick={() => setActiveTicker(t)}
             className={cn(
-              'px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wide transition-colors',
+              'px-3 py-1.5 rounded-md border text-xs font-medium transition-colors',
               activeTicker === t
-                ? 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-400/40 shadow-[0_0_12px_rgba(217,70,239,0.25)]'
-                : 'bg-surface text-text-secondary border-border hover:border-border-hover',
+                ? 'bg-primary/10 text-primary border-primary/30'
+                : 'bg-surface-2 text-text-secondary border-border hover:border-border-hover hover:text-text-primary',
             )}
           >
             {formatTicker(t)}
@@ -190,7 +190,7 @@ export const SsiIndices: React.FC = () => {
                   return (
                     <div
                       className={cn(
-                        'w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/30 via-fuchsia-500/25 to-cyan-400/30 border border-fuchsia-400/40 flex items-center justify-center text-fuchsia-200 font-black tracking-tighter whitespace-nowrap leading-none px-1 text-center',
+                        'w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold tracking-tighter whitespace-nowrap leading-none px-1 text-center',
                         sizeClass,
                       )}
                       title={formatTicker(snapshot.ticker)}
@@ -228,9 +228,9 @@ export const SsiIndices: React.FC = () => {
           {/* Chart + constituents */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-2 p-0 overflow-hidden">
-              <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-                <TrendingUp size={16} className="text-fuchsia-400" />
-                <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">90-Day Price</h2>
+              <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+                <TrendingUp size={16} className="text-primary" />
+                <h2 className="text-sm font-semibold text-text-primary">90-Day Price</h2>
                 <span className="ml-auto text-[10px] text-text-muted">Daily klines</span>
               </div>
               <div className="p-3">
@@ -239,9 +239,9 @@ export const SsiIndices: React.FC = () => {
             </Card>
 
             <Card className="p-0 overflow-hidden">
-              <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-                <Layers size={16} className="text-fuchsia-400" />
-                <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">Constituents</h2>
+              <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+                <Layers size={16} className="text-primary" />
+                <h2 className="text-sm font-semibold text-text-primary">Constituents</h2>
               </div>
               <div className="p-4 flex flex-col gap-2">
                 {constituentBars.map((c) => {
@@ -253,7 +253,7 @@ export const SsiIndices: React.FC = () => {
                       </span>
                       <div className="flex-1 h-2 rounded-full bg-white/[0.04] overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-fuchsia-500/60 to-cyan-400/80 rounded-full transition-[width] duration-700"
+                          className="h-full bg-primary/60 rounded-full transition-[width] duration-500"
                           style={{ width: `${Math.min(100, pct)}%` }}
                         />
                       </div>

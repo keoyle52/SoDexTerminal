@@ -48,7 +48,7 @@ export const BtcTreasuries: React.FC = () => {
       // Pre-fetch a small sample of histories so the "all companies"
       // breakdown table can show recent activity per row without one
       // request-per-row when the user hovers them.
-      const sample = list.slice(0, 8);
+      const sample = list.slice(0, 4);
       const details = await Promise.all(sample.map(async (c) => ({
         company: c,
         rows: await fetchBtcPurchaseHistory(c.ticker, 10).catch(() => []),
@@ -96,8 +96,8 @@ export const BtcTreasuries: React.FC = () => {
     <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-300 flex items-center justify-center shadow-[0_0_20px_rgba(250,204,21,0.4)]">
-            <Coins size={20} className="text-black" />
+          <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center">
+            <Coins size={16} className="text-warning" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-text-primary">BTC Treasury Tracker</h1>
@@ -175,9 +175,9 @@ export const BtcTreasuries: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Company list */}
         <Card className="p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-            <Building2 size={16} className="text-amber-400" />
-            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">Companies</h2>
+          <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+            <Building2 size={16} className="text-warning" />
+            <h2 className="text-sm font-semibold text-text-primary">Companies</h2>
             <span className="ml-auto text-[10px] text-text-muted">{companies.length}</span>
           </div>
           <div className="max-h-[480px] overflow-y-auto divide-y divide-white/5">
@@ -190,7 +190,7 @@ export const BtcTreasuries: React.FC = () => {
                   onClick={() => setActiveTicker(c.ticker)}
                   className={cn(
                     'w-full px-4 py-2.5 flex items-center gap-3 text-left hover:bg-white/[0.03] transition-colors',
-                    activeTicker === c.ticker && 'bg-amber-500/5',
+                    activeTicker === c.ticker && 'bg-primary/5',
                   )}
                 >
                   <div className="flex flex-col flex-1 min-w-0">
@@ -211,8 +211,8 @@ export const BtcTreasuries: React.FC = () => {
 
         {/* Selected company purchase history */}
         <Card className="lg:col-span-2 p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2 flex-wrap">
-            <TrendingUp size={16} className="text-amber-400" />
+          <div className="px-5 py-3 border-b border-border flex items-center gap-2 flex-wrap">
+            <TrendingUp size={16} className="text-warning" />
             <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">
               {activeCompany ? `${activeCompany.ticker} purchase history` : 'Purchase history'}
             </h2>

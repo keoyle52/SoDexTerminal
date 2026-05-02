@@ -68,8 +68,8 @@ export const Fundraising: React.FC = () => {
     <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-400 flex items-center justify-center shadow-[0_0_20px_rgba(20,184,166,0.4)]">
-            <Banknote size={20} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+            <Banknote size={16} className="text-success" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-text-primary">Fundraising Intelligence</h1>
@@ -126,9 +126,9 @@ export const Fundraising: React.FC = () => {
 
       {/* Sector breakdown */}
       <Card className="p-0 overflow-hidden">
-        <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-          <Sparkles size={16} className="text-emerald-400" />
-          <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">Capital by sector</h2>
+        <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+          <Sparkles size={16} className="text-success" />
+          <h2 className="text-sm font-semibold text-text-primary">Capital by sector</h2>
           <span className="ml-auto text-[10px] text-text-muted">{sectorAgg.length} sectors</span>
         </div>
         <div className="p-5 flex flex-col gap-2">
@@ -142,7 +142,7 @@ export const Fundraising: React.FC = () => {
                 <span className="text-xs font-bold text-text-primary w-32 shrink-0">{s.sector}</span>
                 <div className="flex-1 h-3 rounded-full bg-white/[0.03] overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-emerald-500/60 to-teal-300/80 rounded-full transition-[width] duration-700"
+                    className="h-full bg-success/50 rounded-full transition-[width] duration-500"
                     style={{ width: `${Math.min(100, pct)}%` }}
                   />
                 </div>
@@ -160,9 +160,9 @@ export const Fundraising: React.FC = () => {
 
       {/* Recent rounds list */}
       <Card className="p-0 overflow-hidden">
-        <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-          <TrendingUp size={16} className="text-emerald-400" />
-          <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">Recent rounds</h2>
+        <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+          <TrendingUp size={16} className="text-success" />
+          <h2 className="text-sm font-semibold text-text-primary">Recent Rounds</h2>
           <span className="ml-auto text-[10px] text-text-muted">{projects.length} projects</span>
         </div>
         <div className="overflow-x-auto">

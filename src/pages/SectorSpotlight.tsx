@@ -88,8 +88,8 @@ export const SectorSpotlight: React.FC = () => {
     <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.4)]">
-            <Flame size={20} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-danger/10 flex items-center justify-center">
+            <Flame size={16} className="text-danger" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-text-primary">Sector Spotlight</h1>
@@ -147,9 +147,9 @@ export const SectorSpotlight: React.FC = () => {
 
       {/* Heat map */}
       <Card className="p-0 overflow-hidden">
-        <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-          <Flame size={16} className="text-orange-400" />
-          <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">24h Heat Map</h2>
+        <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+          <Flame size={16} className="text-danger" />
+          <h2 className="text-sm font-semibold text-text-primary">24h Heat Map</h2>
           <span className="ml-auto text-[10px] text-text-muted">
             Tile size ∝ market-cap dominance · colour ∝ 24h change
           </span>
@@ -196,9 +196,9 @@ export const SectorSpotlight: React.FC = () => {
       {/* Spotlight narratives */}
       {sortedSpotlight.length > 0 && (
         <Card className="p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-            <TrendingUp size={16} className="text-orange-400" />
-            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">Trending narratives</h2>
+          <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+            <TrendingUp size={16} className="text-danger" />
+            <h2 className="text-sm font-semibold text-text-primary">Trending Narratives</h2>
             <span className="ml-auto text-[10px] text-text-muted">{sortedSpotlight.length} themes</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 p-4">

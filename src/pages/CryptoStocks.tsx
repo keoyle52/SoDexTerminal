@@ -40,10 +40,18 @@ export const CryptoStocks: React.FC = () => {
     setErrMsg(null);
     try {
       const list = await fetchCryptoStocks();
-      const snaps = await Promise.all(
-        list.map(async (l) => ({ list: l, snap: await fetchCryptoStockSnapshot(l.ticker).catch(() => null) })),
-      );
-      setCards(snaps);
+      // Fetch snapshots in small batches to avoid hammering the rate limiter.
+      const results: StockCard[] = [];
+      const BATCH = 3;
+      for (let i = 0; i < list.length; i += BATCH) {
+        const batch = list.slice(i, i + BATCH);
+        const snaps = await Promise.all(
+          batch.map(async (l) => ({ list: l, snap: await fetchCryptoStockSnapshot(l.ticker).catch(() => null) })),
+        );
+        results.push(...snaps);
+        if (i + BATCH < list.length) await new Promise((r) => setTimeout(r, 300));
+      }
+      setCards(results);
     } catch (e) {
       setErrMsg(e instanceof Error ? e.message : 'Failed to load crypto stocks');
     } finally {
@@ -73,8 +81,8 @@ export const CryptoStocks: React.FC = () => {
     <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.4)]">
-            <Building size={20} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Building size={16} className="text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-text-primary">Crypto Stocks</h1>
@@ -183,9 +191,9 @@ export const CryptoStocks: React.FC = () => {
       {/* Secondary breakdown by sector */}
       {bySector.length > 0 && (
         <Card className="p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-            <Building size={16} className="text-blue-400" />
-            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wide">By sector</h2>
+          <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+            <Building size={16} className="text-primary" />
+            <h2 className="text-sm font-semibold text-text-primary">By Sector</h2>
           </div>
           <div className="p-5 grid grid-cols-2 md:grid-cols-3 gap-3">
             {bySector.map(([sec, list]) => {
