@@ -6,10 +6,12 @@ import { useBotPnlStore } from '../store/botPnlStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { fetchKlines, placeOrder, updatePerpsLeverage, fetchBookTickers, normalizeSymbol } from '../api/services';
 import { evaluateSignals, resolveSignals, PARAM_LABELS, type CandleData, type SignalResult } from '../api/signalEngine';
+import { recommendSignalBot } from '../api/aiAutoConfig';
 import { cn, getErrorMessage } from '../lib/utils';
 import { TradingChart } from '../components/TradingChart';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { Input, Select, Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
@@ -255,7 +257,25 @@ export const SignalBot: React.FC = () => {
           }
         });
         if (newMarkers.length > 0) {
-          setChartMarkers(prev => [...prev, ...newMarkers].slice(-50)); // keep last 50
+          setChartMarkers(prev => {
+            const timeMap = new Map<number, SeriesMarker<Time>>();
+            const addMarker = (m: SeriesMarker<Time>) => {
+              const t = m.time as number;
+              if (timeMap.has(t)) {
+                const existing = timeMap.get(t)!;
+                if (!existing.text.includes(m.text)) {
+                   existing.text += `, ${m.text}`;
+                }
+              } else {
+                timeMap.set(t, { ...m });
+              }
+            };
+            prev.forEach(addMarker);
+            newMarkers.forEach(addMarker);
+            return Array.from(timeMap.values())
+              .sort((a, b) => (a.time as number) - (b.time as number))
+              .slice(-50);
+          });
         }
 
         // Combine decisions
@@ -394,7 +414,37 @@ export const SignalBot: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-6">
-          
+          {/* ── AI Auto-Configure ── one-click smart defaults for beginners.
+               Analyzes current market (ATR, trend, volatility) and picks the
+               best signal strategy, parameters, TP/SL, and timing. */}
+          <AutoConfigureButton
+            symbol={state.symbol}
+            market={state.isSpot ? 'spot' : 'perps'}
+            recommender={recommendSignalBot}
+            hidden={isLocked}
+            onApply={(preset) => {
+              // Apply simple string/number fields
+              if (preset.leverage)           state.setField('leverage', String(preset.leverage));
+              if (preset.amountUsdt)         state.setField('amountUsdt', String(preset.amountUsdt));
+              if (preset.takeProfitPct)      state.setField('takeProfitPct', String(preset.takeProfitPct));
+              if (preset.stopLossPct)        state.setField('stopLossPct', String(preset.stopLossPct));
+              if (preset.combineMode)        state.setField('combineMode', preset.combineMode as any);
+              if (preset.checkInterval)      state.setField('checkInterval', String(preset.checkInterval));
+              if (preset.klineInterval)      state.setField('klineInterval', String(preset.klineInterval));
+              if (preset.cooldownSeconds)    state.setField('cooldownSeconds', String(preset.cooldownSeconds));
+              if (preset.maxOpenPositions)   state.setField('maxOpenPositions', String(preset.maxOpenPositions));
+              if (preset.onConflictingSignal) state.setField('onConflictingSignal', preset.onConflictingSignal as any);
+              if (preset.isSpot !== undefined) state.setField('isSpot', preset.isSpot === 'true');
+              // Deserialise and apply signal configs
+              if (preset.signalsJson) {
+                try {
+                  const parsed = JSON.parse(String(preset.signalsJson));
+                  if (Array.isArray(parsed)) state.setField('signals', parsed);
+                } catch { /* ignore malformed JSON */ }
+              }
+            }}
+          />
+
           <div className="flex flex-col gap-3">
             <SymbolSelector
               market={state.isSpot ? 'spot' : 'perps'}

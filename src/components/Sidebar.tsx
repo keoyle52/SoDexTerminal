@@ -27,10 +27,10 @@ const NAV_SECTIONS = [
   {
     label: 'Trade Bots',
     items: [
+      { to: '/signal-bot',      icon: Activity, label: 'Signal Bot'   },
       { to: '/grid-bot',        icon: Grid2X2,  label: 'Grid Bot'     },
       { to: '/twap-bot',        icon: Clock,    label: 'TWAP Bot'     },
       { to: '/dca-bot',         icon: Repeat,   label: 'DCA Bot'      },
-      { to: '/signal-bot',      icon: Activity, label: 'Signal Bot'   },
       { to: '/market-maker',    icon: Layers,   label: 'Market Maker' },
       { to: '/schedule-cancel', icon: TimerOff, label: 'Scheduler'    },
     ],

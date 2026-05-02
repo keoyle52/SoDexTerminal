@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi, type CandlestickData, type Time, ColorType, type SeriesMarker } from 'lightweight-charts';
+import { createChart, CandlestickSeries, createSeriesMarkers, type IChartApi, type ISeriesApi, type CandlestickData, type Time, ColorType, type SeriesMarker } from 'lightweight-charts';
 import { fetchKlines } from '../api/services';
 import { cn } from '../lib/utils';
 
@@ -23,6 +23,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const markersPrimitiveRef = useRef<ReturnType<typeof createSeriesMarkers> | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<string>('1h');
   const [loading, setLoading] = useState(true);
 
@@ -78,6 +79,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (markersPrimitiveRef.current) {
+        markersPrimitiveRef.current.detach();
+        markersPrimitiveRef.current = null;
+      }
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -86,8 +91,15 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   }, [height]);
 
   useEffect(() => {
-    if (seriesRef.current) {
-      (seriesRef.current as any).setMarkers(markers);
+    if (!seriesRef.current) return;
+    // Remove previous markers primitive if it exists
+    if (markersPrimitiveRef.current) {
+      markersPrimitiveRef.current.detach();
+      markersPrimitiveRef.current = null;
+    }
+    // Create new markers primitive if we have markers to show
+    if (markers.length > 0) {
+      markersPrimitiveRef.current = createSeriesMarkers(seriesRef.current, markers);
     }
   }, [markers]);
 
