@@ -504,7 +504,7 @@ export const AiConsole: React.FC = () => {
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-[calc(100vh-52px)] overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="shrink-0 px-5 py-3 border-b border-border flex items-center gap-3 flex-wrap">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500/30 via-violet-500/25 to-cyan-400/30 border border-fuchsia-400/40 shadow-[0_0_12px_rgba(217,70,239,0.35)] flex items-center justify-center">

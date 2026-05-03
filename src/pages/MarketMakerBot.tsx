@@ -626,7 +626,7 @@ export const MarketMakerBot: React.FC = () => {
     : 0;
 
   return (
-    <div className="p-4 md:p-6 flex flex-col gap-4 md:gap-5 h-[calc(100vh-52px)] overflow-y-auto">
+    <div className="p-4 md:p-6 flex flex-col gap-4 md:gap-5 h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3 shrink-0">
         <div className="flex items-center gap-3">

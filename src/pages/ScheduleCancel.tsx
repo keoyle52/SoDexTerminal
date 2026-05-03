@@ -146,7 +146,7 @@ export const ScheduleCancel: React.FC = () => {
   const isUrgent = isActive && timeLeft < 60;
 
   return (
-    <div className="p-6 h-[calc(100vh-52px)] flex overflow-hidden">
+    <div className="p-6 h-full flex overflow-hidden">
       <ConfirmModal
         isOpen={showConfirm}
         title="Activate Dead Man's Switch"

@@ -269,7 +269,7 @@ export const CopyTrader: React.FC = () => {
   const isRunning = status === 'RUNNING';
 
   return (
-    <div className="flex h-[calc(100vh-52px)]">
+    <div className="flex h-full">
       <ConfirmModal
         isOpen={showConfirm}
         title="Start Copy Trader"

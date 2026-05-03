@@ -306,7 +306,7 @@ export const Backtesting: React.FC = () => {
   };
 
   return (
-    <div className="p-4 md:p-6 h-[calc(100vh-52px)] flex flex-col gap-5 overflow-y-auto">
+    <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">

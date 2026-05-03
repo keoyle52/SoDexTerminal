@@ -153,7 +153,7 @@ export const Positions: React.FC = () => {
   const marginColor = marginUsage > 80 ? 'danger' : marginUsage > 50 ? 'warning' : 'primary';
 
   return (
-    <div className="p-6 flex flex-col gap-5 h-[calc(100vh-52px)] overflow-hidden">
+    <div className="p-6 flex flex-col gap-5 h-full overflow-hidden">
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 shrink-0">
         <StatCard

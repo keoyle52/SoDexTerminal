@@ -594,7 +594,7 @@ export const NewsBot: React.FC = () => {
   const removeRule = (idx: number) => setRules((prev) => prev.filter((_, i) => i !== idx));
 
   return (
-    <div className="flex h-[calc(100vh-52px)] overflow-hidden gap-4 p-5">
+    <div className="flex h-full overflow-hidden gap-4 p-5">
       {/* Config panel */}
       <div className="w-80 shrink-0 space-y-4 overflow-y-auto">
         {/* Live PnL strip — shows live aggregate of every News Bot close */}

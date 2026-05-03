@@ -331,7 +331,7 @@ export const DcaBot: React.FC = () => {
   const dcaRiskSummary = buildDcaRiskRows();
 
   return (
-    <div className="flex h-[calc(100vh-52px)]">
+    <div className="flex h-full">
       <RiskSummaryModal
         isOpen={showConfirm}
         title="DCA Bot Summary"

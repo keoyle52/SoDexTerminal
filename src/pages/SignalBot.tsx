@@ -402,7 +402,7 @@ export const SignalBot: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-52px)]">
+    <div className="flex h-full">
       {/* ─────────────── Settings Panel ─────────────── */}
       <div className="w-96 border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col overflow-hidden shrink-0">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">

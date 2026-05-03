@@ -164,7 +164,7 @@ export const Alerts: React.FC = () => {
   const triggeredCount = alerts.filter((a) => a.triggered).length;
 
   return (
-    <div className="p-4 md:p-6 h-[calc(100vh-52px)] flex flex-col gap-5 overflow-hidden">
+    <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">

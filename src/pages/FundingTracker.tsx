@@ -163,7 +163,7 @@ export const FundingTracker: React.FC = () => {
   const totalEstimated = personalRows.reduce((sum, r) => sum + r.estimatedPayment, 0);
 
   return (
-    <div className="p-6 flex flex-col gap-5 h-[calc(100vh-52px)] overflow-hidden">
+    <div className="p-6 flex flex-col gap-5 h-full overflow-hidden">
       {/* Top Info Bar */}
       <div className="flex items-center gap-4 shrink-0">
         <div className="stat-card flex-1 !p-3">

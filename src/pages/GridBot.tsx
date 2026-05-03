@@ -633,7 +633,7 @@ export const GridBot: React.FC = () => {
   const riskSummary = buildRiskRows();
 
   return (
-    <div className="flex h-[calc(100vh-52px)]">
+    <div className="flex h-full">
       <RiskSummaryModal
         isOpen={showConfirm}
         title="Grid Bot Summary"

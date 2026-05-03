@@ -340,7 +340,7 @@ export const TwapBot: React.FC = () => {
   const twapRiskSummary = buildTwapRiskRows();
 
   return (
-    <div className="flex h-[calc(100vh-52px)]">
+    <div className="flex h-full">
       <RiskSummaryModal
         isOpen={showConfirm}
         title="TWAP Bot Summary"
