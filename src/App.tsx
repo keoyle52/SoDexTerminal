@@ -33,10 +33,6 @@ const Dashboard    = lazyFrom(() => import('./pages/Dashboard').then(m => ({ def
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
 const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
 const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
-const GridBot      = lazyFrom(() => import('./pages/GridBot').then(m => ({ default: m.GridBot })), 'GridBot');
-const TwapBot      = lazyFrom(() => import('./pages/TwapBot').then(m => ({ default: m.TwapBot })), 'TwapBot');
-const DcaBot       = lazyFrom(() => import('./pages/DcaBot').then(m => ({ default: m.DcaBot })), 'DcaBot');
-const MarketMakerBot = lazyFrom(() => import('./pages/MarketMakerBot').then(m => ({ default: m.MarketMakerBot })), 'MarketMakerBot');
 const CopyTrader   = lazyFrom(() => import('./pages/CopyTrader').then(m => ({ default: m.CopyTrader })), 'CopyTrader');
 const Positions    = lazyFrom(() => import('./pages/Positions').then(m => ({ default: m.Positions })), 'Positions');
 const FundingTracker = lazyFrom(() => import('./pages/FundingTracker').then(m => ({ default: m.FundingTracker })), 'FundingTracker');
@@ -45,7 +41,6 @@ const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ defaul
 const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
 const EtfTracker   = lazyFrom(() => import('./pages/EtfTracker').then(m => ({ default: m.EtfTracker })), 'EtfTracker');
 const NewsBot      = lazyFrom(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })), 'NewsBot');
-const SignalBot    = lazyFrom(() => import('./pages/SignalBot').then(m => ({ default: m.SignalBot })), 'SignalBot');
 const BtcPredictor = lazyFrom(() => import('./pages/BtcPredictor').then(m => ({ default: m.BtcPredictor })), 'BtcPredictor');
 const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })),       'AiConsole');
 const MacroCalendar  = lazyFrom(() => import('./pages/MacroCalendar').then(m => ({ default: m.MacroCalendar })),  'MacroCalendar');

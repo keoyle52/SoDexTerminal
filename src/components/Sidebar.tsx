@@ -1,10 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Grid2X2, Clock, Repeat, Users, LineChart, Coins,
+  LayoutDashboard, Users, LineChart, Coins,
   TimerOff, Bell, FlaskConical, Settings, Menu, X, BarChart2,
   Brain, Newspaper, Calendar, Building, Banknote, Flame, Building2,
-  MessageSquare, Layers, Zap, Activity,
+  MessageSquare, Layers, Zap,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 

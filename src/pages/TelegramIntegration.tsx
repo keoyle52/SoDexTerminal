@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, Smartphone, ShieldCheck, Zap, Bell, CheckCircle2, RefreshCw } from 'lucide-react';
+import { MessageSquare, Send, Smartphone, ShieldCheck, Zap, Bell, RefreshCw } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Toggle } from '../components/common/Input';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, Share2, Award, ArrowUpRight, Check, Search, Filter, ShieldAlert, Sparkles } from 'lucide-react';
+import { Zap, Share2, Award, Check, ShieldAlert, Sparkles } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Input, Select } from '../components/common/Input';
@@ -247,10 +247,11 @@ export const StrategyMarketplace: React.FC = () => {
                   </div>
 
                   <Button
-                    variant={deployedStratId === strat.id ? 'success' : 'primary'}
+                    variant="primary"
                     fullWidth
                     size="sm"
                     onClick={() => handleDeploy(strat)}
+                    disabled={deployedStratId === strat.id}
                     icon={deployedStratId === strat.id ? <Check size={13} /> : <Zap size={13} />}
                   >
                     {deployedStratId === strat.id ? 'Preset Deployed!' : 'One-Click Deploy'}
