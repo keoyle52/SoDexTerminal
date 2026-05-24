@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
 import { Sidebar } from './components/Sidebar';
+import { AiConsoleButton } from './components/AiConsoleButton';
 import { Topbar } from './components/Topbar';
 import { useSettingsStore } from './store/settingsStore';
 // Settings loaded synchronously to avoid Suspense stall issues
@@ -39,7 +40,6 @@ const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ d
 const MarketIntel  = lazyFrom(() => import('./pages/MarketIntel').then(m => ({ default: m.MarketIntel })), 'MarketIntel');
 const BtcPredictor = lazyFrom(() => import('./pages/BtcPredictor').then(m => ({ default: m.BtcPredictor })), 'BtcPredictor');
 const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })), 'AiConsole');
-const NewsBot      = lazyFrom(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })), 'NewsBot');
 
 /**
  * Non-blocking Suspense fallback — a subtle top progress shimmer instead of
@@ -148,7 +148,6 @@ function App() {
                       <Route path="/market-intel"    element={<MarketIntel />} />
                       <Route path="/btc-predictor"   element={<BtcPredictor />} />
                       <Route path="/ai-console"      element={<AiConsole />} />
-                      <Route path="/news-bot"        element={<NewsBot />} />
                       <Route path="*"                element={<Navigate to="/dashboard" replace />} />
                     </Routes>
                   </Suspense>
@@ -180,6 +179,9 @@ function App() {
           },
         }}
       />
+      
+      {/* AI Console Floating Button */}
+      <AiConsoleButton />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, LineChart, FlaskConical, Settings, Menu, X, BarChart2,
-  Brain, Newspaper, MessageSquare, Layers, Zap,
+  Brain, MessageSquare, Layers, Zap,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -15,8 +15,6 @@ const NAV_SECTIONS = [
       { to: '/trading-bots',  icon: Layers,         label: 'Trading Bots' },
       { to: '/positions',     icon: LineChart,       label: 'Positions' },
       { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting' },
-      { to: '/ai-console',    icon: MessageSquare,  label: 'AI Console' },
-      { to: '/news-bot',      icon: Newspaper,      label: 'News Bot' },
       { to: '/market-intel',  icon: BarChart2,      label: 'Market Intel', badge: 'New' },
       { to: '/telegram',      icon: MessageSquare,  label: 'Telegram' },
       { to: '/settings',      icon: Settings,       label: 'Settings' },

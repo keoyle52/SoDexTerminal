@@ -1,14 +1,15 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Grid2X2, Clock, Repeat, Layers, Activity, Play, Sparkles } from 'lucide-react';
+import { Grid2X2, Clock, Repeat, Layers, Activity, Play, Sparkles, Newspaper } from 'lucide-react';
 import { GridBot } from './GridBot';
 import { DcaBot } from './DcaBot';
 import { TwapBot } from './TwapBot';
 import { MarketMakerBot } from './MarketMakerBot';
 import { SignalBot } from './SignalBot';
+import { NewsBot } from './NewsBot';
 import { cn } from '../lib/utils';
 
-type BotTab = 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal';
+type BotTab = 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal' | 'news';
 
 const BOTS_CONFIG: Record<BotTab, {
   label: string;
@@ -51,6 +52,13 @@ const BOTS_CONFIG: Record<BotTab, {
     icon: Activity,
     component: SignalBot,
     color: 'from-amber-500 to-orange-600',
+  },
+  news: {
+    label: 'News Bot',
+    desc: 'AI-powered news sentiment analysis and trading signals.',
+    icon: Newspaper,
+    component: NewsBot,
+    color: 'from-blue-500 to-cyan-600',
   },
 };
 
