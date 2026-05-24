@@ -5,10 +5,9 @@ import {
   Activity, Newspaper, BarChart3, Zap, AlertTriangle, Wallet,
   Sparkles, AlertCircle,
 } from 'lucide-react';
-import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates, placeOrder, updatePerpsLeverage } from '../api/services';
+import { fetchKlines, fetchTickers, fetchOrderbook, fetchFundingRates } from '../api/services';
 import { useLiveTicker, type LiveTicker } from '../api/useLiveTicker';
 import { fetchSosoNews, fetchEtfCurrentMetrics, getNewsTitle } from '../api/sosoServices';
-import { aggregateInstitutionalBtcFlow } from '../api/sosoExtraServices';
 import { analyzeSentiment } from '../api/geminiClient';
 import { callAiStrategist, type StrategistVerdict } from '../api/aiStrategist';
 import { useSettingsStore } from '../store/settingsStore';
@@ -35,12 +34,8 @@ const CYCLE_MS      = 5 * 60 * 1000;
 // staying short enough that data refreshes within ~one extra cycle.
 const NEWS_TTL_MS   = 6 * 60 * 1000;
 const ETF_TTL_MS    = 8 * 60 * 1000;
-// Treasury aggregation runs through ~8 SoSoValue calls per refresh, so we
-// cache aggressively (30 min) — institutional buys aren't intra-day data.
-const TREASURY_TTL_MS = 30 * 60 * 1000;
 const LS_NEWS_KEY   = 'predictor_news_cache';
 const LS_ETF_KEY    = 'predictor_etf_cache';
-const LS_TREASURY_KEY = 'predictor_treasury_cache';
 const KLINES_LIMIT  = 40;               // enough for EMA-21 + microstructure
 const BTC_SYMBOL_HINT = 'BTC';        // substring match against fetchTickers result
 const NEUTRAL_WIDE  = 0.18;             // self-correcting threshold when accuracy drops
