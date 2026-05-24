@@ -1,62 +1,23 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, LineChart, Coins,
-  TimerOff, Bell, FlaskConical, Settings, Menu, X, BarChart2,
-  Brain, Newspaper, Calendar, Building, Banknote, Flame, Building2,
-  MessageSquare, Layers, Zap,
+  LayoutDashboard, LineChart, FlaskConical, Settings, Menu, X, BarChart2,
+  Brain, MessageSquare, Layers, Zap,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const NAV_SECTIONS = [
   {
-    label: 'AI Agents',
+    label: null,
     items: [
-      { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor', badge: 'Headline' },
-      { to: '/news-bot',      icon: Newspaper,     label: 'News Bot'      },
-      { to: '/ai-console',    icon: MessageSquare, label: 'AI Console'    },
-    ],
-  },
-  {
-    label: 'Overview',
-    items: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/positions',  icon: LineChart,       label: 'Positions'  },
-    ],
-  },
-  {
-    label: 'Trade Bots',
-    items: [
-      { to: '/trading-bots',    icon: Layers,   label: 'Trading Bots' },
-      { to: '/schedule-cancel', icon: TimerOff, label: 'Scheduler'    },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { to: '/ssi-indices',      icon: BarChart2, label: 'SSI Indices'      },
-      { to: '/btc-treasuries',   icon: Building2, label: 'BTC Treasuries'   },
-      { to: '/sector-spotlight', icon: Flame,     label: 'Sector Spotlight' },
-      { to: '/fundraising',      icon: Banknote,  label: 'Fundraising'      },
-      { to: '/crypto-stocks',    icon: Building,  label: 'Crypto Stocks'    },
-    ],
-  },
-  {
-    label: 'Market Data',
-    items: [
-      { to: '/funding',     icon: Coins,    label: 'Funding Rates'  },
-      { to: '/etf-tracker', icon: BarChart2, label: 'ETF Tracker'   },
-      { to: '/macro',       icon: Calendar, label: 'Macro Calendar' },
-    ],
-  },
-  {
-    label: 'Pro Tools',
-    items: [
-      { to: '/telegram',    icon: MessageSquare, label: 'Telegram Bot', badge: 'New' },
-      { to: '/marketplace', icon: Zap,          label: 'Marketplace', badge: 'New' },
-      { to: '/copy-trader', icon: Users,        label: 'Copy Trader' },
-      { to: '/alerts',      icon: Bell,         label: 'Price Alerts' },
-      { to: '/backtesting', icon: FlaskConical, label: 'Backtesting', badge: 'Wave 2'  },
+      { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/btc-predictor', icon: Brain,         label: 'AI Predictor', badge: 'Pro' },
+      { to: '/trading-bots',  icon: Layers,         label: 'Trading Bots' },
+      { to: '/positions',     icon: LineChart,       label: 'Positions' },
+      { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting' },
+      { to: '/market-intel',  icon: BarChart2,      label: 'Market Intel', badge: 'New' },
+      { to: '/telegram',      icon: MessageSquare,  label: 'Telegram' },
+      { to: '/settings',      icon: Settings,       label: 'Settings' },
     ],
   },
 ];

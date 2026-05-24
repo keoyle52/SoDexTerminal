@@ -2,24 +2,24 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background:     #0C0C0E;
-  --color-surface:        #111116;
-  --color-surface-2:      #18181D;
-  --color-surface-hover:  #1E1E24;
-  --color-border:         rgba(255, 255, 255, 0.07);
-  --color-border-hover:   rgba(255, 255, 255, 0.14);
-  --color-primary:        #818CF8;
-  --color-primary-soft:   rgba(129, 140, 248, 0.12);
-  --color-accent:         #818CF8;
-  --color-text-primary:   #F1F5F9;
-  --color-text-secondary: #94A3B8;
-  --color-text-muted:     #4B5563;
-  --color-success:        #34D399;
-  --color-success-soft:   rgba(52, 211, 153, 0.12);
-  --color-danger:         #F87171;
-  --color-danger-soft:    rgba(248, 113, 113, 0.12);
-  --color-warning:        #FCD34D;
-  --color-info:           #818CF8;
+  --color-background:     #0A0B0F;
+  --color-surface:        #111318;
+  --color-surface-2:      #1A1D24;
+  --color-surface-hover:  #22262E;
+  --color-border:         rgba(255, 255, 255, 0.06);
+  --color-border-hover:   rgba(255, 255, 255, 0.12);
+  --color-primary:        #00D4FF;
+  --color-primary-soft:   rgba(0, 212, 255, 0.12);
+  --color-accent:         #00D4FF;
+  --color-text-primary:   #FAFBFC;
+  --color-text-secondary: #9CA3AF;
+  --color-text-muted:     #6B7280;
+  --color-success:        #10B981;
+  --color-success-soft:   rgba(16, 185, 129, 0.12);
+  --color-danger:         #EF4444;
+  --color-danger-soft:    rgba(239, 68, 68, 0.12);
+  --color-warning:        #F59E0B;
+  --color-info:           #3B82F6;
 
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -35,21 +35,21 @@
   --color-background:     #F8FAFC;
   --color-surface:        #FFFFFF;
   --color-surface-2:      #F1F5F9;
-  --color-surface-hover:  #F8FAFC;
+  --color-surface-hover:  #E5E7EB;
   --color-border:         rgba(0, 0, 0, 0.08);
-  --color-border-hover:   rgba(0, 0, 0, 0.18);
-  --color-primary:        #6366F1;
-  --color-primary-soft:   rgba(99, 102, 241, 0.1);
-  --color-accent:         #6366F1;
-  --color-text-primary:   #0F172A;
-  --color-text-secondary: #475569;
-  --color-text-muted:     #94A3B8;
+  --color-border-hover:   rgba(0, 0, 0, 0.15);
+  --color-primary:        #0891B2;
+  --color-primary-soft:   rgba(8, 145, 178, 0.1);
+  --color-accent:         #0891B2;
+  --color-text-primary:   #111827;
+  --color-text-secondary: #4B5563;
+  --color-text-muted:     #9CA3AF;
   --color-success:        #059669;
   --color-success-soft:   rgba(5, 150, 105, 0.1);
   --color-danger:         #DC2626;
   --color-danger-soft:    rgba(220, 38, 38, 0.1);
-  --color-warning:        #D97706;
-  --color-info:           #6366F1;
+  --color-warning:        #B45309;
+  --color-info:           #2563EB;
 }
 
 .theme-light .glass-panel,

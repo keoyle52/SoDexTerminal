@@ -33,22 +33,11 @@ const Dashboard    = lazyFrom(() => import('./pages/Dashboard').then(m => ({ def
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
 const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
 const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
-const CopyTrader   = lazyFrom(() => import('./pages/CopyTrader').then(m => ({ default: m.CopyTrader })), 'CopyTrader');
 const Positions    = lazyFrom(() => import('./pages/Positions').then(m => ({ default: m.Positions })), 'Positions');
-const FundingTracker = lazyFrom(() => import('./pages/FundingTracker').then(m => ({ default: m.FundingTracker })), 'FundingTracker');
-const ScheduleCancel = lazyFrom(() => import('./pages/ScheduleCancel').then(m => ({ default: m.ScheduleCancel })), 'ScheduleCancel');
 const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })), 'Alerts');
 const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
-const EtfTracker   = lazyFrom(() => import('./pages/EtfTracker').then(m => ({ default: m.EtfTracker })), 'EtfTracker');
-const NewsBot      = lazyFrom(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })), 'NewsBot');
+const MarketIntel  = lazyFrom(() => import('./pages/MarketIntel').then(m => ({ default: m.MarketIntel })), 'MarketIntel');
 const BtcPredictor = lazyFrom(() => import('./pages/BtcPredictor').then(m => ({ default: m.BtcPredictor })), 'BtcPredictor');
-const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })),       'AiConsole');
-const MacroCalendar  = lazyFrom(() => import('./pages/MacroCalendar').then(m => ({ default: m.MacroCalendar })),  'MacroCalendar');
-const SsiIndices     = lazyFrom(() => import('./pages/SsiIndices').then(m => ({ default: m.SsiIndices })),       'SsiIndices');
-const BtcTreasuries  = lazyFrom(() => import('./pages/BtcTreasuries').then(m => ({ default: m.BtcTreasuries })), 'BtcTreasuries');
-const Fundraising    = lazyFrom(() => import('./pages/Fundraising').then(m => ({ default: m.Fundraising })),     'Fundraising');
-const SectorSpotlight = lazyFrom(() => import('./pages/SectorSpotlight').then(m => ({ default: m.SectorSpotlight })), 'SectorSpotlight');
-const CryptoStocks   = lazyFrom(() => import('./pages/CryptoStocks').then(m => ({ default: m.CryptoStocks })),   'CryptoStocks');
 
 /**
  * Non-blocking Suspense fallback — a subtle top progress shimmer instead of
@@ -136,7 +125,6 @@ function App() {
         <main id="app-main" className="flex-1 overflow-x-hidden overflow-y-auto p-5 md:p-6">
           <PageTransition>
             <Routes>
-              {/* Settings loaded outside Suspense to avoid load stalls */}
               <Route path="/settings" element={<Settings />} />
               <Route
                 path="*"
@@ -152,22 +140,11 @@ function App() {
                       <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
                       <Route path="/marketplace"     element={<StrategyMarketplace />} />
                       <Route path="/telegram"        element={<TelegramIntegration />} />
-                      <Route path="/copy-trader"     element={<CopyTrader />} />
                       <Route path="/positions"       element={<Positions />} />
-                      <Route path="/funding"         element={<FundingTracker />} />
-                      <Route path="/schedule-cancel" element={<ScheduleCancel />} />
                       <Route path="/alerts"          element={<Alerts />} />
                       <Route path="/backtesting"     element={<Backtesting />} />
-                      <Route path="/etf-tracker"     element={<EtfTracker />} />
-                      <Route path="/news-bot"        element={<NewsBot />} />
+                      <Route path="/market-intel"    element={<MarketIntel />} />
                       <Route path="/btc-predictor"   element={<BtcPredictor />} />
-                      <Route path="/ai-console"      element={<AiConsole />} />
-                      <Route path="/macro"           element={<MacroCalendar />} />
-                      <Route path="/ssi-indices"     element={<SsiIndices />} />
-                      <Route path="/btc-treasuries"  element={<BtcTreasuries />} />
-                      <Route path="/fundraising"     element={<Fundraising />} />
-                      <Route path="/sector-spotlight" element={<SectorSpotlight />} />
-                      <Route path="/crypto-stocks"   element={<CryptoStocks />} />
                       <Route path="*"                element={<Navigate to="/dashboard" replace />} />
                     </Routes>
                   </Suspense>
