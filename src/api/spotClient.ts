@@ -27,14 +27,17 @@ spotClient.interceptors.request.use(async (config) => {
   const state = useSettingsStore.getState();
   config.baseURL = state.isTestnet ? BASE_URL_TESTNET : BASE_URL_MAINNET;
 
-  const { apiKeyName, privateKey, isTestnet } = state;
+  const { apiKeyName, privateKey, isTestnet, isWalletConnected, walletAddress } = state;
   const method = (config.method ?? 'GET').toUpperCase();
 
-  // Only sign write (non-GET) requests — requires a private key
-  if (method !== 'GET' && privateKey) {
-    const effectiveApiKey = resolveApiKey({ apiKeyName, privateKey, isTestnet });
+  // Sign write (non-GET) requests if a private key is provided OR a browser wallet is connected
+  if (method !== 'GET' && (privateKey || isWalletConnected)) {
+    const effectiveApiKey = isWalletConnected 
+      ? walletAddress.toLowerCase() 
+      : resolveApiKey({ apiKeyName, privateKey, isTestnet });
+
     if (!effectiveApiKey) {
-      return Promise.reject(new Error('Invalid private key: could not derive wallet address'));
+      return Promise.reject(new Error('Invalid credentials: could not resolve wallet address'));
     }
 
     const payload = (config.data ?? {}) as Record<string, unknown>;
@@ -47,6 +50,7 @@ spotClient.interceptors.request.use(async (config) => {
         'spot',
         isTestnet,
         effectiveApiKey,
+        isWalletConnected
       );
       config.headers['X-API-Key'] = effectiveApiKey;
       config.headers['X-API-Nonce'] = nonce;
@@ -55,7 +59,7 @@ spotClient.interceptors.request.use(async (config) => {
       if (typeof window !== 'undefined') {
          
         console.log(
-          `[spotClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'}%c ${method} ${config.url}`
+          `[spotClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'} (${isWalletConnected ? 'WALLET' : 'PK'})%c ${method} ${config.url}`
           + `\n  X-API-Key  = ${effectiveApiKey}`
           + `\n  X-API-Nonce= ${nonce}`
           + `\n  action     = ${actionType}`,

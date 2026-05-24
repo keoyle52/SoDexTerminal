@@ -12,7 +12,7 @@ const NAV_SECTIONS = [
   {
     label: 'AI Agents',
     items: [
-      { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor' },
+      { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor', badge: 'Headline' },
       { to: '/news-bot',      icon: Newspaper,     label: 'News Bot'      },
       { to: '/ai-console',    icon: MessageSquare, label: 'AI Console'    },
     ],
@@ -27,11 +27,7 @@ const NAV_SECTIONS = [
   {
     label: 'Trade Bots',
     items: [
-      { to: '/signal-bot',      icon: Activity, label: 'Signal Bot'   },
-      { to: '/grid-bot',        icon: Grid2X2,  label: 'Grid Bot'     },
-      { to: '/twap-bot',        icon: Clock,    label: 'TWAP Bot'     },
-      { to: '/dca-bot',         icon: Repeat,   label: 'DCA Bot'      },
-      { to: '/market-maker',    icon: Layers,   label: 'Market Maker' },
+      { to: '/trading-bots',    icon: Layers,   label: 'Trading Bots' },
       { to: '/schedule-cancel', icon: TimerOff, label: 'Scheduler'    },
     ],
   },
@@ -56,15 +52,17 @@ const NAV_SECTIONS = [
   {
     label: 'Pro Tools',
     items: [
+      { to: '/telegram',    icon: MessageSquare, label: 'Telegram Bot', badge: 'New' },
+      { to: '/marketplace', icon: Zap,          label: 'Marketplace', badge: 'New' },
       { to: '/copy-trader', icon: Users,        label: 'Copy Trader' },
       { to: '/alerts',      icon: Bell,         label: 'Price Alerts' },
-      { to: '/backtesting', icon: FlaskConical, label: 'Backtesting'  },
+      { to: '/backtesting', icon: FlaskConical, label: 'Backtesting', badge: 'Wave 2'  },
     ],
   },
 ];
 
-const NavItem: React.FC<{ to: string; icon: React.ElementType; label: string; onClick?: () => void }> = ({
-  to, icon: Icon, label, onClick,
+const NavItem: React.FC<{ to: string; icon: React.ElementType; label: string; badge?: string; onClick?: () => void }> = ({
+  to, icon: Icon, label, badge, onClick,
 }) => (
   <NavLink
     to={to}
@@ -88,7 +86,17 @@ const NavItem: React.FC<{ to: string; icon: React.ElementType; label: string; on
           )}
         />
         <span className="truncate">{label}</span>
-        {isActive && (
+        {badge && (
+          <span className={cn(
+            "ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none scale-90 shrink-0",
+            badge === 'Headline' ? "bg-primary/20 text-primary" :
+            badge === 'Wave 2' ? "bg-violet-500/20 text-violet-400" :
+            "bg-emerald-500/20 text-emerald-400 animate-pulse"
+          )}>
+            {badge}
+          </span>
+        )}
+        {isActive && !badge && (
           <span className="ml-auto w-1 h-1 rounded-full bg-primary shrink-0" />
         )}
       </>

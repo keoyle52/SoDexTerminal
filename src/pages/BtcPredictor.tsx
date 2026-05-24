@@ -23,6 +23,7 @@ import {
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
+import { PredictorPerformanceDashboard } from '../components/PredictorPerformanceDashboard';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 
@@ -2316,6 +2317,9 @@ export const BtcPredictor: React.FC = () => {
               </span>
             </div>
           </Card>
+
+          {/* BTC Predictor Performance Dashboard - Real Historical Data */}
+          <PredictorPerformanceDashboard history={history} />
         </div>
 
         {/* ── RIGHT: Accuracy + History ── */}

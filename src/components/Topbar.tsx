@@ -1,8 +1,9 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
-import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound } from 'lucide-react';
+import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound, Wallet } from 'lucide-react';
 import { cn } from '../lib/utils';
+import toast from 'react-hot-toast';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':        'Dashboard',
@@ -27,14 +28,39 @@ const PAGE_TITLES: Record<string, string> = {
   '/fundraising':      'Fundraising',
   '/crypto-stocks':    'Crypto Stocks',
   '/settings':         'Settings',
+  '/trading-bots':     'Trading Bots',
+  '/marketplace':      'Strategy Marketplace',
+  '/telegram':         'Telegram Bot',
 };
 
 export const Topbar: React.FC = () => {
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname] ?? 'Terminal';
   const store = useSettingsStore();
-  const isConnected = !!store.privateKey;
+  const isConnected = !!store.privateKey || store.isWalletConnected;
   const isLight = store.theme === 'light';
+
+  const handleConnectWallet = async () => {
+    if (store.isWalletConnected) {
+      store.disconnectWallet();
+      toast.success('Wallet disconnected');
+      return;
+    }
+    const win = window as any;
+    if (!win.ethereum) {
+      toast.error('MetaMask or another compatible browser wallet was not found.');
+      return;
+    }
+    try {
+      const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts && accounts[0]) {
+        store.connectWallet(accounts[0]);
+        toast.success(`Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to connect wallet');
+    }
+  };
 
   return (
     <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-5 shrink-0 z-40">
@@ -44,6 +70,25 @@ export const Topbar: React.FC = () => {
       </h1>
 
       <div className="flex items-center gap-2">
+        {/* Wallet Connect — prominent browser wallet connection */}
+        <button
+          onClick={handleConnectWallet}
+          title={store.isWalletConnected ? 'Disconnect Wallet' : 'Connect MetaMask / Browser Wallet'}
+          className={cn(
+            'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md border transition-all duration-150',
+            store.isWalletConnected
+              ? 'bg-primary/15 border-primary/40 text-primary hover:bg-primary/20'
+              : 'bg-white/[0.04] border-border text-text-muted hover:text-text-primary hover:bg-white/[0.07]'
+          )}
+        >
+          <Wallet size={13} className={cn(store.isWalletConnected && 'animate-pulse')} />
+          <span>
+            {store.isWalletConnected
+              ? `${store.walletAddress.slice(0, 6)}...${store.walletAddress.slice(-4)}`
+              : 'Connect Wallet'}
+          </span>
+        </button>
+
         {/* Demo Mode — prominent CTA for judges */}
         <button
           onClick={() => store.setIsDemoMode(!store.isDemoMode)}
@@ -78,7 +123,12 @@ export const Topbar: React.FC = () => {
 
         {/* Connection status */}
         <div className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
-          {isConnected ? (
+          {store.isWalletConnected ? (
+            <>
+              <Wifi size={12} className="text-primary shrink-0" />
+              <span className="text-primary font-medium">Wallet Active</span>
+            </>
+          ) : isConnected ? (
             <>
               <Wifi size={12} className="text-success shrink-0" />
               <span className="text-success font-medium">Connected</span>

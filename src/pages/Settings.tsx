@@ -159,6 +159,67 @@ export const Settings: React.FC = () => {
                 )}
               </Card>
 
+              {/* Web3 Wallet Connection Card */}
+              <Card>
+                <div className="flex items-center gap-2 mb-5">
+                  <Wallet size={16} className="text-primary" />
+                  <h3 className="text-sm font-semibold">Web3 Browser Wallet</h3>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Connect your MetaMask or another Web3 browser wallet to securely sign orders via EIP-712.
+                    This is highly recommended since your private key remains secure in your wallet.
+                  </p>
+                  
+                  {store.isWalletConnected ? (
+                    <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-text-primary">Connected Address</span>
+                        <span className="badge badge-primary">MetaMask</span>
+                      </div>
+                      <div className="font-mono text-xs text-primary truncate select-all bg-background/50 p-2 rounded border border-border/50">
+                        {store.walletAddress}
+                      </div>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          store.disconnectWallet();
+                          toast.success('Wallet disconnected');
+                        }}
+                        className="mt-1 w-full"
+                      >
+                        Disconnect Wallet
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      onClick={async () => {
+                        const win = window as any;
+                        if (!win.ethereum) {
+                          toast.error('MetaMask or another compatible browser wallet was not found.');
+                          return;
+                        }
+                        try {
+                          const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
+                          if (accounts && accounts[0]) {
+                            store.connectWallet(accounts[0]);
+                            toast.success(`Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
+                          }
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to connect wallet');
+                        }
+                      }}
+                      className="w-full"
+                    >
+                      Connect Browser Wallet (MetaMask)
+                    </Button>
+                  )}
+                </div>
+              </Card>
+
               {/* ───── Mainnet credentials (hidden on testnet) ───── */}
               {!store.isTestnet && (
                 <Card>

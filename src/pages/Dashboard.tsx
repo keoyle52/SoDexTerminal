@@ -15,7 +15,7 @@ import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatCard, Card } from '../components/common/Card';
 import { TradingChart } from '../components/TradingChart';
 import { useSettingsStore } from '../store/settingsStore';
-import { usePredictorStore } from '../store/predictorStore';
+import { usePredictorStore, computePerformanceMetrics } from '../store/predictorStore';
 import {
   fetchBalances,
   fetchPositions,
@@ -48,6 +48,8 @@ export const Dashboard: React.FC = () => {
   // fall back to a "Run Predictor first" recommendation card.
   const predictorSignals = usePredictorStore((s) => s.currentSignals);
   const aiVerdict        = usePredictorStore((s) => s.aiVerdict);
+  const predictorHistory = usePredictorStore((s) => s.history);
+  const predictorMetrics = useMemo(() => computePerformanceMetrics(predictorHistory), [predictorHistory]);
   // A private key is sufficient to authenticate account endpoints:
   //  - Testnet: the key IS the master wallet.
   //  - Mainnet: the key is the API-key private key; the master EVM address
@@ -300,6 +302,84 @@ export const Dashboard: React.FC = () => {
           )}
         </Card>
       )}
+
+      {/* BTC Predictor Headline Widget - Wave 2 Enhanced with Real Metrics */}
+      <Card className="p-5 border border-primary/20 bg-surface/50 relative overflow-hidden backdrop-blur-md shrink-0">
+        <div className="absolute right-0 top-0 w-32 h-32 rounded-full bg-primary/10 blur-3xl opacity-20 pointer-events-none" />
+        <div className="flex justify-between items-start gap-4 flex-wrap relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+              <TrendingUp className="text-primary" size={18} />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest font-semibold text-primary">Headline Signal</div>
+              <h3 className="text-sm font-bold text-text-primary mt-0.5">BTC Predictor Active Insights</h3>
+            </div>
+          </div>
+          
+          <Link
+            to="/btc-predictor"
+            className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+          >
+            Launch Predictor Dashboard <ArrowUpRight size={13} />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5 pt-5 border-t border-border/50 relative z-10">
+          <div>
+            <div className="text-[10px] text-text-muted uppercase tracking-wider">Current Forecast</div>
+            <div className="text-sm font-bold flex items-center gap-1.5 mt-1.5">
+              {predictorSignals ? (
+                <>
+                  <span className={cn(
+                    "w-2 h-2 rounded-full animate-ping",
+                    predictorSignals.weightedScore > 0.1 ? "bg-emerald-400" : 
+                    predictorSignals.weightedScore < -0.1 ? "bg-red-400" : "bg-amber-400"
+                  )} />
+                  <span className={cn(
+                    predictorSignals.weightedScore > 0.1 ? "text-emerald-400" : 
+                    predictorSignals.weightedScore < -0.1 ? "text-red-400" : "text-amber-400"
+                  )}>
+                    {predictorSignals.weightedScore > 0.1 ? "BULLISH (UP)" : 
+                     predictorSignals.weightedScore < -0.1 ? "BEARISH (DOWN)" : "NEUTRAL"}
+                  </span>
+                </>
+              ) : (
+                <span className="text-text-muted">—</span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-text-muted uppercase tracking-wider">AI Confidence</div>
+            <div className="text-sm font-bold font-mono mt-1 text-text-primary">
+              {aiVerdict ? `${(aiVerdict.confidence * 100).toFixed(1)}%` : predictorSignals ? `${(Math.abs(predictorSignals.weightedScore) * 100).toFixed(1)}%` : "—"}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-text-muted uppercase tracking-wider">Live Performance</div>
+            <div className="text-sm font-bold font-mono mt-1 text-emerald-400">
+              {predictorMetrics.tradesCount > 0 ? (
+                <>{predictorMetrics.winRate > 0 ? (predictorMetrics.winRate * 100).toFixed(1) : 0}% Win Rate</>
+              ) : (
+                "No trades yet"
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-text-muted uppercase tracking-wider">Risk Metrics</div>
+            <div className="text-xs font-bold mt-1 text-primary-light flex items-center gap-1.5">
+              {predictorMetrics.tradesCount >= 10 ? (
+                <>
+                  <span className="badge badge-primary shrink-0">Sharpe: {predictorMetrics.sharpeRatio.toFixed(2)}</span>
+                  <span className="text-[10px] text-text-muted font-mono">DD: {predictorMetrics.maxDrawdownPct.toFixed(2)}%</span>
+                </>
+              ) : (
+                <span className="text-[10px] text-text-muted">Need 10+ trades for metrics</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Chart */}
       <div className="shrink-0">

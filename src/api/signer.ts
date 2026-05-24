@@ -144,13 +144,10 @@ export async function signPayload(
   type: DomainType,
   isTestnet: boolean,
   apiKey?: string,
+  useBrowserWallet = false,
 ): Promise<{ signature: string; nonce: string }> {
-  const normalisedPk = normalizePrivateKey(privateKey);
-  if (!normalisedPk) throw new Error('Private key is required to sign requests');
-  const wallet = new ethers.Wallet(normalisedPk);
-  // Use apiKey (or wallet address) for per-key nonce isolation so that
-  // multiple identities in the same browser tab never collide.
-  const nonce = getMonotonicNonce(apiKey ?? wallet.address);
+  let nonce: string;
+  let rawSignature: string;
 
   // Wrap in the {type, params} envelope required by SoDEX before hashing.
   // JSON.stringify without replacer/indent preserves insertion order of
@@ -160,9 +157,48 @@ export async function signPayload(
   const payloadHash = ethers.keccak256(ethers.toUtf8Bytes(payloadString));
 
   const domain = getDomain(type, isTestnet);
-  const values = { payloadHash, nonce };
 
-  const rawSignature = await wallet.signTypedData(domain, EIP712_TYPES, values);
+  if (useBrowserWallet) {
+    const win = window as any;
+    if (!win.ethereum) {
+      throw new Error('MetaMask or another compatible browser wallet was not found.');
+    }
+    const accounts = await win.ethereum.request({ method: 'eth_accounts' });
+    const address = accounts[0];
+    if (!address) {
+      throw new Error('Please connect your browser wallet via the Topbar or Settings first.');
+    }
+    nonce = getMonotonicNonce(apiKey ?? address);
+    const values = { payloadHash, nonce };
+
+    const typedData = {
+      types: {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' }
+        ],
+        ExchangeAction: EIP712_TYPES.ExchangeAction
+      },
+      domain,
+      primaryType: 'ExchangeAction',
+      message: values
+    };
+
+    rawSignature = await win.ethereum.request({
+      method: 'eth_signTypedData_v4',
+      params: [address, JSON.stringify(typedData)]
+    });
+  } else {
+    const normalisedPk = normalizePrivateKey(privateKey);
+    if (!normalisedPk) throw new Error('Private key is required to sign requests');
+    const wallet = new ethers.Wallet(normalisedPk);
+    nonce = getMonotonicNonce(apiKey ?? wallet.address);
+    const values = { payloadHash, nonce };
+    rawSignature = await wallet.signTypedData(domain, EIP712_TYPES, values);
+  }
+
   const rawSigBytes = ethers.getBytes(rawSignature);
   // SoDEX Go verifier expects recovery ID as 0/1 (crypto.Sign format), while
   // many EVM signature encoders emit 27/28. Normalise either form.

@@ -30,6 +30,9 @@ const lazyFrom = (mod: LazyImport, key: string) => lazy(() => mod().then((m) => 
 })));
 
 const Dashboard    = lazyFrom(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })), 'Dashboard');
+const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
+const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
+const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
 const GridBot      = lazyFrom(() => import('./pages/GridBot').then(m => ({ default: m.GridBot })), 'GridBot');
 const TwapBot      = lazyFrom(() => import('./pages/TwapBot').then(m => ({ default: m.TwapBot })), 'TwapBot');
 const DcaBot       = lazyFrom(() => import('./pages/DcaBot').then(m => ({ default: m.DcaBot })), 'DcaBot');
@@ -146,10 +149,14 @@ function App() {
                   <Suspense fallback={<PageLoader />}>
                     <Routes>
                       <Route path="/dashboard"       element={<Dashboard />} />
-                      <Route path="/grid-bot"        element={<GridBot />} />
-                      <Route path="/twap-bot"        element={<TwapBot />} />
-                      <Route path="/dca-bot"         element={<DcaBot />} />
-                      <Route path="/market-maker"    element={<MarketMakerBot />} />
+                      <Route path="/trading-bots"    element={<TradingBots />} />
+                      <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
+                      <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
+                      <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
+                      <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
+                      <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
+                      <Route path="/marketplace"     element={<StrategyMarketplace />} />
+                      <Route path="/telegram"        element={<TelegramIntegration />} />
                       <Route path="/copy-trader"     element={<CopyTrader />} />
                       <Route path="/positions"       element={<Positions />} />
                       <Route path="/funding"         element={<FundingTracker />} />
@@ -158,7 +165,6 @@ function App() {
                       <Route path="/backtesting"     element={<Backtesting />} />
                       <Route path="/etf-tracker"     element={<EtfTracker />} />
                       <Route path="/news-bot"        element={<NewsBot />} />
-                      <Route path="/signal-bot"      element={<SignalBot />} />
                       <Route path="/btc-predictor"   element={<BtcPredictor />} />
                       <Route path="/ai-console"      element={<AiConsole />} />
                       <Route path="/macro"           element={<MacroCalendar />} />

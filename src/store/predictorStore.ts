@@ -307,6 +307,62 @@ export const usePredictorStore = create<PredictorState>()(
 );
 
 /**
+ * Performance point for equity curve charting
+ */
+export interface PerformancePoint {
+  timestamp: number;
+  equity: number;
+  drawdown: number;
+  tradeCount: number;
+}
+
+/**
+ * Comprehensive performance metrics for validation dashboard
+ */
+export interface PerformanceMetrics {
+  tradesCount: number;
+  totalNetPct: number;
+  avgNetPct: number;
+  winRate: number;
+  bestNetPct: number;
+  worstNetPct: number;
+  sharpeRatio: number;
+  maxDrawdownPct: number;
+  profitFactor: number;
+  avgWinPct: number;
+  avgLossPct: number;
+  expectancyPct: number;
+  equityCurve: PerformancePoint[];
+  monthlyReturns: { month: string; returnPct: number; trades: number }[];
+}
+
+/**
+ * Calculate Sharpe ratio from returns series
+ */
+function calculateSharpeRatio(returns: number[]): number {
+  if (returns.length < 2) return 0;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  const std = Math.sqrt(variance);
+  if (std === 0) return 0;
+  return (mean / std) * Math.sqrt(105120); // Annualized for 5-min periods
+}
+
+/**
+ * Calculate max drawdown from equity values
+ */
+function calculateMaxDrawdown(equityValues: number[]): number {
+  let peak = -Infinity;
+  let maxDd = 0;
+  for (const equity of equityValues) {
+    if (equity > peak) peak = equity;
+    const dd = peak - equity;
+    if (dd > maxDd) maxDd = dd;
+  }
+  return maxDd;
+}
+
+/**
  * Derive aggregate net performance from the history window. Directional
  * sign is baked into `netPricePct` so simple summation is correct.
  */
@@ -341,5 +397,97 @@ export function computeNetPerformance(history: PredictionEntry[]): {
     winRate: wins / resolved.length,
     bestNetPct: best,
     worstNetPct: worst,
+  };
+}
+
+/**
+ * Compute comprehensive performance metrics for Wave 2 validation dashboard
+ */
+export function computePerformanceMetrics(history: PredictionEntry[]): PerformanceMetrics {
+  const resolved = history.filter(
+    (e) => e.direction !== 'NEUTRAL'
+        && (e.result === 'CORRECT' || e.result === 'WRONG')
+        && typeof e.netPricePct === 'number',
+  );
+
+  if (resolved.length === 0) {
+    return {
+      tradesCount: 0, totalNetPct: 0, avgNetPct: 0, winRate: 0,
+      bestNetPct: 0, worstNetPct: 0, sharpeRatio: 0, maxDrawdownPct: 0,
+      profitFactor: 0, avgWinPct: 0, avgLossPct: 0, expectancyPct: 0,
+      equityCurve: [], monthlyReturns: [],
+    };
+  }
+
+  let total = 0, best = -Infinity, worst = Infinity;
+  let wins = 0, losses = 0;
+  let winSum = 0, lossSum = 0;
+  const returns: number[] = [];
+
+  for (const e of resolved) {
+    const net = e.netPricePct as number;
+    total += net;
+    returns.push(net);
+    if (net > best) best = net;
+    if (net < worst) worst = net;
+    if (net > 0) {
+      wins++;
+      winSum += net;
+    } else {
+      losses++;
+      lossSum += Math.abs(net);
+    }
+  }
+
+  // Build equity curve and calculate drawdowns
+  const equityCurve: PerformancePoint[] = [];
+  let equity = 0;
+  let peak = 0;
+  for (let i = 0; i < resolved.length; i++) {
+    equity += resolved[i].netPricePct as number;
+    if (equity > peak) peak = equity;
+    const drawdown = peak - equity;
+    equityCurve.push({
+      timestamp: resolved[i].timestamp,
+      equity,
+      drawdown,
+      tradeCount: i + 1,
+    });
+  }
+
+  // Monthly aggregation
+  const monthlyMap = new Map<string, { returnPct: number; trades: number }>();
+  for (const e of resolved) {
+    const date = new Date(e.timestamp);
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const existing = monthlyMap.get(monthKey) || { returnPct: 0, trades: 0 };
+    existing.returnPct += e.netPricePct as number;
+    existing.trades++;
+    monthlyMap.set(monthKey, existing);
+  }
+  const monthlyReturns = Array.from(monthlyMap.entries())
+    .map(([month, data]) => ({ month, ...data }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+
+  const winRate = wins / resolved.length;
+  const avgWin = wins > 0 ? winSum / wins : 0;
+  const avgLoss = losses > 0 ? lossSum / losses : 0;
+  const expectancy = (winRate * avgWin) - ((1 - winRate) * avgLoss);
+
+  return {
+    tradesCount: resolved.length,
+    totalNetPct: total,
+    avgNetPct: total / resolved.length,
+    winRate,
+    bestNetPct: best,
+    worstNetPct: worst,
+    sharpeRatio: calculateSharpeRatio(returns),
+    maxDrawdownPct: calculateMaxDrawdown(equityCurve.map(p => p.equity)),
+    profitFactor: lossSum > 0 ? winSum / lossSum : winSum > 0 ? Infinity : 0,
+    avgWinPct: avgWin,
+    avgLossPct: avgLoss,
+    expectancyPct: expectancy,
+    equityCurve,
+    monthlyReturns,
   };
 }
