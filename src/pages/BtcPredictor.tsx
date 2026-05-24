@@ -89,6 +89,7 @@ export const BtcPredictor: React.FC = () => {
 
   const { isWalletConnected } = useSettingsStore();
   const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevPriceRef = useRef<number>(0);
 
   // ── Price Feed ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -100,7 +101,9 @@ export const BtcPredictor: React.FC = () => {
         const btc = tickers.find(t => t.symbol.includes('BTC'));
         if (btc) {
           // @ts-ignore
-          setCurrentPrice(parseFloat(btc.lastPrice));
+          const newPrice = parseFloat(btc.lastPrice);
+          prevPriceRef.current = currentPrice;
+          setCurrentPrice(newPrice);
         }
       } catch (err) {
         console.error('Price fetch error:', err);
@@ -213,7 +216,7 @@ export const BtcPredictor: React.FC = () => {
           sentiment: Math.abs(sentimentScore) * 100,
           marketStructure: Math.abs(marketStructureScore) * 100,
         },
-        aiAnalysis: aiAnalysis?.rationale || 'Teknik analiz tabanlı tahmin',
+        aiAnalysis: aiAnalysis?.rationale || 'Technical analysis based prediction',
         status: 'ACTIVE',
       };
 
@@ -225,11 +228,11 @@ export const BtcPredictor: React.FC = () => {
         await executeTrade(prediction);
       }
 
-      toast.success(`AI Tahmin: ${direction} (${confidence.toFixed(1)}% confidence)`, { id: 'analysis' });
+      toast.success(`AI Prediction: ${direction} (${confidence.toFixed(1)}% confidence)`, { id: 'analysis' });
 
     } catch (error) {
       console.error('Analysis error:', error);
-      toast.error('Analiz hatası', { id: 'analysis' });
+      toast.error('Analysis error', { id: 'analysis' });
     } finally {
       setIsAnalyzing(false);
     }
@@ -315,7 +318,7 @@ export const BtcPredictor: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold">BTC AI Predictor</h1>
-            <p className="text-xs text-text-muted">Profesyonel AI destekli tahmin motoru</p>
+            <p className="text-xs text-text-muted">Professional AI-powered prediction engine</p>
           </div>
         </div>
         
@@ -345,20 +348,56 @@ export const BtcPredictor: React.FC = () => {
             icon={isRunning ? <Pause size={16} /> : <Play size={16} />}
             loading={isAnalyzing}
           >
-            {isRunning ? 'Durdur' : 'Başlat'}
+            {isRunning ? 'Stop' : 'Start'}
           </Button>
         </div>
       </div>
 
+      {/* How It Works */}
+      <Card className="p-5 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap size={20} className="text-primary" />
+          <h3 className="font-semibold text-lg">How It Works</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+          <div className="flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">1</div>
+            <div className="font-medium">Data Collection</div>
+            <div className="text-xs text-text-muted">Fetches real-time data from SoDEX, SoSoValue News, and ETF flows</div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">2</div>
+            <div className="font-medium">AI Analysis</div>
+            <div className="text-xs text-text-muted">Gemini AI analyzes sentiment and strategizes based on technical signals</div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">3</div>
+            <div className="font-medium">Prediction</div>
+            <div className="text-xs text-text-muted">Generates UP/DOWN/NEUTRAL signals with confidence scores</div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">4</div>
+            <div className="font-medium">Auto-Trade</div>
+            <div className="text-xs text-text-muted">Optional auto-execution with your SL/TP settings (max 125x leverage)</div>
+          </div>
+        </div>
+      </Card>
+
       {/* Price Display */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="p-4">
-          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Canlı Fiyat</div>
-          <div className="text-2xl font-mono font-bold">${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Live Price</div>
+          <div className={cn(
+            "text-2xl font-mono font-bold transition-all duration-300",
+            currentPrice > (prevPriceRef.current || 0) ? "text-success" : 
+            currentPrice < (prevPriceRef.current || 0) ? "text-danger" : ""
+          )}>
+            ${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
         </Card>
         
         <Card className="p-4">
-          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Giriş Fiyatı</div>
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">Entry Price</div>
           <div className="text-2xl font-mono font-bold">${entryPrice > 0 ? entryPrice.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}</div>
         </Card>
         
@@ -367,7 +406,7 @@ export const BtcPredictor: React.FC = () => {
           activePrediction?.pnlPercent && activePrediction.pnlPercent > 0 ? "border-l-4 border-l-success" :
           activePrediction?.pnlPercent && activePrediction.pnlPercent < 0 ? "border-l-4 border-l-danger" : ""
         )}>
-          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">P&L</div>
+          <div className="text-xs text-text-muted uppercase tracking-wider mb-1">P&L (%)</div>
           <div className={cn(
             "text-2xl font-mono font-bold",
             activePrediction?.pnlPercent && activePrediction.pnlPercent > 0 ? "text-success" :
@@ -397,8 +436,8 @@ export const BtcPredictor: React.FC = () => {
               )}
               <div>
                 <div className="text-lg font-bold">
-                  {activePrediction.direction === 'LONG' ? 'YUKARI' :
-                   activePrediction.direction === 'SHORT' ? 'AŞAĞI' : 'NÖTR'}
+                  {activePrediction.direction === 'LONG' ? 'UP' :
+                   activePrediction.direction === 'SHORT' ? 'DOWN' : 'NEUTRAL'}
                 </div>
                 <div className="text-xs text-text-muted">
                   Confidence: {activePrediction.confidence.toFixed(1)}%
@@ -410,12 +449,12 @@ export const BtcPredictor: React.FC = () => {
               <div className="text-2xl font-bold font-mono">
                 {activePrediction.confidence.toFixed(0)}%
               </div>
-              <div className="text-xs text-text-muted">AI Güven Skoru</div>
+              <div className="text-xs text-text-muted">AI Confidence Score</div>
             </div>
           </div>
           
           <div className="p-3 bg-surface rounded-lg mb-4">
-            <div className="text-xs text-text-muted mb-1">AI Analizi</div>
+            <div className="text-xs text-text-muted mb-1">AI Analysis</div>
             <div className="text-sm">{activePrediction.aiAnalysis}</div>
           </div>
           
@@ -425,25 +464,25 @@ export const BtcPredictor: React.FC = () => {
             className="flex items-center gap-2 text-sm text-primary hover:underline w-full"
           >
             {showSignalDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            Sinyal Detayları
+            Signal Details
           </button>
           
           {showSignalDetails && (
             <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="p-3 bg-surface rounded-lg">
-                <div className="text-xs text-text-muted mb-1">Teknik</div>
+                <div className="text-xs text-text-muted mb-1">Technical</div>
                 <div className="text-lg font-bold">{activePrediction.signals.technical.toFixed(0)}%</div>
               </div>
               <div className="p-3 bg-surface rounded-lg">
-                <div className="text-xs text-text-muted mb-1">Temel</div>
+                <div className="text-xs text-text-muted mb-1">Fundamental</div>
                 <div className="text-lg font-bold">{activePrediction.signals.fundamental.toFixed(0)}%</div>
               </div>
               <div className="p-3 bg-surface rounded-lg">
-                <div className="text-xs text-text-muted mb-1">Duygu</div>
+                <div className="text-xs text-text-muted mb-1">Sentiment</div>
                 <div className="text-lg font-bold">{activePrediction.signals.sentiment.toFixed(0)}%</div>
               </div>
               <div className="p-3 bg-surface rounded-lg">
-                <div className="text-xs text-text-muted mb-1">Piyasa</div>
+                <div className="text-xs text-text-muted mb-1">Market</div>
                 <div className="text-lg font-bold">{activePrediction.signals.marketStructure.toFixed(0)}%</div>
               </div>
             </div>
@@ -455,12 +494,12 @@ export const BtcPredictor: React.FC = () => {
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-4">
           <Settings size={18} className="text-primary" />
-          <h3 className="font-semibold">Oto-İşlem Ayarları</h3>
+          <h3 className="font-semibold">Auto-Trade Settings</h3>
         </div>
         
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label className="text-xs text-text-muted block mb-1.5">Miktar (USDC)</label>
+            <label className="text-xs text-text-muted block mb-1.5">Amount (USDC)</label>
             <Input
               type="number"
               value={tradeSettings.amount}
@@ -469,13 +508,13 @@ export const BtcPredictor: React.FC = () => {
             />
           </div>
           <div>
-            <label className="text-xs text-text-muted block mb-1.5">Kaldıraç (x)</label>
+            <label className="text-xs text-text-muted block mb-1.5">Leverage (max 125x)</label>
             <Input
               type="number"
               value={tradeSettings.leverage}
-              onChange={(e) => setTradeSettings({ ...tradeSettings, leverage: Number(e.target.value) })}
+              onChange={(e) => setTradeSettings({ ...tradeSettings, leverage: Math.min(125, Math.max(1, Number(e.target.value))) })}
               min={1}
-              max={50}
+              max={125}
             />
           </div>
           <div>
@@ -510,11 +549,11 @@ export const BtcPredictor: React.FC = () => {
               onChange={(e) => setTradeSettings({ ...tradeSettings, autoTrade: e.target.checked })}
               className="w-4 h-4 rounded border-border bg-surface checked:bg-primary"
             />
-            <span className="text-sm">Oto-İşlem Aktif</span>
+            <span className="text-sm">Auto-Trade Enabled</span>
           </label>
           
           {!isWalletConnected && tradeSettings.autoTrade && (
-            <span className="text-xs text-warning">⚠️ Cüzdan bağlayın</span>
+            <span className="text-xs text-warning">⚠️ Connect wallet</span>
           )}
         </div>
       </Card>
@@ -530,7 +569,7 @@ export const BtcPredictor: React.FC = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-3 bg-surface rounded-lg text-center">
               <div className="text-2xl font-bold">{stats.totalTrades}</div>
-              <div className="text-xs text-text-muted">Toplam İşlem</div>
+              <div className="text-xs text-text-muted">Total Trades</div>
             </div>
             <div className="p-3 bg-surface rounded-lg text-center">
               <div className="text-2xl font-bold text-success">{stats.winRate.toFixed(1)}%</div>
@@ -543,11 +582,11 @@ export const BtcPredictor: React.FC = () => {
               )}>
                 {stats.totalPnl >= 0 ? '+' : ''}{stats.totalPnl.toFixed(2)}%
               </div>
-              <div className="text-xs text-text-muted">Toplam P&L</div>
+              <div className="text-xs text-text-muted">Total P&L</div>
             </div>
             <div className="p-3 bg-surface rounded-lg text-center">
               <div className="text-2xl font-bold">{stats.avgConfidence.toFixed(0)}%</div>
-              <div className="text-xs text-text-muted">Ort. Confidence</div>
+              <div className="text-xs text-text-muted">Avg. Confidence</div>
             </div>
           </div>
         </Card>
@@ -560,7 +599,7 @@ export const BtcPredictor: React.FC = () => {
           >
             <div className="flex items-center gap-2">
               <History size={18} className="text-primary" />
-              <h3 className="font-semibold">Tahmin Geçmişi</h3>
+              <h3 className="font-semibold">Prediction History</h3>
             </div>
             {showHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
@@ -569,7 +608,7 @@ export const BtcPredictor: React.FC = () => {
             <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
               {predictionHistory.length === 0 ? (
                 <div className="text-center text-text-muted text-sm py-4">
-                  Henüz tahmin yok
+                  No predictions yet
                 </div>
               ) : (
                 predictionHistory.slice(0, 10).map((pred) => (
@@ -612,10 +651,10 @@ export const BtcPredictor: React.FC = () => {
         <div className="flex items-start gap-3">
           <Zap size={18} className="text-primary shrink-0 mt-0.5" />
           <div>
-            <div className="font-medium text-sm">Backtesting Özelliği</div>
+            <div className="font-medium text-sm">Backtesting Feature</div>
             <p className="text-xs text-text-muted mt-1">
-              Detaylı backtesting için <strong>Backtesting</strong> sayfasını ziyaret edin. 
-              Tarihsel verilerle stratejinizi test edin ve optimize edin.
+              Visit the <strong>Backtesting</strong> page for detailed historical testing. 
+              Test and optimize your strategy with real market data.
             </p>
           </div>
         </div>
