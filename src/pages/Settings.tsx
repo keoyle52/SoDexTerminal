@@ -6,12 +6,13 @@ import { clearServiceCaches } from '../api/services';
 import { deriveAddressFromPrivateKey } from '../api/signer';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
-import { Key, Shield, Settings2, Info, Wifi, Unplug, Globe, Bell, Hash, Zap, FlaskConical, Sun, Wallet } from 'lucide-react';
+import { Shield, Settings2, Info, Wifi, Unplug, Globe, Zap, Sun, Wallet, Key, Bell, Hash, FlaskConical } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { cn } from '../lib/utils';
+import { WalletConnect } from '../components/WalletConnect';
 
 const TABS = [
   { id: 'api' as const, label: 'API Connection', icon: Key },
@@ -172,51 +173,7 @@ export const Settings: React.FC = () => {
                     This is highly recommended since your private key remains secure in your wallet.
                   </p>
                   
-                  {store.isWalletConnected ? (
-                    <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-text-primary">Connected Address</span>
-                        <span className="badge badge-primary">MetaMask</span>
-                      </div>
-                      <div className="font-mono text-xs text-primary truncate select-all bg-background/50 p-2 rounded border border-border/50">
-                        {store.walletAddress}
-                      </div>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => {
-                          store.disconnectWallet();
-                          toast.success('Wallet disconnected');
-                        }}
-                        className="mt-1 w-full"
-                      >
-                        Disconnect Wallet
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      onClick={async () => {
-                        const win = window as any;
-                        if (!win.ethereum) {
-                          toast.error('MetaMask or another compatible browser wallet was not found.');
-                          return;
-                        }
-                        try {
-                          const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
-                          if (accounts && accounts[0]) {
-                            store.connectWallet(accounts[0]);
-                            toast.success(`Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
-                          }
-                        } catch (err: any) {
-                          toast.error(err.message || 'Failed to connect wallet');
-                        }
-                      }}
-                      className="w-full"
-                    >
-                      Connect Browser Wallet (MetaMask)
-                    </Button>
-                  )}
+                  <WalletConnect />
                 </div>
               </Card>
 

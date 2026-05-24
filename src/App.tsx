@@ -38,6 +38,8 @@ const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ defaul
 const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
 const MarketIntel  = lazyFrom(() => import('./pages/MarketIntel').then(m => ({ default: m.MarketIntel })), 'MarketIntel');
 const BtcPredictor = lazyFrom(() => import('./pages/BtcPredictor').then(m => ({ default: m.BtcPredictor })), 'BtcPredictor');
+const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })), 'AiConsole');
+const NewsBot      = lazyFrom(() => import('./pages/NewsBot').then(m => ({ default: m.NewsBot })), 'NewsBot');
 
 /**
  * Non-blocking Suspense fallback — a subtle top progress shimmer instead of
@@ -145,6 +147,8 @@ function App() {
                       <Route path="/backtesting"     element={<Backtesting />} />
                       <Route path="/market-intel"    element={<MarketIntel />} />
                       <Route path="/btc-predictor"   element={<BtcPredictor />} />
+                      <Route path="/ai-console"      element={<AiConsole />} />
+                      <Route path="/news-bot"        element={<NewsBot />} />
                       <Route path="*"                element={<Navigate to="/dashboard" replace />} />
                     </Routes>
                   </Suspense>
