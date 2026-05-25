@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   MessageSquare, Send, Smartphone, ShieldCheck, Zap, Bell,
-  CheckCircle2, AlertCircle, Bot,
+  CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -18,13 +18,18 @@ interface Message {
 }
 
 async function verifyAndConnect(chatId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/telegram/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chatId }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/telegram/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId }),
+    });
+  } catch {
+    throw new Error('Backend\'a bağlanılamadı. Render servisi çalışıyor mu? (VITE_API_BASE_URL)');
+  }
   const data = await res.json() as { ok: boolean; registered?: boolean; reason?: string; error?: string };
-  if (!data.ok) throw new Error(data.reason ?? data.error ?? 'Could not verify Chat ID');
+  if (!data.ok) throw new Error(data.reason ?? data.error ?? 'Chat ID doğrulanamadı');
 }
 
 export const TelegramIntegration: React.FC = () => {
@@ -105,7 +110,7 @@ export const TelegramIntegration: React.FC = () => {
         </div>
         <div>
           <h2 className="text-xl font-bold text-text-primary">Telegram Notifications</h2>
-          <p className="text-[11px] text-text-muted">Real-time trading alerts via your own Telegram bot</p>
+          <p className="text-[11px] text-text-muted">Real-time trading alerts via <span className="text-primary font-semibold">@PowerOpsBot</span></p>
         </div>
         {isConfigured && (
           <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-semibold shrink-0">
@@ -119,43 +124,6 @@ export const TelegramIntegration: React.FC = () => {
 
         {/* Left column */}
         <div className="lg:col-span-2 flex flex-col gap-4">
-
-          {/* Setup Guide */}
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-border/50">
-              <Bot size={14} className="text-primary" />
-              <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Setup Guide</span>
-            </div>
-            <div className="space-y-3.5">
-              {([
-                {
-                  n: 1,
-                  title: 'Create a bot',
-                  desc: <span>Open Telegram and message <span className="text-primary font-semibold">@BotFather</span>. Send <code className="bg-background/60 px-1 py-0.5 rounded text-[10px] font-mono">/newbot</code> and follow the steps. Copy the API token.</span>,
-                },
-                {
-                  n: 2,
-                  title: 'Get your Chat ID',
-                  desc: <span>Start your new bot, then message <span className="text-primary font-semibold">@userinfobot</span> and send <code className="bg-background/60 px-1 py-0.5 rounded text-[10px] font-mono">/start</code> to get your numeric chat ID.</span>,
-                },
-                {
-                  n: 3,
-                  title: 'Enter credentials below',
-                  desc: <span>Paste your token and chat ID, then click <span className="text-primary font-semibold">Save & Test</span> — a confirmation message will arrive in your chat.</span>,
-                },
-              ] as const).map((step) => (
-                <div key={step.n} className="flex gap-3">
-                  <div className="w-5 h-5 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center shrink-0 text-[10px] font-bold text-primary mt-0.5">
-                    {step.n}
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-text-primary">{step.title}</div>
-                    <div className="text-[11px] text-text-muted leading-relaxed mt-0.5">{step.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
 
           {/* Configuration */}
           <Card className="p-4">
@@ -174,7 +142,7 @@ export const TelegramIntegration: React.FC = () => {
                   className="w-full mt-1.5 bg-background/60 border border-border rounded-lg px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-primary/50 transition-colors"
                 />
                 <p className="text-[10px] text-text-muted mt-1">
-                  Send <code className="bg-background/60 px-1 rounded">/start</code> to <span className="text-primary font-semibold">@SoDexPowerOpsBot</span> to get this.
+                  Send <code className="bg-background/60 px-1 rounded">/start</code> to <span className="text-primary font-semibold">@PowerOpsBot</span> to get this.
                 </p>
               </div>
               <Button
