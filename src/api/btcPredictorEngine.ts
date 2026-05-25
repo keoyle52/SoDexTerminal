@@ -1053,3 +1053,31 @@ export async function fetchMarkPriceFor(symbol: string): Promise<number | null> 
     return null;
   }
 }
+
+/**
+ * Lightweight read-only signal snapshot — used by the Dashboard widget to
+ * populate the Headline Signal card without starting a full predictor cycle.
+ *
+ * Unlike `runCycle`:
+ *  - Never places an order.
+ *  - Never calls the AI Strategist.
+ *  - Uses the 5-minute kline interval (default cycle resolution).
+ *
+ * Returns null on any failure so the caller can handle it gracefully.
+ */
+export async function runSignalSnapshot(
+  symbol = 'BTC-USD',
+): Promise<{ signals: SignalSnapshot; direction: PredictionDirection; confidence: number; price: number } | null> {
+  try {
+    const { signals, livePrice } = await gatherSignals({ symbol, interval: '5m' });
+    const rule = computeRuleDecision(signals);
+    return {
+      signals,
+      direction: rule.direction,
+      confidence: rule.confidence,
+      price: livePrice,
+    };
+  } catch {
+    return null;
+  }
+}

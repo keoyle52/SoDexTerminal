@@ -31,6 +31,7 @@ import {
   botLabel,
   type RegimeInputs,
 } from '../api/aiOrchestrator';
+import { runSignalSnapshot } from '../api/btcPredictorEngine';
 import { cn } from '../lib/utils';
 
 interface TickerRow {
@@ -46,10 +47,12 @@ export const Dashboard: React.FC = () => {
   // technical features (ATR, EMA, MACD) without re-fetching klines.
   // When the Predictor hasn't run yet (currentSignals === null) we
   // fall back to a "Run Predictor first" recommendation card.
-  const predictorSignals = usePredictorStore((s) => s.currentSignals);
-  const aiVerdict        = usePredictorStore((s) => s.aiVerdict);
-  const predictorHistory = usePredictorStore((s) => s.history);
+  const predictorSignals      = usePredictorStore((s) => s.currentSignals);
+  const aiVerdict              = usePredictorStore((s) => s.aiVerdict);
+  const predictorHistory       = usePredictorStore((s) => s.history);
+  const setCurrentPrediction   = usePredictorStore((s) => s.setCurrentPrediction);
   const predictorMetrics = useMemo(() => computePerformanceMetrics(predictorHistory), [predictorHistory]);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   // A private key is sufficient to authenticate account endpoints:
   //  - Testnet: the key IS the master wallet.
   //  - Mainnet: the key is the API-key private key; the master EVM address
@@ -136,6 +139,23 @@ export const Dashboard: React.FC = () => {
     const timer = globalThis.setInterval(loadData, isDemoMode ? 10_000 : 15_000);
     return () => clearInterval(timer);
   }, [loadData, isDemoMode]);
+
+  // Auto-populate the Headline Signal widget on first load so it is never
+  // empty. Runs once on mount if no signals are persisted from a previous
+  // Predictor session. Does NOT start a full cycle — no orders, no AI.
+  useEffect(() => {
+    if (predictorSignals !== null) return;
+    let cancelled = false;
+    setSnapshotLoading(true);
+    runSignalSnapshot('BTC-USD').then((result) => {
+      if (cancelled || !result) return;
+      setCurrentPrediction(result.direction, result.confidence, result.signals, result.price);
+    }).finally(() => {
+      if (!cancelled) setSnapshotLoading(false);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function formatCompact(value: number): string {
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
@@ -345,14 +365,16 @@ export const Dashboard: React.FC = () => {
                   </span>
                 </>
               ) : (
-                <span className="text-text-muted">—</span>
+                <span className={cn("text-text-muted", snapshotLoading && "animate-pulse")}>
+                  {snapshotLoading ? "Computing…" : "—"}
+                </span>
               )}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-text-muted uppercase tracking-wider">AI Confidence</div>
             <div className="text-sm font-bold font-mono mt-1 text-text-primary">
-              {aiVerdict ? `${(aiVerdict.confidence * 100).toFixed(1)}%` : predictorSignals ? `${(Math.abs(predictorSignals.weightedScore) * 100).toFixed(1)}%` : "—"}
+              {aiVerdict ? `${(aiVerdict.confidence * 100).toFixed(1)}%` : predictorSignals ? `${(Math.abs(predictorSignals.weightedScore) * 100).toFixed(1)}%` : snapshotLoading ? <span className="animate-pulse text-text-muted">…</span> : "—"}
             </div>
           </div>
           <div>
