@@ -6,7 +6,7 @@ import { clearServiceCaches } from '../api/services';
 import { deriveAddressFromPrivateKey } from '../api/signer';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
-import { Shield, Settings2, Info, Wifi, Unplug, Globe, Zap, Sun, Wallet, Key, Bell, Hash, FlaskConical } from 'lucide-react';
+import { Shield, Settings2, Info, Wifi, Unplug, Globe, Sun, Wallet, Key, Bell, Hash, FlaskConical } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { Toggle } from '../components/common/Input';
@@ -305,48 +305,6 @@ export const Settings: React.FC = () => {
                   </form>
                 </Card>
               )}
-
-              {/* SosoValue API */}
-              <Card>
-                <div className="flex items-center gap-2 mb-5">
-                  <Hash size={16} className="text-primary" />
-                  <div>
-                    <h3 className="text-sm font-semibold">SosoValue API Key</h3>
-                    <p className="text-[11px] text-text-muted mt-0.5">Required for ETF Tracker, Crypto News &amp; News Bot</p>
-                  </div>
-                </div>
-                <Input
-                  label="SosoValue API Key"
-                  type="password"
-                  value={store.sosoApiKey}
-                  onChange={(e) => store.setSosoApiKey(e.target.value)}
-                  placeholder="Enter your SosoValue API key..."
-                  icon={<Key size={14} />}
-                  hint="Get your key at sosovalue.com → API. Stored in localStorage."
-                />
-              </Card>
-
-              {/* Gemini API */}
-              <Card>
-                <div className="flex items-center gap-2 mb-5">
-                  <div className="w-4 h-4 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 overflow-hidden flex items-center justify-center">
-                    <Zap size={10} className="text-white fill-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold">Gemini AI API Key</h3>
-                    <p className="text-[11px] text-text-muted mt-0.5">Powering "News Bot" intelligent sentiment analysis</p>
-                  </div>
-                </div>
-                <Input
-                  label="Gemini API Key"
-                  type="password"
-                  value={store.geminiApiKey}
-                  onChange={(e) => store.setGeminiApiKey(e.target.value)}
-                  placeholder="Enter your Gemini API key..."
-                  icon={<Zap size={14} />}
-                  hint="Get your key at aistudio.google.com/app/apikey"
-                />
-              </Card>
 
               <div className="flex items-center gap-3 pt-2">
                 <Button
