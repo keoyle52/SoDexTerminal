@@ -41,6 +41,10 @@ export const Settings: React.FC = () => {
 
   const evmAddressLooksValid = !store.evmAddress || ethers.isAddress(store.evmAddress.trim());
 
+  const credentialsMissing = store.isTestnet
+    ? !store.testnetPrivateKey
+    : !store.mainnetApiKeyName || !store.mainnetPrivateKey || !store.mainnetEvmAddress;
+
   const handleTestConnection = async () => {
     if (!effectiveAddress) {
       toast.error(
@@ -94,6 +98,14 @@ export const Settings: React.FC = () => {
         <div className="animate-fade-in">
           {activeTab === 'api' && (
             <div className="space-y-5 max-w-xl">
+              {credentialsMissing && (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-danger/10 border border-danger/25">
+                  <FlaskConical size={14} className="text-danger shrink-0 mt-0.5" />
+                  <p className="text-xs text-danger leading-snug">
+                    <strong>Required credentials missing.</strong> Fill in the fields marked <span className="text-danger font-bold">*</span> below to place orders and use bot features.
+                  </p>
+                </div>
+              )}
               {/* Network selector — primary choice that controls which
                   credential set below is active. Shown FIRST so the user
                   sees the right fields without toggling back. */}
@@ -187,32 +199,35 @@ export const Settings: React.FC = () => {
 
                   <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
                     <Input
-                      label="API Key Name (X-API-Key)"
+                      label="API Key Name (X-API-Key) *"
                       type="text"
                       value={store.mainnetApiKeyName}
                       onChange={(e) => store.setMainnetApiKeyName(e.target.value)}
                       placeholder="Name chosen when creating the API key (typically an EVM address)"
                       icon={<Key size={14} />}
                       hint="The name of the SoDEX API key you registered — sent as `X-API-Key` on every signed request."
+                      className={!store.mainnetApiKeyName ? 'border-danger/50 focus:border-danger/70' : ''}
                     />
 
                     <Input
-                      label="Agent Private Key (NOT your master wallet key)"
+                      label="Agent Private Key *"
                       type="password"
                       value={store.mainnetPrivateKey}
                       onChange={(e) => store.setMainnetPrivateKey(e.target.value)}
                       placeholder="0x..."
                       hint="Paste the API key's private key from the keypair you were given when creating the API key. Stored only in memory — never persisted to localStorage."
+                      className={!store.mainnetPrivateKey ? 'border-danger/50 focus:border-danger/70' : ''}
                     />
 
                     <Input
-                      label="Master EVM Address (used in REST URL paths)"
+                      label="Master EVM Address *"
                       type="text"
                       value={store.mainnetEvmAddress}
                       onChange={(e) => store.setMainnetEvmAddress(e.target.value)}
                       placeholder="0x... (required on mainnet)"
                       icon={<Wallet size={14} />}
                       hint="Your master wallet address — the one actually connected to SoDEX. Required because the private key above belongs to the agent, not the master."
+                      className={!store.mainnetEvmAddress ? 'border-danger/50 focus:border-danger/70' : ''}
                     />
                     {!evmAddressLooksValid && (
                       <p className="text-[10px] text-danger">Invalid EVM address format.</p>
@@ -254,12 +269,13 @@ export const Settings: React.FC = () => {
 
                   <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
                     <Input
-                      label="Master Wallet Private Key"
+                      label="Master Wallet Private Key *"
                       type="password"
                       value={store.testnetPrivateKey}
                       onChange={(e) => store.setTestnetPrivateKey(e.target.value)}
                       placeholder="0x..."
                       hint="Paste your master EVM wallet private key. Testnet signs every write with this key directly. Stored only in memory — never persisted."
+                      className={!store.testnetPrivateKey ? 'border-danger/50 focus:border-danger/70' : ''}
                     />
 
                     <Input

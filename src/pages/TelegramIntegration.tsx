@@ -17,13 +17,15 @@ interface Message {
   timestamp: string;
 }
 
-async function verifyAndConnect(chatId: string): Promise<void> {
+interface AccountInfo { evmAddress: string; apiKeyName: string; isTestnet: boolean; }
+
+async function verifyAndConnect(chatId: string, account?: AccountInfo): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/telegram/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId }),
+      body: JSON.stringify({ chatId, ...account }),
     });
   } catch {
     throw new Error('Could not reach the backend. Is the Render service running? Check VITE_API_BASE_URL.');
@@ -33,7 +35,7 @@ async function verifyAndConnect(chatId: string): Promise<void> {
 }
 
 export const TelegramIntegration: React.FC = () => {
-  const { telegramChatId, setTelegramChatId } = useSettingsStore();
+  const { telegramChatId, setTelegramChatId, evmAddress, apiKeyName, isTestnet } = useSettingsStore();
 
   const [chatIdInput, setChatIdInput] = useState(telegramChatId);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
@@ -65,7 +67,10 @@ export const TelegramIntegration: React.FC = () => {
     setTestStatus('testing');
     setTestError('');
     try {
-      await verifyAndConnect(chatIdInput.trim());
+      const account = evmAddress && apiKeyName
+        ? { evmAddress, apiKeyName, isTestnet }
+        : undefined;
+      await verifyAndConnect(chatIdInput.trim(), account);
       setTelegramChatId(chatIdInput.trim());
       setTestStatus('ok');
       toast.success('Connected! Check Telegram for a confirmation message.');
@@ -124,6 +129,16 @@ export const TelegramIntegration: React.FC = () => {
 
         {/* Left column */}
         <div className="lg:col-span-2 flex flex-col gap-4">
+
+          {/* Credentials warning */}
+          {!evmAddress && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <AlertCircle size={13} className="text-warning shrink-0 mt-0.5" />
+              <p className="text-[11px] text-warning leading-snug">
+                No SoDEX credentials found. Go to <strong>Settings → API Connection</strong> and enter your API Key Name, Private Key, and EVM Address so the bot can fetch your balance and positions via <code>/status</code> and <code>/pnl</code>.
+              </p>
+            </div>
+          )}
 
           {/* Configuration */}
           <Card className="p-4">

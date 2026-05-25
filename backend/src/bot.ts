@@ -1,8 +1,24 @@
 import TelegramBot from 'node-telegram-bot-api';
+import axios from 'axios';
 
 let bot: TelegramBot | null = null;
 
 const registeredChats = new Set<number>();
+
+interface LinkedAccount {
+  evmAddress: string;
+  apiKeyName: string;
+  isTestnet: boolean;
+}
+const chatAccounts = new Map<number, LinkedAccount>();
+
+export function linkAccount(chatId: number, account: LinkedAccount): void {
+  chatAccounts.set(chatId, account);
+}
+
+export function getLinkedAccount(chatId: number): LinkedAccount | undefined {
+  return chatAccounts.get(chatId);
+}
 
 export function startBot(): void {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -50,35 +66,79 @@ export function startBot(): void {
     );
   });
 
-  bot.onText(/\/status/, (msg) => {
-    bot!.sendMessage(
-      msg.chat.id,
-      [
-        '*Bot Status:*',
-        '',
-        '🟢 BTC Predictor — Running',
-        '🟢 Grid Bot — Active',
-        '🟢 Market Maker — Running',
-        '🔴 DCA Bot — Stopped',
-        '',
-        '_Open SoDEX Terminal to manage your bots._',
-      ].join('\n'),
-      { parse_mode: 'Markdown' },
-    );
+  bot.onText(/\/status/, async (msg) => {
+    const chatId = msg.chat.id;
+    const acct = chatAccounts.get(chatId);
+    if (!acct) {
+      bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* to link your account.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const base = acct.isTestnet
+      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
+      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    try {
+      const res = await axios.get(`${base}/accounts/${acct.evmAddress}/balances`, {
+        headers: { 'X-API-Key': acct.apiKeyName },
+        timeout: 8000,
+      });
+      const data = (res.data?.data ?? res.data ?? {}) as Record<string, unknown>;
+      const balances: Array<Record<string, unknown>> = Array.isArray(data) ? data as Array<Record<string, unknown>> : ((data.balances ?? []) as Array<Record<string, unknown>>);
+      const usdc = balances.find((b) => String(b.asset ?? b.symbol ?? '').toUpperCase().includes('USD'));
+      const bal = usdc ? parseFloat(String(usdc.availableBalance ?? usdc.balance ?? 0)).toFixed(2) : '—';
+      bot!.sendMessage(
+        chatId,
+        [
+          `*Account Status* (${acct.isTestnet ? 'Testnet' : 'Mainnet'})`,
+          '',
+          `� Address: \`${acct.evmAddress.slice(0, 6)}…${acct.evmAddress.slice(-4)}\``,
+          `💰 Available Balance: *$${bal} USDC*`,
+          '',
+          '_Open SoDEX Terminal to manage your bots._',
+        ].join('\n'),
+        { parse_mode: 'Markdown' },
+      );
+    } catch {
+      bot!.sendMessage(chatId, '⚠️ Could not fetch account data from SoDEX. Try again shortly.');
+    }
   });
 
-  bot.onText(/\/pnl/, (msg) => {
-    bot!.sendMessage(
-      msg.chat.id,
-      [
-        '*24h P\\&L Report:*',
-        '',
-        'Connect your SoDEX account in the Terminal to see live P\\&L data here.',
-        '',
-        '_Real-time data requires an active session in SoDEX Terminal._',
-      ].join('\n'),
-      { parse_mode: 'Markdown' },
-    );
+  bot.onText(/\/pnl/, async (msg) => {
+    const chatId = msg.chat.id;
+    const acct = chatAccounts.get(chatId);
+    if (!acct) {
+      bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const base = acct.isTestnet
+      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
+      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    try {
+      const res = await axios.get(`${base}/accounts/${acct.evmAddress}/positions`, {
+        headers: { 'X-API-Key': acct.apiKeyName },
+        timeout: 8000,
+      });
+      const data = (res.data?.data ?? res.data ?? {}) as Record<string, unknown>;
+      const positions: Array<Record<string, unknown>> = Array.isArray(data) ? data as Array<Record<string, unknown>> : ((data.positions ?? []) as Array<Record<string, unknown>>);
+      const open = positions.filter((p) => parseFloat(String(p.size ?? p.quantity ?? 0)) !== 0);
+      if (open.length === 0) {
+        bot!.sendMessage(chatId, '📊 *P&L Report*\n\nNo open positions.', { parse_mode: 'Markdown' });
+        return;
+      }
+      const lines = open.slice(0, 5).map((p) => {
+        const sym = String(p.symbol ?? p.contractName ?? '?');
+        const pnl = parseFloat(String(p.unrealisedPnl ?? p.unrealizedPnl ?? 0)).toFixed(2);
+        const side = String(p.side ?? p.direction ?? '?').toUpperCase();
+        const emoji = parseFloat(pnl) >= 0 ? '🟢' : '🔴';
+        return `${emoji} ${sym} ${side}  PnL: *$${pnl}*`;
+      });
+      bot!.sendMessage(
+        chatId,
+        ['*Open Positions P&L:*', '', ...lines].join('\n'),
+        { parse_mode: 'Markdown' },
+      );
+    } catch {
+      bot!.sendMessage(chatId, '⚠️ Could not fetch positions from SoDEX. Try again shortly.');
+    }
   });
 
   bot.onText(/\/alerts/, (msg) => {

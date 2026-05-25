@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getBot, isRegistered, registerChat } from '../bot';
+import { getBot, isRegistered, registerChat, linkAccount } from '../bot';
 
 const router = Router();
 
@@ -38,10 +38,15 @@ router.post('/notify', async (req: Request, res: Response) => {
 });
 
 // POST /api/telegram/verify
-// Body: { chatId: string|number }
-// Verifies the user has started our bot by attempting to send a test message.
+// Body: { chatId, evmAddress?, apiKeyName?, isTestnet? }
+// Verifies the user has started our bot and links their SoDEX account.
 router.post('/verify', async (req: Request, res: Response) => {
-  const { chatId } = req.body as { chatId?: string | number };
+  const { chatId, evmAddress, apiKeyName, isTestnet } = req.body as {
+    chatId?: string | number;
+    evmAddress?: string;
+    apiKeyName?: string;
+    isTestnet?: boolean;
+  };
 
   if (!chatId) {
     res.status(400).json({ error: 'chatId is required' });
@@ -72,6 +77,13 @@ router.post('/verify', async (req: Request, res: Response) => {
       { parse_mode: 'Markdown' },
     );
     registerChat(numericId);
+    if (evmAddress && apiKeyName) {
+      linkAccount(numericId, {
+        evmAddress,
+        apiKeyName,
+        isTestnet: isTestnet ?? false,
+      });
+    }
     res.json({ ok: true, registered: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
