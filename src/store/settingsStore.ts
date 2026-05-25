@@ -24,6 +24,12 @@ interface SettingsState {
   // ───── Wallet Connect state (persisted) ─────
   isWalletConnected: boolean;
   walletAddress: string;
+  /**
+   * The SoDEX API key name registered for the connected wallet address.
+   * Leave empty to fall back to `walletAddress.toLowerCase()`.
+   * Persisted (public data — not a secret).
+   */
+  walletApiKeyName: string;
 
   // ───── Mainnet credentials ─────
   /**
@@ -86,6 +92,7 @@ interface SettingsState {
   // ───── Actions ─────
   connectWallet: (address: string) => void;
   disconnectWallet: () => void;
+  setWalletApiKeyName: (val: string) => void;
   /** Set the mainnet `X-API-Key` header value. */
   setMainnetApiKeyName: (val: string) => void;
   /** Set the mainnet agent-key private key (in-memory only). */
@@ -133,6 +140,7 @@ function resolveActive(state: {
   isTestnet: boolean;
   isWalletConnected: boolean;
   walletAddress: string;
+  walletApiKeyName: string;
   mainnetApiKeyName: string;
   mainnetPrivateKey: string;
   mainnetEvmAddress: string;
@@ -141,8 +149,10 @@ function resolveActive(state: {
   testnetApiKeyName: string;
 }): { apiKeyName: string; privateKey: string; evmAddress: string } {
   if (state.isWalletConnected && state.walletAddress) {
+    // Prefer the explicitly registered API key name; fall back to address.
+    const key = state.walletApiKeyName.trim() || state.walletAddress.toLowerCase();
     return {
-      apiKeyName: state.walletAddress,
+      apiKeyName: key,
       privateKey: '', // Empty privateKey indicates wallet-connect signatures
       evmAddress: state.walletAddress,
     };
@@ -169,8 +179,10 @@ export const useSettingsStore = create<SettingsState>()(
       isTestnet: true,
       isWalletConnected: false,
       walletAddress: '',
+      walletApiKeyName: '',
 
       mainnetApiKeyName: '',
+
       mainnetPrivateKey: '',
       mainnetEvmAddress: '',
 
@@ -200,6 +212,12 @@ export const useSettingsStore = create<SettingsState>()(
       disconnectWallet: () => {
         set((s) => {
           const next = { ...s, isWalletConnected: false, walletAddress: '' };
+          return { ...next, ...resolveActive(next) };
+        });
+      },
+      setWalletApiKeyName: (val) => {
+        set((s) => {
+          const next = { ...s, walletApiKeyName: val.trim() };
           return { ...next, ...resolveActive(next) };
         });
       },
@@ -288,6 +306,7 @@ export const useSettingsStore = create<SettingsState>()(
         isTestnet: state.isTestnet,
         isWalletConnected: state.isWalletConnected,
         walletAddress: state.walletAddress,
+        walletApiKeyName: state.walletApiKeyName,
         // Mainnet: API key name + master EVM address are public data — fine
         // to persist. The private key is never written to disk.
         mainnetApiKeyName: state.mainnetApiKeyName,
@@ -317,6 +336,7 @@ export const useSettingsStore = create<SettingsState>()(
             testnetEvmAddress: '',
             isWalletConnected: false,
             walletAddress: '',
+            walletApiKeyName: '',
             // Drop the legacy fields to prevent future double-writes.
             apiKeyName: undefined,
             evmAddress: undefined,

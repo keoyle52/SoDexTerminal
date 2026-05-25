@@ -198,6 +198,7 @@ export const BtcPredictor: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [backtest, setBacktest] = useState<BacktestRun | null>(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
+  const [btDuration, setBtDuration] = useState<CycleDurationMinutes>(5);
 
   // ── Live mark price ───────────────────────────────────────────────────────
   // We layer two sources so the "Live" + "Δ since entry" overlay never falls
@@ -415,8 +416,7 @@ export const BtcPredictor: React.FC = () => {
   const handleBacktest = useCallback(async () => {
     setBacktestLoading(true);
     try {
-      // Pull plenty of klines so the backtest has a meaningful sample.
-      const interval = duration === 1 ? '1m' : duration === 3 ? '1m' : duration === 5 ? '5m' : '15m';
+      const interval = btDuration === 1 ? '1m' : btDuration === 3 ? '1m' : btDuration === 5 ? '5m' : '15m';
       const klines = await loadKlines(SYMBOL, interval, 500);
       const run = runQuickBacktest(klines, { lookback: 300 });
       setBacktest(run);
@@ -430,7 +430,7 @@ export const BtcPredictor: React.FC = () => {
     } finally {
       setBacktestLoading(false);
     }
-  }, [duration]);
+  }, [btDuration]);
 
   // ── Derived UI values ─────────────────────────────────────────────────────
   const totalCycleMs = duration * 60 * 1000;
@@ -669,22 +669,54 @@ export const BtcPredictor: React.FC = () => {
               <Cpu size={13} className="text-amber-400" />
             </div>
             <div className="flex-1">
-              <div className="text-xs font-semibold text-text-primary">Rule Ensemble</div>
-              <div className="text-[9px] uppercase tracking-widest text-text-muted">13-signal weighted</div>
+              <div className="text-xs font-semibold text-text-primary">Market Intel</div>
+              <div className="text-[9px] uppercase tracking-widest text-text-muted">13-signal rule ensemble</div>
             </div>
           </div>
           <DirectionBadge direction={predictor.currentPrediction} confidence={predictor.currentConfidence} />
-          {predictor.currentSignals && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2 text-[10px]">
-                <SignalChip label="RSI"      val={predictor.currentSignals.rsi.toFixed(0)} />
-                <SignalChip label="EMA"      val={fmtSig(predictor.currentSignals.emaSignal)} />
-                <SignalChip label="MACD"     val={fmtSig(predictor.currentSignals.macdSignal)} />
-                <SignalChip label="VWAP%"    val={fmtPct(predictor.currentSignals.vwapDeviation ?? 0, 2)} />
-                <SignalChip label="ATR%"     val={fmtPct(predictor.currentSignals.atrPct ?? 0, 2, false)} />
-                <SignalChip label="Funding"  val={`${(predictor.currentSignals.fundingRate * 100).toFixed(4)}%`} />
-                <SignalChip label="OB Imbal."val={`${(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}%`} />
-                <SignalChip label="Score"    val={fmtSig(predictor.currentSignals.weightedScore)} highlight />
+          {predictor.currentSignals ? (
+            <div className="space-y-3">
+              {/* ── Technical ── */}
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1.5 font-semibold">Technical</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <SignalChip label="RSI(14)"  val={predictor.currentSignals.rsi.toFixed(1)} />
+                  <SignalChip label="EMA 9/21" val={fmtSig(predictor.currentSignals.emaSignal)} />
+                  <SignalChip label="MACD"     val={fmtSig(predictor.currentSignals.macdSignal)} />
+                  <SignalChip label="VWAP%"    val={fmtPct(predictor.currentSignals.vwapDeviation ?? 0, 2)} />
+                  <SignalChip label="ROC(12)"  val={fmtSig(predictor.currentSignals.rocSignal ?? 0)} />
+                  <SignalChip label="ATR%"     val={fmtPct(predictor.currentSignals.atrPct ?? 0, 2, false)} />
+                </div>
+              </div>
+              {/* ── Microstructure ── */}
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1.5 font-semibold">Microstructure</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <SignalChip label="OB Imbal." val={`${(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}%`} />
+                  <SignalChip label="Funding"   val={`${(predictor.currentSignals.fundingRate * 100).toFixed(4)}%`} />
+                  <SignalChip label="Micro"     val={fmtSig(predictor.currentSignals.microstructureSignal)} />
+                  <SignalChip label="MTF Align" val={fmtSig(predictor.currentSignals.mtfAlignment ?? 0)} />
+                </div>
+              </div>
+              {/* ── Macro / Sentiment ── */}
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1.5 font-semibold">Macro &amp; Sentiment</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <SignalChip label="News"     val={fmtSig(predictor.currentSignals.newsSentiment)} />
+                  <SignalChip label="ETF Flow" val={fmtSig(predictor.currentSignals.etfFlow)} />
+                  <SignalChip label="Treasury" val={fmtSig(predictor.currentSignals.treasurySignal ?? 0)} />
+                  <SignalChip label="Fear&amp;Greed" val={fmtSig(predictor.currentSignals.fearGreedSignal ?? 0)} />
+                </div>
+              </div>
+              {/* ── Composite ── */}
+              <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-background/50 border border-border">
+                <span className="text-[10px] font-bold text-text-secondary">Weighted Score</span>
+                <span className={cn(
+                  'text-sm font-mono font-bold',
+                  predictor.currentSignals.weightedScore > 0.05 ? 'text-emerald-400'
+                  : predictor.currentSignals.weightedScore < -0.05 ? 'text-red-400'
+                  : 'text-amber-300',
+                )}>{fmtSig(predictor.currentSignals.weightedScore)}</span>
               </div>
               <div className="text-[10px] text-text-muted">
                 <span className="font-bold text-text-secondary">Confluence:</span>{' '}
@@ -694,8 +726,7 @@ export const BtcPredictor: React.FC = () => {
                 )}
               </div>
             </div>
-          )}
-          {!predictor.currentSignals && (
+          ) : (
             <div className="text-[11px] text-text-muted py-2">
               Click <span className="text-primary font-semibold">Start Predictor</span> to compute the first signal vector.
             </div>
@@ -1071,7 +1102,7 @@ export const BtcPredictor: React.FC = () => {
             <div>
               <h3 className="text-sm font-bold text-text-primary">Local Backtest</h3>
               <p className="text-[11px] text-text-muted">
-                Replays the rule ensemble on the last 300 candles ({duration}m). Technical signals only — flow / sentiment stubbed.
+                Replays the rule ensemble on the last 300 candles. Technical signals only — flow / sentiment stubbed.
               </p>
             </div>
           </div>
@@ -1084,6 +1115,31 @@ export const BtcPredictor: React.FC = () => {
           >
             Run Backtest
           </Button>
+        </div>
+
+        {/* Market / timeframe selector — tile grid like trading bots */}
+        <div className="mb-4">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-text-secondary mb-2">Timeframe</div>
+          <div className="grid grid-cols-4 gap-2">
+            {DURATION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setBtDuration(opt.value)}
+                className={cn(
+                  'p-3 rounded-lg border text-left transition-all duration-200',
+                  btDuration === opt.value
+                    ? 'bg-violet-500/10 border-violet-500/40 text-violet-300'
+                    : 'bg-background/40 border-border text-text-secondary hover:border-border-hover hover:text-text-primary',
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Clock size={12} />
+                  <span className="text-sm font-bold">{opt.label}</span>
+                </div>
+                <div className="text-[10px] text-text-muted mt-0.5">{opt.sub}</div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {backtest ? (

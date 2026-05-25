@@ -35,6 +35,11 @@ export interface SignalSnapshot {
   vwapSignal?: number;          // -1 to +1 (mean-reversion)
   rocSignal?: number;           // rate-of-change signal, -1 to +1
   atrPct?: number;              // ATR as % of price (volatility regime)
+  // Multi-timeframe alignment (1m EMA gradient vs main TF)
+  mtfAlignment?: number;        // -1 to +1
+  // Fear & Greed Index (alternative.me, 1h cache)
+  fearGreedRaw?: number;        // 0-100 raw index value
+  fearGreedSignal?: number;     // -1 to +1 normalised
   // 9th signal — institutional BTC treasury flow (last 30d)
   treasuryNetBtc?: number;      // raw BTC accumulated by treasury cos. in 30d
   treasurySignal?: number;      // -1 to +1, normalised
