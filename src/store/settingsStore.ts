@@ -88,6 +88,7 @@ interface SettingsState {
   geminiApiKey: string;
   isDemoMode: boolean;
   theme: Theme;
+  telegramChatId: string;
 
   // ───── Actions ─────
   connectWallet: (address: string) => void;
@@ -114,6 +115,7 @@ interface SettingsState {
   setGeminiApiKey: (val: string) => void;
   setIsDemoMode: (val: boolean) => void;
   setTheme: (val: Theme) => void;
+  setTelegramChatId: (val: string) => void;
   /**
    * Clear credentials for the CURRENTLY active network only. The other
    * network's config is preserved so switching back restores the full
@@ -202,6 +204,7 @@ export const useSettingsStore = create<SettingsState>()(
       geminiApiKey: '',
       isDemoMode: false,
       theme: 'dark',
+      telegramChatId: '',
 
       connectWallet: (address) => {
         set((s) => {
@@ -270,6 +273,7 @@ export const useSettingsStore = create<SettingsState>()(
       setGeminiApiKey: (val) => set({ geminiApiKey: val }),
       setIsDemoMode: (val) => set({ isDemoMode: val }),
       setTheme: (val) => set({ theme: val }),
+      setTelegramChatId: (val) => set({ telegramChatId: val }),
       disconnect: () => {
         set((s) => {
           const cleared = s.isTestnet
@@ -321,6 +325,7 @@ export const useSettingsStore = create<SettingsState>()(
         geminiApiKey: state.geminiApiKey,
         isDemoMode: state.isDemoMode,
         theme: state.theme,
+        telegramChatId: state.telegramChatId,
       }),
       // Migrate pre-v2 persisted state (single `apiKeyName` / `evmAddress`
       // slot) into per-network slots — assume the old values belonged to

@@ -1,9 +1,8 @@
 import axios from 'axios';
-import { useSettingsStore } from '../store/settingsStore';
 
-// SosoValue uses two distinct base URLs according to their docs
-const DOMAIN_OPENAPI = 'https://openapi.sosovalue.com';
-const DOMAIN_API_XYZ = 'https://api.sosovalue.xyz';
+// All SoSoValue requests are proxied through our backend.
+// The backend holds the API key and routes to the correct SoSoValue domain.
+const BACKEND_PROXY = '/api/sosovalue';
 
 // ─── In-Memory TTL Cache & Circuit Breaker ─────────────────────────────────────
 interface CacheEntry { data: unknown; expiresAt: number; }
@@ -141,11 +140,9 @@ function makeClient() {
   // Request interceptor
   client.interceptors.request.use(async (config) => {
     const url = config.url ?? '';
-    const isEtf = url.includes('/openapi/v2/etf');
-    config.baseURL = isEtf ? DOMAIN_API_XYZ : DOMAIN_OPENAPI;
-
-    const { sosoApiKey } = useSettingsStore.getState();
-    if (sosoApiKey) config.headers['x-soso-api-key'] = sosoApiKey;
+    // Route everything through our backend proxy.
+    // The backend holds the SoSoValue API key and handles domain selection.
+    config.baseURL = BACKEND_PROXY;
 
     const ttl = getCacheTtl(url);
     const key = cacheKey(url, config.data);

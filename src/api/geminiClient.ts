@@ -2,6 +2,8 @@ import axios from 'axios';
 import { useSettingsStore } from '../store/settingsStore';
 import { fakeSentimentForHeadline } from './sosoExtraServices';
 
+const BACKEND_GEMINI = '/api/gemini';
+
 export type Sentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 
 /** Detail variant returned by `analyzeSentimentDetailed` so callers can
@@ -65,11 +67,10 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
     };
   }
 
-  const { geminiApiKey, isDemoMode } = useSettingsStore.getState();
+  const { isDemoMode } = useSettingsStore.getState();
 
-  // Demo / no-key fast path — synthesize a deterministic verdict so the
-  // jury sees an "AI" feature working without entering any credentials.
-  if (isDemoMode || !geminiApiKey) {
+  // Demo fast path — synthesize a deterministic verdict without any network call.
+  if (isDemoMode) {
     const fake = fakeSentimentForHeadline(title);
     evictOldestIfFull();
     _sentimentCache.set(key, {
@@ -81,30 +82,12 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
     return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo' };
   }
 
-  // gemini-1.5-flash was retired by Google in late 2025 (returns 404). The
-  // 2.5 family is the current low-cost / low-latency tier and is well
-  // suited to single-word sentiment classification. Keep this in sync with
-  // https://ai.google.dev/gemini-api/docs/models — when 2.5 is itself
-  // retired, bump to the latest -flash alias.
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
-
-  const prompt = `Analyze the potential crypto market sentiment for this news headline. 
-Return ONLY one of these three words: BULLISH, BEARISH, or NEUTRAL. 
-Do not provide any explanation or other text.
-
-Headline: "${title}"`;
-
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.1, topK: 1, topP: 1, maxOutputTokens: 10 },
-  };
-
+  // Live path — proxy through our backend which holds the Gemini API key.
   try {
-    const res = await axios.post(url, payload);
-    const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()?.toUpperCase();
+    const res = await axios.post(`${BACKEND_GEMINI}/sentiment`, { title });
     const sentiment: Sentiment =
-      text?.includes('BULLISH') ? 'BULLISH' :
-      text?.includes('BEARISH') ? 'BEARISH' :
+      res.data?.sentiment === 'BULLISH' ? 'BULLISH' :
+      res.data?.sentiment === 'BEARISH' ? 'BEARISH' :
       'NEUTRAL';
     const confidence = sentiment === 'NEUTRAL' ? 55 : 75;
 
@@ -112,8 +95,11 @@ Headline: "${title}"`;
     _sentimentCache.set(key, { sentiment, ts: Date.now(), confidence, source: 'gemini' });
     return { sentiment, confidence, source: 'gemini' };
   } catch (err: unknown) {
-    console.error('Gemini API Error:', err);
-    throw new Error('Failed to analyze sentiment with Gemini AI.');
+    console.warn('[geminiClient] Backend sentiment call failed, falling back to synth:', err instanceof Error ? err.message : err);
+    const fake = fakeSentimentForHeadline(title);
+    evictOldestIfFull();
+    _sentimentCache.set(key, { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo', ts: Date.now() });
+    return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo' };
   }
 }
 

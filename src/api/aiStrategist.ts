@@ -38,6 +38,8 @@ import axios from 'axios';
 import { useSettingsStore } from '../store/settingsStore';
 import type { SignalSnapshot } from '../store/predictorStore';
 
+const BACKEND_GEMINI = '/api/gemini';
+
 /** Verdict the Strategist returns to the cycle. */
 export type StrategistDecision = 'LONG' | 'SHORT' | 'HOLD';
 
@@ -269,44 +271,31 @@ export async function callAiStrategist(
     return _lastCache.verdict;
   }
 
-  const { isDemoMode, geminiApiKey } = useSettingsStore.getState();
+  const { isDemoMode } = useSettingsStore.getState();
 
-  // Demo / no-key fast path — no network, no quota.
-  if (isDemoMode || !geminiApiKey) {
+  // Demo fast path — no network, no quota.
+  if (isDemoMode) {
     const verdict = synthesizeVerdict(signals, price, 'demo');
     _lastCache = { hash, verdict };
     return verdict;
   }
 
-  // Live path: Gemini 2.5-flash with strict JSON output. Same model
-  // family NewsBot uses so the user only manages one key.
+  // Live path — proxy through our backend which holds the Gemini API key.
   const atrSummary = typeof signals.atrPct === 'number' && signals.atrPct > 0
     ? `(ATR ${signals.atrPct.toFixed(2)}%)`
     : '';
   const prompt = buildPrompt(signals, price, atrSummary);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.2,        // tight — we want consistent verdicts
-      topK: 1,
-      topP: 0.9,
-      maxOutputTokens: 250,
-      responseMimeType: 'application/json',
-    },
-  };
-
-  // 8s timeout to match NewsBot's envelope. AbortController so the
-  // request is actually cancelled, not just ignored.
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const res = await axios.post(url, payload, { signal: controller.signal });
-    const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const res = await axios.post(
+      `${BACKEND_GEMINI}/strategist`,
+      { prompt },
+      { timeout: 10000 },
+    );
+    const text: string = res.data?.text ?? '';
     const parsed = parseLlmReply(text);
     if (!parsed) {
-      console.warn('[aiStrategist] Failed to parse Gemini reply:', text.slice(0, 200));
+      console.warn('[aiStrategist] Failed to parse backend reply:', text.slice(0, 200));
       const verdict = synthesizeVerdict(signals, price, 'parse_error');
       _lastCache = { hash, verdict };
       return verdict;
@@ -315,12 +304,10 @@ export async function callAiStrategist(
     _lastCache = { hash, verdict };
     return verdict;
   } catch (err) {
-    console.warn('[aiStrategist] Gemini call failed, using synth:', err instanceof Error ? err.message : err);
+    console.warn('[aiStrategist] Backend call failed, using synth:', err instanceof Error ? err.message : err);
     const verdict = synthesizeVerdict(signals, price, 'unavailable');
     _lastCache = { hash, verdict };
     return verdict;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

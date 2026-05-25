@@ -7,6 +7,7 @@ import {
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { Card, StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
+import { SymbolSelector } from '../components/common/SymbolSelector';
 import { Button } from '../components/common/Button';
 import { fetchKlines } from '../api/services';
 import { getErrorMessage, cn } from '../lib/utils';
@@ -533,12 +534,11 @@ export const Backtesting: React.FC = () => {
               Market Settings
             </label>
             <div className="space-y-2">
-              <Input
-                type="text"
+              <SymbolSelector
                 value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                placeholder="BTC-USD"
-                className="text-sm"
+                onChange={setSymbol}
+                market="perps"
+                label=""
               />
               <Select
                 value={timeframe}

@@ -675,56 +675,49 @@ export const BtcPredictor: React.FC = () => {
           </div>
           <DirectionBadge direction={predictor.currentPrediction} confidence={predictor.currentConfidence} />
           {predictor.currentSignals ? (
-            <div className="space-y-3">
-              {/* ── Technical ── */}
+            <div className="space-y-2.5">
+              {/* Weighted score bar */}
               <div>
-                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1.5 font-semibold">Technical</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <SignalChip label="RSI(14)"  val={predictor.currentSignals.rsi.toFixed(1)} />
-                  <SignalChip label="EMA 9/21" val={fmtSig(predictor.currentSignals.emaSignal)} />
-                  <SignalChip label="MACD"     val={fmtSig(predictor.currentSignals.macdSignal)} />
-                  <SignalChip label="VWAP%"    val={fmtPct(predictor.currentSignals.vwapDeviation ?? 0, 2)} />
-                  <SignalChip label="ROC(12)"  val={fmtSig(predictor.currentSignals.rocSignal ?? 0)} />
-                  <SignalChip label="ATR%"     val={fmtPct(predictor.currentSignals.atrPct ?? 0, 2, false)} />
+                <div className="flex items-center justify-between text-[9px] mb-1.5">
+                  <span className="text-text-muted">Bear</span>
+                  <span className={cn('font-mono font-bold text-xs',
+                    predictor.currentSignals.weightedScore > 0.05 ? 'text-emerald-400'
+                    : predictor.currentSignals.weightedScore < -0.05 ? 'text-red-400'
+                    : 'text-amber-300',
+                  )}>{fmtSig(predictor.currentSignals.weightedScore)}</span>
+                  <span className="text-text-muted">Bull</span>
+                </div>
+                <div className="relative h-2 rounded-full bg-background/60 border border-border/50 overflow-hidden">
+                  <div className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: '50%' }} />
+                  {(() => {
+                    const s = Math.min(Math.max(predictor.currentSignals.weightedScore, -1), 1);
+                    const w = Math.abs(s) * 50;
+                    const left = s >= 0 ? 50 : 50 - w;
+                    const col = s > 0.05 ? '#10B981' : s < -0.05 ? '#EF4444' : '#F59E0B';
+                    return <div className="absolute h-full rounded-full transition-all duration-700" style={{ left: `${left}%`, width: `${Math.max(w, 1)}%`, backgroundColor: col, opacity: 0.85 }} />;
+                  })()}
                 </div>
               </div>
-              {/* ── Microstructure ── */}
-              <div>
-                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1.5 font-semibold">Microstructure</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <SignalChip label="OB Imbal." val={`${(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}%`} />
-                  <SignalChip label="Funding"   val={`${(predictor.currentSignals.fundingRate * 100).toFixed(4)}%`} />
-                  <SignalChip label="Micro"     val={fmtSig(predictor.currentSignals.microstructureSignal)} />
-                  <SignalChip label="MTF Align" val={fmtSig(predictor.currentSignals.mtfAlignment ?? 0)} />
+              {/* Confluence */}
+              <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-background/40 border border-border/50">
+                <span className="text-[9px] uppercase tracking-wider text-text-muted">Confluence</span>
+                <span className="font-mono font-bold text-xs text-text-primary">
+                  {predictor.currentSignals.agreementCount}
+                  <span className="text-text-muted font-normal text-[10px]">/{predictor.currentSignals.totalSignals} agree</span>
+                </span>
+              </div>
+              {/* 4 key signals */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <SignalChip label="RSI(14)"  val={predictor.currentSignals.rsi.toFixed(1)} />
+                <SignalChip label="MACD"     val={fmtSig(predictor.currentSignals.macdSignal)} />
+                <SignalChip label="Funding"  val={`${(predictor.currentSignals.fundingRate * 100).toFixed(4)}%`} />
+                <SignalChip label="F&G"      val={fmtSig(predictor.currentSignals.fearGreedSignal ?? 0)} />
+              </div>
+              {predictor.currentSignals.neutralReason && (
+                <div className="text-[9px] text-amber-300 leading-snug px-0.5">
+                  ⚠ {predictor.currentSignals.neutralReason.replace(/_/g, ' ')}
                 </div>
-              </div>
-              {/* ── Macro / Sentiment ── */}
-              <div>
-                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1.5 font-semibold">Macro &amp; Sentiment</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <SignalChip label="News"     val={fmtSig(predictor.currentSignals.newsSentiment)} />
-                  <SignalChip label="ETF Flow" val={fmtSig(predictor.currentSignals.etfFlow)} />
-                  <SignalChip label="Treasury" val={fmtSig(predictor.currentSignals.treasurySignal ?? 0)} />
-                  <SignalChip label="Fear&amp;Greed" val={fmtSig(predictor.currentSignals.fearGreedSignal ?? 0)} />
-                </div>
-              </div>
-              {/* ── Composite ── */}
-              <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-background/50 border border-border">
-                <span className="text-[10px] font-bold text-text-secondary">Weighted Score</span>
-                <span className={cn(
-                  'text-sm font-mono font-bold',
-                  predictor.currentSignals.weightedScore > 0.05 ? 'text-emerald-400'
-                  : predictor.currentSignals.weightedScore < -0.05 ? 'text-red-400'
-                  : 'text-amber-300',
-                )}>{fmtSig(predictor.currentSignals.weightedScore)}</span>
-              </div>
-              <div className="text-[10px] text-text-muted">
-                <span className="font-bold text-text-secondary">Confluence:</span>{' '}
-                {predictor.currentSignals.agreementCount}/{predictor.currentSignals.totalSignals} signals agree
-                {predictor.currentSignals.neutralReason && (
-                  <span className="ml-1.5 text-amber-300">— {predictor.currentSignals.neutralReason.replace(/_/g, ' ')}</span>
-                )}
-              </div>
+              )}
             </div>
           ) : (
             <div className="text-[11px] text-text-muted py-2">
