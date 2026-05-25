@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { API_BASE } from './backendBase';
 
 // All SoSoValue requests are proxied through our backend.
 // The backend holds the API key and routes to the correct SoSoValue domain.
-const BACKEND_PROXY = '/api/sosovalue';
+const BACKEND_PROXY = `${API_BASE}/api/sosovalue`;
 
 // ─── In-Memory TTL Cache & Circuit Breaker ─────────────────────────────────────
 interface CacheEntry { data: unknown; expiresAt: number; }

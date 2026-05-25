@@ -9,6 +9,7 @@ import { Toggle } from '../components/common/Input';
 import toast from 'react-hot-toast';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useSettingsStore } from '../store/settingsStore';
+import { API_BASE } from '../api/backendBase';
 
 interface Message {
   sender: 'user' | 'bot';
@@ -17,7 +18,7 @@ interface Message {
 }
 
 async function verifyAndConnect(chatId: string): Promise<void> {
-  const res = await fetch('/api/telegram/verify', {
+  const res = await fetch(`${API_BASE}/api/telegram/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId }),

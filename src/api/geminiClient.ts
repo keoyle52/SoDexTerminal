@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { useSettingsStore } from '../store/settingsStore';
 import { fakeSentimentForHeadline } from './sosoExtraServices';
+import { API_BASE } from './backendBase';
 
-const BACKEND_GEMINI = '/api/gemini';
+const BACKEND_GEMINI = `${API_BASE}/api/gemini`;
 
 export type Sentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 

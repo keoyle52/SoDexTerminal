@@ -37,8 +37,9 @@
 import axios from 'axios';
 import { useSettingsStore } from '../store/settingsStore';
 import type { SignalSnapshot } from '../store/predictorStore';
+import { API_BASE } from './backendBase';
 
-const BACKEND_GEMINI = '/api/gemini';
+const BACKEND_GEMINI = `${API_BASE}/api/gemini`;
 
 /** Verdict the Strategist returns to the cycle. */
 export type StrategistDecision = 'LONG' | 'SHORT' | 'HOLD';
