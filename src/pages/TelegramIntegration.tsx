@@ -26,10 +26,10 @@ async function verifyAndConnect(chatId: string): Promise<void> {
       body: JSON.stringify({ chatId }),
     });
   } catch {
-    throw new Error('Backend\'a bağlanılamadı. Render servisi çalışıyor mu? (VITE_API_BASE_URL)');
+    throw new Error('Could not reach the backend. Is the Render service running? Check VITE_API_BASE_URL.');
   }
   const data = await res.json() as { ok: boolean; registered?: boolean; reason?: string; error?: string };
-  if (!data.ok) throw new Error(data.reason ?? data.error ?? 'Chat ID doğrulanamadı');
+  if (!data.ok) throw new Error(data.reason ?? data.error ?? 'Could not verify Chat ID');
 }
 
 export const TelegramIntegration: React.FC = () => {
