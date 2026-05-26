@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, LineChart, FlaskConical, Settings, Menu, X, BarChart2,
-  Brain, MessageSquare, Layers, Zap,
+  Brain, MessageSquare, Layers,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -73,9 +73,7 @@ export const Sidebar: React.FC = () => {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 h-14 shrink-0 border-b border-border">
-        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/15 shrink-0">
-          <Zap size={14} className="text-primary" />
-        </div>
+        <img src="/favicon.svg" alt="SoDEX Logo" className="w-5.5 h-5.5 shrink-0" />
         <span className="text-sm font-semibold tracking-tight text-text-primary">SoDEX Terminal</span>
       </div>
 
