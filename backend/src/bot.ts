@@ -203,12 +203,23 @@ export function startBot(): void {
         '• /regime — Current AI market regime',
         '• /startbot <bot> — Start grid/mm/signal/predictor',
         '• /stopbot <bot> — Stop grid/mm/signal/predictor',
+        '• /disconnect — Disconnect account & stop all bots',
         '• /alerts — Toggle notification settings',
         '• /help — Show this message',
         '',
         '*Bot keys:* `grid`, `mm`, `signal`, `predictor`',
       ].join('\n'),
       { parse_mode: 'Markdown' },
+    );
+  });
+
+  bot.onText(/\/disconnect/, (msg) => {
+    const chatId = msg.chat.id;
+    unregisterChat(chatId);
+    bot!.sendMessage(
+      chatId,
+      '🔌 *SoDEX account disconnected!*\n\nYour account has been unlinked from this Telegram chat. All active terminal bots will be automatically stopped and open orders cancelled.',
+      { parse_mode: 'Markdown' }
     );
   });
 
@@ -630,4 +641,10 @@ export function isRegistered(chatId: number): boolean {
 
 export function registerChat(chatId: number): void {
   registeredChats.add(chatId);
+}
+
+export function unregisterChat(chatId: number): void {
+  registeredChats.delete(chatId);
+  chatAccounts.delete(chatId);
+  userBotStates.delete(chatId);
 }

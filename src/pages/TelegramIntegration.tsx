@@ -139,6 +139,8 @@ export const TelegramIntegration: React.FC = () => {
   const reconcileBusyRef = useRef(false);
   const pollBusyRef = useRef(false);
 
+
+
   // Chat Preview messages
   const [messages, setMessages] = useState<Message[]>([
     { sender: 'bot', text: '🤖 SoDEX PowerOps Bot\n\nConnected and ready! I will notify you about regime changes, P&L reports, and order fills.\n\nType /help to see available commands.', timestamp: '14:20' },
@@ -207,6 +209,73 @@ export const TelegramIntegration: React.FC = () => {
     ].slice(0, 150));
   }, []);
 
+  const disconnectAndStopAllBots = useCallback(async (localOnly = false) => {
+    addTerminalLog('SYSTEM', 'ERROR', 'Telegram connection disconnected. Stopping all bots and cancelling open orders.');
+    
+    // Stop Grid
+    const activeGrid = useBotStore.getState().gridBot;
+    if (activeGrid.status === 'RUNNING') {
+      useBotStore.getState().gridBot.setField('status', 'STOPPED');
+      if (!isDemoMode) {
+        const market: 'spot' | 'perps' = activeGrid.isSpot ? 'spot' : 'perps';
+        await cancelAllOrders(activeGrid.symbol, market).catch(() => {});
+      }
+      gridLevelsRef.current = [];
+    }
+
+    // Stop MM
+    const activeMm = useBotStore.getState().marketMakerBot;
+    if (activeMm.status === 'RUNNING') {
+      useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
+      useBotStore.getState().marketMakerBot.setField('sessionStartedAt', null);
+      if (!isDemoMode) {
+        await cancelAllOrders(activeMm.symbol, 'spot').catch(() => {});
+      }
+      mmOrdersRef.current.clear();
+      sessionIdRef.current = '';
+    }
+
+    // Stop Signal
+    const activeSig = useBotStore.getState().signalBot;
+    if (activeSig.status === 'RUNNING') {
+      useBotStore.getState().signalBot.setField('status', 'STOPPED');
+      if (!isDemoMode && activeSig.activePositions.length > 0) {
+        const market: 'spot' | 'perps' = activeSig.isSpot ? 'spot' : 'perps';
+        const stopIds: string[] = [];
+        activeSig.activePositions.forEach(p => {
+          if (p.tpOrderId) stopIds.push(p.tpOrderId);
+          if (p.slOrderId) stopIds.push(p.slOrderId);
+        });
+        if (stopIds.length > 0) {
+          await Promise.all(stopIds.map(id => cancelOrder(id, activeSig.symbol, market).catch(() => {})));
+        }
+      }
+    }
+
+    // Stop Predictor
+    if (usePredictorStore.getState().autoTradeEnabled) {
+      usePredictorStore.getState().setAutoTradeEnabled(false);
+    }
+
+    // Call backend disconnect if not localOnly
+    if (!localOnly && telegramChatId) {
+      try {
+        await fetch(`${API_BASE}/api/telegram/disconnect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: telegramChatId }),
+        });
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    setTelegramChatId('');
+    setChatIdInput('');
+    setTestStatus('idle');
+    toast.error('Telegram bot disconnected. All trading bots stopped & unfilled orders cancelled.');
+  }, [telegramChatId, isDemoMode, addTerminalLog, setTelegramChatId]);
+
   // Auto scroll console
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -265,7 +334,27 @@ export const TelegramIntegration: React.FC = () => {
 
   // Main Background Bot execution loop (Simulated or Real SoDEX API)
   useEffect(() => {
+    let tickCount = 0;
     const interval = setInterval(async () => {
+      // Every 3 ticks (15s), check if Telegram chat is still active/registered on backend.
+      if (telegramChatId) {
+        tickCount++;
+        if (tickCount % 3 === 0) {
+          try {
+            const res = await fetch(`${API_BASE}/api/telegram/status?chatId=${telegramChatId}`);
+            if (res.ok) {
+              const data = await res.json() as { ok: boolean; registered: boolean };
+              if (data.ok && !data.registered) {
+                void disconnectAndStopAllBots(true);
+                return;
+              }
+            }
+          } catch {
+            // ignore network/unreachable blips
+          }
+        }
+      }
+
       const activeGrid = useBotStore.getState().gridBot;
       const activeMm = useBotStore.getState().marketMakerBot;
       const activeSig = useBotStore.getState().signalBot;
@@ -1111,7 +1200,7 @@ export const TelegramIntegration: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode]);
+  }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode, telegramChatId, disconnectAndStopAllBots]);
 
   // AI Auto configure parameters helper
   const handleAiConfigure = async () => {
@@ -1294,6 +1383,7 @@ Available commands:
 • /regime — Current AI market regime
 • /startbot — Interactively select a bot to start
 • /stopbot — Interactively select a bot to stop
+• /disconnect — Disconnect account & stop all bots
 
 Configure credentials in the panel below to activate live states.`;
       } else if (cmd === '/startbot') {
@@ -1428,6 +1518,11 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
         const rec = recommendBot(inputs, 64000);
         const regime = classifyRegime(inputs);
         botText = `🧠 Market Regime: ${regimeLabel(regime)}\n• Recommendation: ${botLabel(rec.bot)}\n• Rationale: "${rec.rationale}"`;
+      } else if (cmd.startsWith('/disconnect')) {
+        await disconnectAndStopAllBots(false);
+        botText = `🔌 *SoDEX account disconnected!*
+
+Your account has been unlinked from this Telegram chat. All active terminal bots will be automatically stopped and open orders cancelled.`;
       } else {
         botText = `❓ Unknown command: "${userText}"\nType /help to see command options.`;
       }
@@ -1461,9 +1556,18 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
           <p className="text-[11px] text-text-muted">Manage active trading bots, calibrate AI parameters, and monitor live API feeds</p>
         </div>
         {isConfigured && (
-          <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-semibold shrink-0">
-            <CheckCircle2 size={12} />
-            Connected
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-semibold">
+              <CheckCircle2 size={12} />
+              Connected
+            </div>
+            <button
+              onClick={() => disconnectAndStopAllBots(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/30 text-rose-400 text-[11px] font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+            >
+              <Trash2 size={12} />
+              Disconnect
+            </button>
           </div>
         )}
       </div>

@@ -96,4 +96,61 @@ router.post('/verify', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/telegram/status
+// Query: ?chatId=...
+// Returns registration link status.
+router.get('/status', (req: Request, res: Response) => {
+  const { chatId } = req.query;
+
+  if (!chatId) {
+    res.status(400).json({ error: 'chatId is required' });
+    return;
+  }
+
+  const numericId = Number(chatId);
+  if (!Number.isFinite(numericId)) {
+    res.status(400).json({ error: 'chatId must be a numeric value' });
+    return;
+  }
+
+  res.json({ ok: true, registered: isRegistered(numericId) });
+});
+
+// POST /api/telegram/disconnect
+// Body: { chatId }
+// Unregisters the chat ID and unlinks the account.
+router.post('/disconnect', async (req: Request, res: Response) => {
+  const { chatId } = req.body as { chatId?: string | number };
+
+  if (!chatId) {
+    res.status(400).json({ error: 'chatId is required' });
+    return;
+  }
+
+  const numericId = Number(chatId);
+  if (!Number.isFinite(numericId)) {
+    res.status(400).json({ error: 'chatId must be a numeric value' });
+    return;
+  }
+
+  try {
+    const { unregisterChat } = require('../bot');
+    unregisterChat(numericId);
+    
+    const bot = getBot();
+    if (bot) {
+      await bot.sendMessage(
+        numericId,
+        '🔌 *SoDEX Terminal disconnected!*\n\nYour account has been unlinked from this Telegram chat by the website.',
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: msg });
+  }
+});
+
 export { router as telegramRouter };
