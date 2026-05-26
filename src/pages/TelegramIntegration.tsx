@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useSettingsStore } from '../store/settingsStore';
 import { API_BASE } from '../api/backendBase';
+import { deriveAddressFromPrivateKey } from '../api/signer';
 
 interface Message {
   sender: 'user' | 'bot';
@@ -35,7 +36,7 @@ async function verifyAndConnect(chatId: string, account?: AccountInfo): Promise<
 }
 
 export const TelegramIntegration: React.FC = () => {
-  const { telegramChatId, setTelegramChatId, evmAddress, apiKeyName, isTestnet } = useSettingsStore();
+  const { telegramChatId, setTelegramChatId, evmAddress, apiKeyName, isTestnet, privateKey } = useSettingsStore();
 
   const [chatIdInput, setChatIdInput] = useState(telegramChatId);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
@@ -67,8 +68,9 @@ export const TelegramIntegration: React.FC = () => {
     setTestStatus('testing');
     setTestError('');
     try {
-      const account = evmAddress && apiKeyName
-        ? { evmAddress, apiKeyName, isTestnet }
+      const effectiveEvmAddress = (evmAddress ?? '').trim() || (privateKey ? deriveAddressFromPrivateKey(privateKey) : '');
+      const account = effectiveEvmAddress
+        ? { evmAddress: effectiveEvmAddress, apiKeyName: apiKeyName || effectiveEvmAddress, isTestnet }
         : undefined;
       await verifyAndConnect(chatIdInput.trim(), account);
       setTelegramChatId(chatIdInput.trim());

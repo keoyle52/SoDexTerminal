@@ -27,14 +27,12 @@ perpsClient.interceptors.request.use(async (config) => {
   const state = useSettingsStore.getState();
   config.baseURL = state.isTestnet ? BASE_URL_TESTNET : BASE_URL_MAINNET;
 
-  const { apiKeyName, privateKey, isTestnet, isWalletConnected, walletAddress } = state;
+  const { apiKeyName, privateKey, isTestnet } = state;
   const method = (config.method ?? 'GET').toUpperCase();
 
-  // Sign write (non-GET) requests if a private key is provided OR a browser wallet is connected
-  if (method !== 'GET' && (privateKey || isWalletConnected)) {
-    const effectiveApiKey = isWalletConnected 
-      ? walletAddress.toLowerCase() 
-      : resolveApiKey({ apiKeyName, privateKey, isTestnet });
+  // Sign write (non-GET) requests if a private key is provided
+  if (method !== 'GET' && privateKey) {
+    const effectiveApiKey = resolveApiKey({ apiKeyName, privateKey, isTestnet });
 
     if (!effectiveApiKey) {
       return Promise.reject(new Error('Invalid credentials: could not resolve wallet address'));
@@ -50,7 +48,7 @@ perpsClient.interceptors.request.use(async (config) => {
         'futures',
         isTestnet,
         effectiveApiKey,
-        isWalletConnected
+        false
       );
       config.headers['X-API-Key'] = effectiveApiKey;
       config.headers['X-API-Nonce'] = nonce;
@@ -62,7 +60,7 @@ perpsClient.interceptors.request.use(async (config) => {
         // Use console.log (not debug) so it shows without filter changes.
          
         console.log(
-          `[perpsClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'} (${isWalletConnected ? 'WALLET' : 'PK'})%c ${method} ${config.url}`
+          `[perpsClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'} (PK)%c ${method} ${config.url}`
           + `\n  X-API-Key  = ${effectiveApiKey}`
           + `\n  X-API-Nonce= ${nonce}`
           + `\n  action     = ${actionType}`,

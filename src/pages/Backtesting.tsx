@@ -162,8 +162,8 @@ function calculateATR(highs: number[], lows: number[], closes: number[], period:
 
 function runSignalBacktest(
   closes: number[],
-  _highs: number[],
-  _lows: number[],
+  highs: number[],
+  lows: number[],
   times: string[],
   params: { rsiPeriod: number; rsiOverbought: number; rsiOversold: number }
 ): TradeEntry[] {
@@ -173,34 +173,46 @@ function runSignalBacktest(
   let entryTime = '';
 
   const rsi = calculateRSI(closes, params.rsiPeriod);
+  const atr = calculateATR(highs, lows, closes, params.rsiPeriod);
 
   for (let i = 1; i < closes.length; i++) {
     const prevRsi = rsi[i - 1];
     const curRsi = rsi[i];
     if (prevRsi == null || curRsi == null) continue;
 
-    // RSI Oversold - Buy signal
-    if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold && position !== 'LONG') {
-      if (position === 'SHORT') {
-        const pnl = entryPrice - closes[i];
+    const atrVal = atr[i] || (closes[i] * 0.001);
+
+    if (position === 'LONG') {
+      const tp = entryPrice + atrVal * 2.0;
+      const sl = entryPrice - atrVal * 1.0;
+
+      if (lows[i] <= sl) {
+        const pnl = sl - entryPrice;
         trades.push({
           entryTime,
           exitTime: times[i],
-          side: 'SHORT',
+          side: 'LONG',
           entryPrice,
-          exitPrice: closes[i],
+          exitPrice: sl,
           pnl,
           pnlPercent: (pnl / entryPrice) * 100,
-          exitReason: 'SIGNAL',
+          exitReason: 'STOP',
         });
-      }
-      position = 'LONG';
-      entryPrice = closes[i];
-      entryTime = times[i];
-    }
-    // RSI Overbought - Sell signal
-    else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought && position !== 'SHORT') {
-      if (position === 'LONG') {
+        position = null;
+      } else if (highs[i] >= tp) {
+        const pnl = tp - entryPrice;
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'LONG',
+          entryPrice,
+          exitPrice: tp,
+          pnl,
+          pnlPercent: (pnl / entryPrice) * 100,
+          exitReason: 'TARGET',
+        });
+        position = null;
+      } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
         const pnl = closes[i] - entryPrice;
         trades.push({
           entryTime,
@@ -212,14 +224,68 @@ function runSignalBacktest(
           pnlPercent: (pnl / entryPrice) * 100,
           exitReason: 'SIGNAL',
         });
+        position = null;
       }
-      position = 'SHORT';
-      entryPrice = closes[i];
-      entryTime = times[i];
+    } else if (position === 'SHORT') {
+      const tp = entryPrice - atrVal * 2.0;
+      const sl = entryPrice + atrVal * 1.0;
+
+      if (highs[i] >= sl) {
+        const pnl = entryPrice - sl;
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'SHORT',
+          entryPrice,
+          exitPrice: sl,
+          pnl,
+          pnlPercent: (pnl / entryPrice) * 100,
+          exitReason: 'STOP',
+        });
+        position = null;
+      } else if (lows[i] <= tp) {
+        const pnl = entryPrice - tp;
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'SHORT',
+          entryPrice,
+          exitPrice: tp,
+          pnl,
+          pnlPercent: (pnl / entryPrice) * 100,
+          exitReason: 'TARGET',
+        });
+        position = null;
+      } else if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold) {
+        const pnl = entryPrice - closes[i];
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'SHORT',
+          entryPrice,
+          exitPrice: closes[i],
+          pnl,
+          pnlPercent: (pnl / entryPrice) * 100,
+          exitReason: 'SIGNAL',
+        });
+        position = null;
+      }
+    }
+
+    if (!position) {
+      if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold) {
+        position = 'LONG';
+        entryPrice = closes[i];
+        entryTime = times[i];
+      } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
+        position = 'SHORT';
+        entryPrice = closes[i];
+        entryTime = times[i];
+      }
     }
   }
 
-  // Close any open position at end
+  // Close remaining position at end
   if (position === 'LONG') {
     const pnl = closes[closes.length - 1] - entryPrice;
     trades.push({
@@ -272,15 +338,12 @@ function runGridBacktest(
     const price = closes[i];
 
     if (!inPosition && price >= lowerBound && price <= upperBound) {
-      // Enter grid
       inPosition = true;
       entryPrice = price;
       entryTime = times[i];
     } else if (inPosition) {
-      // Check if price moved enough to take profit
-      const move = Math.abs(price - entryPrice) / entryPrice;
-      if (move >= gridSize) {
-        const pnl = price > entryPrice ? price - entryPrice : entryPrice - price;
+      if (price < lowerBound || price > upperBound) {
+        const pnl = price - entryPrice;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -289,10 +352,327 @@ function runGridBacktest(
           exitPrice: price,
           pnl,
           pnlPercent: (pnl / entryPrice) * 100,
+          exitReason: 'STOP',
+        });
+        inPosition = false;
+      } else {
+        const move = Math.abs(price - entryPrice) / entryPrice;
+        if (move >= gridSize) {
+          const pnl = entryPrice * gridSize;
+          trades.push({
+            entryTime,
+            exitTime: times[i],
+            side: price > entryPrice ? 'LONG' : 'SHORT',
+            entryPrice,
+            exitPrice: price,
+            pnl,
+            pnlPercent: params.gridSize,
+            exitReason: 'TARGET',
+          });
+          entryPrice = price;
+          entryTime = times[i];
+        }
+      }
+    }
+  }
+
+  return trades;
+}
+
+function runDcaBacktest(
+  closes: number[],
+  _highs: number[],
+  _lows: number[],
+  times: string[],
+  params: { interval: number; amount: number; totalOrders: number }
+): TradeEntry[] {
+  const trades: TradeEntry[] = [];
+  const intervalHours = params.interval || 24;
+  const buyAmount = params.amount || 100;
+  
+  let barsPerHour = 1;
+  if (closes.length > 1) {
+    const t0 = new Date(times[0]).getTime();
+    const t1 = new Date(times[1]).getTime();
+    const diffMin = Math.abs(t1 - t0) / (1000 * 60);
+    if (diffMin > 0) barsPerHour = 60 / diffMin;
+  }
+  const barsPerInterval = Math.max(1, Math.round(intervalHours * barsPerHour));
+
+  let totalCost = 0;
+  let totalQty = 0;
+  let entryTime = '';
+  let activeDca = false;
+  let buysCount = 0;
+
+  for (let i = 0; i < closes.length; i++) {
+    if (i % barsPerInterval === 0 && buysCount < params.totalOrders) {
+      if (!activeDca) {
+        entryTime = times[i];
+        activeDca = true;
+      }
+      const price = closes[i];
+      const qty = buyAmount / price;
+      totalCost += buyAmount;
+      totalQty += qty;
+      buysCount++;
+    }
+
+    if (activeDca) {
+      const avgPrice = totalCost / totalQty;
+      const currentPrice = closes[i];
+      const move = (currentPrice - avgPrice) / avgPrice;
+
+      if (move >= 0.03) {
+        const pnl = (currentPrice - avgPrice) * totalQty;
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'LONG',
+          entryPrice: avgPrice,
+          exitPrice: currentPrice,
+          pnl,
+          pnlPercent: move * 100,
           exitReason: 'TARGET',
         });
-        entryPrice = price;
+        totalCost = 0;
+        totalQty = 0;
+        activeDca = false;
+        buysCount = 0;
+      } else if (move <= -0.05) {
+        const pnl = (currentPrice - avgPrice) * totalQty;
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'LONG',
+          entryPrice: avgPrice,
+          exitPrice: currentPrice,
+          pnl,
+          pnlPercent: move * 100,
+          exitReason: 'STOP',
+        });
+        totalCost = 0;
+        totalQty = 0;
+        activeDca = false;
+        buysCount = 0;
+      }
+    }
+  }
+
+  if (activeDca && totalQty > 0) {
+    const avgPrice = totalCost / totalQty;
+    const exitPrice = closes[closes.length - 1];
+    const pnl = (exitPrice - avgPrice) * totalQty;
+    trades.push({
+      entryTime,
+      exitTime: times[times.length - 1],
+      side: 'LONG',
+      entryPrice: avgPrice,
+      exitPrice,
+      pnl,
+      pnlPercent: ((exitPrice - avgPrice) / avgPrice) * 100,
+      exitReason: 'END',
+    });
+  }
+
+  return trades;
+}
+
+function runTwapBacktest(
+  closes: number[],
+  _highs: number[],
+  _lows: number[],
+  times: string[],
+  params: { slices: number; duration: number; slippage: number }
+): TradeEntry[] {
+  const trades: TradeEntry[] = [];
+  const slices = params.slices || 12;
+  const durationHours = params.duration || 4;
+  
+  let barsPerHour = 1;
+  if (closes.length > 1) {
+    const t0 = new Date(times[0]).getTime();
+    const t1 = new Date(times[1]).getTime();
+    const diffMin = Math.abs(t1 - t0) / (1000 * 60);
+    if (diffMin > 0) barsPerHour = 60 / diffMin;
+  }
+  const durationBars = Math.max(12, Math.round(durationHours * barsPerHour));
+  const barsPerSlice = Math.max(1, Math.round(durationBars / slices));
+
+  let i = 0;
+  while (i < closes.length - durationBars) {
+    const ema9 = calculateEMA(closes.slice(0, i + 1), 9);
+    const ema21 = calculateEMA(closes.slice(0, i + 1), 21);
+    const emaDiff = ema9[ema9.length - 1] - ema21[ema21.length - 1];
+
+    if (emaDiff > 0) {
+      const entryTime = times[i];
+      let totalSpent = 0;
+      let totalQty = 0;
+      
+      for (let s = 0; s < slices; s++) {
+        const sliceIdx = i + s * barsPerSlice;
+        if (sliceIdx >= closes.length) break;
+        const price = closes[sliceIdx];
+        const executionPrice = price * (1 + (params.slippage || 0.1) / 100);
+        totalSpent += 100;
+        totalQty += 100 / executionPrice;
+      }
+      
+      const avgEntryPrice = totalSpent / totalQty;
+      
+      let exitIdx = i + durationBars;
+      let exitPrice = closes[exitIdx] || closes[closes.length - 1];
+      let exitReason: 'TARGET' | 'STOP' | 'END' = 'END';
+
+      for (let j = i + durationBars; j < closes.length; j++) {
+        const price = closes[j];
+        const move = (price - avgEntryPrice) / avgEntryPrice;
+        if (move >= 0.02) {
+          exitPrice = price;
+          exitIdx = j;
+          exitReason = 'TARGET';
+          break;
+        } else if (move <= -0.01) {
+          exitPrice = price;
+          exitIdx = j;
+          exitReason = 'STOP';
+          break;
+        }
+      }
+      
+      const pnl = (exitPrice - avgEntryPrice) * totalQty;
+      trades.push({
+        entryTime,
+        exitTime: times[exitIdx] || times[times.length - 1],
+        side: 'LONG',
+        entryPrice: avgEntryPrice,
+        exitPrice,
+        pnl,
+        pnlPercent: ((exitPrice - avgEntryPrice) / avgEntryPrice) * 100,
+        exitReason,
+      });
+
+      i = exitIdx + 1;
+    } else {
+      i += 5;
+    }
+  }
+
+  return trades;
+}
+
+function runMarketMakerBacktest(
+  closes: number[],
+  highs: number[],
+  lows: number[],
+  times: string[],
+  params: { spread: number; inventory: number; rebalance: number }
+): TradeEntry[] {
+  const trades: TradeEntry[] = [];
+  const spreadPct = params.spread || 0.1;
+  const maxInventory = params.inventory || 5000;
+  
+  let position: 'LONG' | 'SHORT' | null = null;
+  let entryPrice = 0;
+  let entryTime = '';
+  let inventory = 0;
+
+  for (let i = 1; i < closes.length; i++) {
+    const prevPrice = closes[i - 1];
+
+    if (!position) {
+      const bid = prevPrice * (1 - spreadPct / 200);
+      const ask = prevPrice * (1 + spreadPct / 200);
+
+      if (lows[i] <= bid && highs[i] >= ask) {
+        const profit = maxInventory * (spreadPct / 100);
+        trades.push({
+          entryTime: times[i - 1],
+          exitTime: times[i],
+          side: 'LONG',
+          entryPrice: bid,
+          exitPrice: ask,
+          pnl: profit,
+          pnlPercent: spreadPct,
+          exitReason: 'TARGET',
+        });
+      } else if (lows[i] <= bid) {
+        position = 'LONG';
+        entryPrice = bid;
         entryTime = times[i];
+        inventory = maxInventory;
+      } else if (highs[i] >= ask) {
+        position = 'SHORT';
+        entryPrice = ask;
+        entryTime = times[i];
+        inventory = maxInventory;
+      }
+    } else if (position === 'LONG') {
+      const targetSell = entryPrice * (1 + spreadPct / 100);
+      const stopLoss = entryPrice * (1 - (params.rebalance || 1.0) / 100);
+
+      if (highs[i] >= targetSell) {
+        const pnl = (targetSell - entryPrice) * (inventory / entryPrice);
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'LONG',
+          entryPrice,
+          exitPrice: targetSell,
+          pnl,
+          pnlPercent: spreadPct,
+          exitReason: 'TARGET',
+        });
+        position = null;
+        inventory = 0;
+      } else if (lows[i] <= stopLoss) {
+        const pnl = (stopLoss - entryPrice) * (inventory / entryPrice);
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'LONG',
+          entryPrice,
+          exitPrice: stopLoss,
+          pnl,
+          pnlPercent: -(params.rebalance || 1.0),
+          exitReason: 'STOP',
+        });
+        position = null;
+        inventory = 0;
+      }
+    } else if (position === 'SHORT') {
+      const targetBuy = entryPrice * (1 - spreadPct / 100);
+      const stopLoss = entryPrice * (1 + (params.rebalance || 1.0) / 100);
+
+      if (lows[i] <= targetBuy) {
+        const pnl = (entryPrice - targetBuy) * (inventory / entryPrice);
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'SHORT',
+          entryPrice,
+          exitPrice: targetBuy,
+          pnl,
+          pnlPercent: spreadPct,
+          exitReason: 'TARGET',
+        });
+        position = null;
+        inventory = 0;
+      } else if (highs[i] >= stopLoss) {
+        const pnl = (entryPrice - stopLoss) * (inventory / entryPrice);
+        trades.push({
+          entryTime,
+          exitTime: times[i],
+          side: 'SHORT',
+          entryPrice,
+          exitPrice: stopLoss,
+          pnl,
+          pnlPercent: -(params.rebalance || 1.0),
+          exitReason: 'STOP',
+        });
+        position = null;
+        inventory = 0;
       }
     }
   }
@@ -384,8 +764,16 @@ export const Backtesting: React.FC = () => {
         case 'GRID':
           trades = runGridBacktest(closes, highs, lows, times, numericParams as any);
           break;
+        case 'DCA':
+          trades = runDcaBacktest(closes, highs, lows, times, numericParams as any);
+          break;
+        case 'TWAP':
+          trades = runTwapBacktest(closes, highs, lows, times, numericParams as any);
+          break;
+        case 'MARKET_MAKER':
+          trades = runMarketMakerBacktest(closes, highs, lows, times, numericParams as any);
+          break;
         default:
-          // Fallback to signal for other bots
           trades = runSignalBacktest(closes, highs, lows, times, { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30 });
       }
 

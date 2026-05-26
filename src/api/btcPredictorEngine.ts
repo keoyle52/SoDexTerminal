@@ -120,15 +120,15 @@ const KLINE_LIMIT = 200;
 
 /** Minimum |weightedScore| required to commit to a directional trade.
  *  Below this threshold the cycle is NEUTRAL with reason `weak_score`. */
-const SCORE_THRESHOLD = 0.18;
+const SCORE_THRESHOLD = 0.10;
 
 /** Minimum agreement count among non-neutral signals to commit to a
  *  directional trade. Below this the cycle is NEUTRAL/`low_conviction`. */
-const MIN_AGREEMENT = 4;
+const MIN_AGREEMENT = 3;
 
 /** Round-trip taker fee margin multiplier — score must clear this many
  *  multiples of the fee envelope to overcome friction. */
-const FEE_MARGIN_MULTIPLIER = 1.5;
+const FEE_MARGIN_MULTIPLIER = 0.8;
 
 /** Public Fear & Greed Index endpoint (no key required). */
 const FNG_URL = 'https://api.alternative.me/fng/?limit=1';
@@ -430,22 +430,22 @@ export async function gatherSignals(ctx: GatherContext): Promise<{
   const ema9 = emaSeries(closes, 9);
   const ema21 = emaSeries(closes, 21);
   const emaDiff = (ema9[ema9.length - 1] ?? 0) - (ema21[ema21.length - 1] ?? 0);
-  const emaSignal = squash(emaDiff, livePrice * 0.002);  // ~0.2% spread saturates
+  const emaSignal = squash(emaDiff, livePrice * 0.0005);  // ~0.05% spread saturates (more sensitive)
 
   const { hist: macdHist } = macd(closes);
-  const macdSignal = squash(macdHist, livePrice * 0.001);
+  const macdSignal = squash(macdHist, livePrice * 0.0002); // ~0.02% spread saturates (more sensitive)
 
   // VWAP deviation — mean reversion bias when price is far from VWAP.
   const vwapVal = vwap(klines.slice(-Math.min(96, klines.length)));
   const vwapDeviation = vwapVal > 0 ? ((livePrice - vwapVal) / vwapVal) * 100 : 0;
-  const vwapSignal = -squash(vwapDeviation, 1.5);  // far above VWAP → bearish (revert)
+  const vwapSignal = -squash(vwapDeviation, 0.4);  // ~0.4% deviation saturates (more sensitive)
 
   // Rate of Change over the last 12 candles.
   const rocBars = Math.min(12, closes.length - 1);
   const rocVal = rocBars > 0
     ? ((livePrice - closes[closes.length - 1 - rocBars]) / closes[closes.length - 1 - rocBars]) * 100
     : 0;
-  const rocSignal = squash(rocVal, 0.8);
+  const rocSignal = squash(rocVal, 0.2); // ~0.2% RoC saturates (more sensitive)
 
   // ATR for sizing + multi-timeframe alignment context.
   const atrPctVal = atrPct(klines);
@@ -503,13 +503,13 @@ export async function gatherSignals(ctx: GatherContext): Promise<{
     if (total > 0) {
       orderBookImbalance = bidSize / total;
       // 0.6 imbalance = +0.4 signal magnitude when normalised.
-      orderBookSignal = squash((orderBookImbalance - 0.5) * 2, 0.4);
+      orderBookSignal = squash((orderBookImbalance - 0.5) * 2, 0.2);
     }
   }
 
   // ── Funding rate ──────────────────────────────────────────────────────────
   // Positive funding = longs paying shorts → crowded longs → contrarian SHORT.
-  const fundingRateSignal = -squash(fundingRate, 0.0002);
+  const fundingRateSignal = -squash(fundingRate, 0.00005);
 
   // ── News + ETF + Treasury + F&G ───────────────────────────────────────────
   const newsSentiment = news.score;
@@ -609,7 +609,7 @@ export function computeRuleDecision(signals: SignalSnapshot): RuleDecision {
   if (absScore < SCORE_THRESHOLD) {
     return { direction: 'NEUTRAL', confidence: 0, neutralReason: 'weak_score' };
   }
-  if (expectedMove < FEE_MARGIN_MULTIPLIER * feeEnvelope && absScore < 0.35) {
+  if (expectedMove < FEE_MARGIN_MULTIPLIER * feeEnvelope && absScore < 0.20) {
     return { direction: 'NEUTRAL', confidence: 0, neutralReason: 'marginal_score' };
   }
   if (signals.agreementCount < MIN_AGREEMENT) {
@@ -865,12 +865,12 @@ export function runQuickBacktest(
   const startIdx = Math.max(50, klines.length - lookback);
 
   // Multi-bar exit envelope. Tuned for 5-minute BTC bars: with avg ATR
-  // ~0.10-0.15%, TP ~0.7×ATR (~10 bps net of fees) is achievable in
-  // 1-3 bars on a correct directional call, while SL ~1.4×ATR (~20 bps)
-  // gives the position one bar of noise without an immediate stop-out.
-  const MAX_HOLD_BARS = 3;
-  const TP_MULT = 0.7;
-  const SL_MULT = 1.4;
+  // ~0.10-0.15%, TP ~2.0×ATR (~20-30 bps net of fees) is achievable in
+  // 1-8 bars on a correct directional call, while SL ~1.0×ATR (~10-15 bps)
+  // balances risk while keeping positive mathematical expectation.
+  const MAX_HOLD_BARS = 8;
+  const TP_MULT = 2.0;
+  const SL_MULT = 1.0;
 
   const returns: number[] = [];
   const series: { ts: number; equity: number; drawdown: number }[] = [];
@@ -906,9 +906,9 @@ export function runQuickBacktest(
     const ema9 = emaSeries(closes, 9);
     const ema21 = emaSeries(closes, 21);
     const emaDiff = (ema9[ema9.length - 1] ?? 0) - (ema21[ema21.length - 1] ?? 0);
-    const emaSig = squash(emaDiff, lastPrice * 0.002);
+    const emaSig = squash(emaDiff, lastPrice * 0.0005); // more sensitive scale
     const { hist } = macd(closes);
-    const macdSig = squash(hist, lastPrice * 0.001);
+    const macdSig = squash(hist, lastPrice * 0.0002); // more sensitive scale
     const vwapVal = vwap(subset.slice(-Math.min(96, subset.length)));
     const vwapDev = vwapVal > 0 ? ((lastPrice - vwapVal) / vwapVal) * 100 : 0;
 
@@ -916,16 +916,16 @@ export function runQuickBacktest(
     let direction: PredictionDirection | null = null;
     let setup: 'mean_reversion' | 'trend' | null = null;
 
-    // Mode A — mean reversion at strong extremes (RSI 25/75 + VWAP 0.6%)
-    const oversold  = rsiVal <= 25 && vwapDev <= -0.6;
-    const overbought = rsiVal >= 75 && vwapDev >= 0.6;
+    // Mode A — mean reversion at strong extremes (RSI 30/70 + VWAP 0.4%)
+    const oversold  = rsiVal <= 30 && vwapDev <= -0.4;
+    const overbought = rsiVal >= 70 && vwapDev >= 0.4;
     if (oversold) { direction = 'UP'; setup = 'mean_reversion'; }
     else if (overbought) { direction = 'DOWN'; setup = 'mean_reversion'; }
 
     // Mode B — trend continuation with strong technical confluence
     if (!direction) {
-      const bothBull = emaSig >= 0.45 && macdSig >= 0.30 && rsiVal >= 40 && rsiVal <= 65;
-      const bothBear = emaSig <= -0.45 && macdSig <= -0.30 && rsiVal >= 35 && rsiVal <= 60;
+      const bothBull = emaSig >= 0.30 && macdSig >= 0.20 && rsiVal >= 40 && rsiVal <= 70;
+      const bothBear = emaSig <= -0.30 && macdSig <= -0.20 && rsiVal >= 30 && rsiVal <= 60;
       if (bothBull) { direction = 'UP'; setup = 'trend'; }
       else if (bothBear) { direction = 'DOWN'; setup = 'trend'; }
     }

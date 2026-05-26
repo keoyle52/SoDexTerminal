@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
-import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound, Wallet, X, ChevronRight, CheckCircle2, AlertCircle, Globe } from 'lucide-react';
+import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound, Wallet, X, AlertCircle, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
-import toast from 'react-hot-toast';
+import { deriveAddressFromPrivateKey } from '../api/signer';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':        'Dashboard',
@@ -36,7 +36,6 @@ const PAGE_TITLES: Record<string, string> = {
 // ─── Wallet Setup Modal ───────────────────────────────────────────────────────
 const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const store = useSettingsStore();
-  const [connecting, setConnecting] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape
@@ -45,32 +44,6 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-
-  const handleConnect = async () => {
-    const win = window as any;
-    if (!win.ethereum) {
-      toast.error('MetaMask or Web3 wallet not found. Install MetaMask first.');
-      return;
-    }
-    setConnecting(true);
-    try {
-      const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
-      if (accounts?.[0]) {
-        store.connectWallet(accounts[0]);
-        toast.success(`Connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to connect wallet');
-    } finally {
-      setConnecting(false);
-    }
-  };
-
-  const handleDisconnect = () => {
-    store.disconnectWallet();
-    store.setWalletApiKeyName('');
-    toast.success('Wallet disconnected');
-  };
 
   return (
     <div
@@ -87,11 +60,11 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-              <Wallet size={14} className="text-primary" />
+              <KeyRound size={14} className="text-primary" />
             </div>
             <div>
               <p className="text-sm font-bold text-text-primary">Wallet Setup</p>
-              <p className="text-[10px] text-text-muted">EIP-712 signed trading on SoDEX</p>
+              <p className="text-[10px] text-text-muted">EIP-712 credentials for SoDEX</p>
             </div>
           </div>
           <button
@@ -103,6 +76,17 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Security & Technical Notice */}
+          <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl space-y-1.5">
+            <div className="flex items-center gap-2 text-primary">
+              <KeyRound size={13} className="shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Protocol Notice</span>
+            </div>
+            <p className="text-[10px] text-text-secondary leading-relaxed">
+              Entering the private key is not our choice but a technical requirement of the SoDEX protocol for EIP-712 automated transaction signing. Your credentials are stored strictly locally in your browser memory and are never transmitted to any external server.
+            </p>
+          </div>
+
           {/* Network */}
           <div>
             <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1.5 mb-2">
@@ -129,89 +113,144 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 );
               })}
             </div>
-            {!store.isTestnet && (
-              <p className="mt-2 text-[10px] text-warning flex items-center gap-1">
-                <AlertCircle size={10} />
-                Mainnet uses real assets. Make sure you know what you're doing.
-              </p>
-            )}
           </div>
 
-          {/* Wallet connection */}
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1.5 mb-2">
-              <Wallet size={11} />
-              Browser Wallet (MetaMask / EIP-1193)
-            </label>
-            {store.isWalletConnected ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-success/30 bg-success/5">
-                  <CheckCircle2 size={13} className="text-success shrink-0" />
-                  <span className="text-xs font-mono text-success truncate">{store.walletAddress}</span>
-                </div>
-                <button
-                  onClick={handleDisconnect}
-                  className="w-full py-2 text-xs font-semibold rounded-lg border border-danger/30 text-danger hover:bg-danger/5 transition-colors"
-                >
-                  Disconnect Wallet
-                </button>
+          {/* Form Fields depending on network */}
+          {!store.isTestnet ? (
+            // Mainnet credentials
+            <div className="space-y-3.5">
+              <div className="flex items-start gap-2 p-2.5 bg-warning/5 border border-warning/20 rounded-lg">
+                <AlertCircle size={12} className="text-warning shrink-0 mt-0.5" />
+                <p className="text-[10px] text-warning leading-relaxed">
+                  Mainnet: Enter Agent Key and Master Address. Real assets are used.
+                </p>
               </div>
-            ) : (
-              <button
-                onClick={handleConnect}
-                disabled={connecting}
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                <Wallet size={13} />
-                {connecting ? 'Connecting…' : 'Connect Wallet'}
-              </button>
-            )}
-          </div>
 
-          {/* SoDEX API Key Name (required to avoid "api key not found") */}
-          {store.isWalletConnected && (
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1.5 mb-1.5">
-                <KeyRound size={11} />
-                SoDEX API Key Name
-              </label>
-              <input
-                type="text"
-                value={store.walletApiKeyName}
-                onChange={(e) => store.setWalletApiKeyName(e.target.value)}
-                placeholder={store.walletAddress.toLowerCase() || '0x...'}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background/60 text-text-primary text-xs font-mono focus:outline-none focus:border-primary/50 placeholder:text-text-muted/50"
-              />
-              <p className="mt-1.5 text-[10px] text-text-muted leading-relaxed">
-                The name you used when registering your API key on SoDEX
-                ({store.isTestnet ? 'testnet' : 'mainnet'} → Settings → API Keys).
-                Leave blank to use your wallet address directly
-                {' '}—{' '}
-                <span className="text-warning">if SoDEX returns "api key not found", register your address as an API key first.</span>
-              </p>
-              <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-primary/5 border border-primary/20">
-                <ChevronRight size={10} className="text-primary shrink-0" />
-                <span className="text-[10px] text-primary">
-                  Active X-API-Key:{' '}
-                  <span className="font-mono font-bold">
-                    {store.walletApiKeyName.trim() || store.walletAddress.toLowerCase() || '—'}
-                  </span>
-                </span>
+              {/* API Key Name */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block mb-1">
+                  API Key Name (X-API-Key) <span className="text-danger">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={store.mainnetApiKeyName}
+                  onChange={(e) => store.setMainnetApiKeyName(e.target.value)}
+                  placeholder="e.g. EVM address of Agent"
+                  className={cn(
+                    "w-full px-3 py-2 rounded-lg border bg-background/60 text-text-primary text-xs font-mono focus:outline-none placeholder:text-text-muted/50 transition-colors",
+                    !store.mainnetApiKeyName.trim()
+                      ? "border-danger/50 focus:border-danger/70 focus:ring-1 focus:ring-danger/20"
+                      : "border-border focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                  )}
+                />
+              </div>
+
+              {/* Agent Private Key */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block mb-1">
+                  Agent Private Key <span className="text-danger">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={store.mainnetPrivateKey}
+                  onChange={(e) => store.setMainnetPrivateKey(e.target.value)}
+                  placeholder="0x..."
+                  className={cn(
+                    "w-full px-3 py-2 rounded-lg border bg-background/60 text-text-primary text-xs font-mono focus:outline-none placeholder:text-text-muted/50 transition-colors",
+                    !store.mainnetPrivateKey.trim()
+                      ? "border-danger/50 focus:border-danger/70 focus:ring-1 focus:ring-danger/20"
+                      : "border-border focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                  )}
+                />
+              </div>
+
+              {/* Master EVM Address */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block mb-1">
+                  Master EVM Address <span className="text-danger">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={store.mainnetEvmAddress}
+                  onChange={(e) => store.setMainnetEvmAddress(e.target.value)}
+                  placeholder="0x..."
+                  className={cn(
+                    "w-full px-3 py-2 rounded-lg border bg-background/60 text-text-primary text-xs font-mono focus:outline-none placeholder:text-text-muted/50 transition-colors",
+                    !store.mainnetEvmAddress.trim()
+                      ? "border-danger/50 focus:border-danger/70 focus:ring-1 focus:ring-danger/20"
+                      : "border-border focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                  )}
+                />
+              </div>
+            </div>
+          ) : (
+            // Testnet credentials
+            <div className="space-y-3.5">
+              <div className="flex items-start gap-2 p-2.5 bg-primary/5 border border-primary/20 rounded-lg">
+                <AlertCircle size={12} className="text-primary shrink-0 mt-0.5" />
+                <p className="text-[10px] text-primary leading-relaxed">
+                  Testnet: Master Private Key is required. Other fields are optional.
+                </p>
+              </div>
+
+              {/* Master Private Key */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block mb-1">
+                  Master Private Key <span className="text-danger">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={store.testnetPrivateKey}
+                  onChange={(e) => store.setTestnetPrivateKey(e.target.value)}
+                  placeholder="0x..."
+                  className={cn(
+                    "w-full px-3 py-2 rounded-lg border bg-background/60 text-text-primary text-xs font-mono focus:outline-none placeholder:text-text-muted/50 transition-colors",
+                    !store.testnetPrivateKey.trim()
+                      ? "border-danger/50 focus:border-danger/70 focus:ring-1 focus:ring-danger/20"
+                      : "border-border focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                  )}
+                />
+              </div>
+
+              {/* API Key Name (optional) */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block mb-1">
+                  API Key Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={store.testnetApiKeyName}
+                  onChange={(e) => store.setTestnetApiKeyName(e.target.value)}
+                  placeholder="Defaults to derived address"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background/60 text-text-primary text-xs font-mono focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-text-muted/50 transition-colors"
+                />
+              </div>
+
+              {/* Master EVM Address (optional) */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary block mb-1">
+                  Master EVM Address (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={store.testnetEvmAddress}
+                  onChange={(e) => store.setTestnetEvmAddress(e.target.value)}
+                  placeholder="Defaults to derived address"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background/60 text-text-primary text-xs font-mono focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-text-muted/50 transition-colors"
+                />
               </div>
             </div>
           )}
 
-          {/* Without wallet: hint */}
-          {!store.isWalletConnected && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-white/[0.03] border border-border">
-              <AlertCircle size={13} className="text-text-muted shrink-0 mt-0.5" />
-              <p className="text-[10px] text-text-muted leading-relaxed">
-                No wallet detected yet. Connect MetaMask above, then enter the API key name you registered on SoDEX.
-                If you prefer private-key signing, go to{' '}
-                <Link to="/settings" onClick={onClose} className="text-primary underline">Settings → API Connection</Link>.
-              </p>
-            </div>
-          )}
+          {/* Done Button */}
+          <div className="pt-2">
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 text-xs font-bold rounded-lg bg-primary text-black hover:bg-primary/95 transition-all text-center"
+            >
+              Done
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -223,7 +262,8 @@ export const Topbar: React.FC = () => {
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname] ?? 'Terminal';
   const store = useSettingsStore();
-  const isConnected = !!store.privateKey || store.isWalletConnected;
+  const isConnected = !!store.privateKey;
+  const activeAddress = store.evmAddress || (store.privateKey ? deriveAddressFromPrivateKey(store.privateKey) : '');
   const isLight = store.theme === 'light';
   const [showWalletModal, setShowWalletModal] = useState(false);
 
@@ -237,21 +277,21 @@ export const Topbar: React.FC = () => {
       {showWalletModal && <WalletSetupModal onClose={() => setShowWalletModal(false)} />}
 
       <div className="flex items-center gap-2">
-        {/* Wallet Setup — opens dropdown modal with network + connect + API key */}
+        {/* Wallet Setup — opens dropdown modal with network + credentials */}
         <button
           onClick={() => setShowWalletModal((v) => !v)}
           title="Wallet Setup"
           className={cn(
             'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md border transition-all duration-150',
-            store.isWalletConnected
+            isConnected
               ? 'bg-primary/15 border-primary/40 text-primary hover:bg-primary/20'
               : 'bg-white/[0.04] border-border text-text-muted hover:text-text-primary hover:bg-white/[0.07]'
           )}
         >
-          <Wallet size={13} className={cn(store.isWalletConnected && 'animate-pulse')} />
+          <Wallet size={13} />
           <span>
-            {store.isWalletConnected
-              ? `${store.walletAddress.slice(0, 6)}...${store.walletAddress.slice(-4)}`
+            {isConnected && activeAddress
+              ? `${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}`
               : 'Wallet Setup'}
           </span>
         </button>
@@ -290,12 +330,7 @@ export const Topbar: React.FC = () => {
 
         {/* Connection status */}
         <div className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
-          {store.isWalletConnected ? (
-            <>
-              <Wifi size={12} className="text-primary shrink-0" />
-              <span className="text-primary font-medium">Wallet Active</span>
-            </>
-          ) : isConnected ? (
+          {isConnected ? (
             <>
               <Wifi size={12} className="text-success shrink-0" />
               <span className="text-success font-medium">Connected</span>

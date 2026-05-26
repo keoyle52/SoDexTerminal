@@ -150,15 +150,6 @@ function resolveActive(state: {
   testnetEvmAddress: string;
   testnetApiKeyName: string;
 }): { apiKeyName: string; privateKey: string; evmAddress: string } {
-  if (state.isWalletConnected && state.walletAddress) {
-    // Prefer the explicitly registered API key name; fall back to address.
-    const key = state.walletApiKeyName.trim() || state.walletAddress.toLowerCase();
-    return {
-      apiKeyName: key,
-      privateKey: '', // Empty privateKey indicates wallet-connect signatures
-      evmAddress: state.walletAddress,
-    };
-  }
   if (state.isTestnet) {
     return {
       // If user registered an API key on testnet, use it. Otherwise fall
@@ -206,9 +197,9 @@ export const useSettingsStore = create<SettingsState>()(
       theme: 'dark',
       telegramChatId: '',
 
-      connectWallet: (address) => {
+      connectWallet: (_address) => {
         set((s) => {
-          const next = { ...s, isWalletConnected: true, walletAddress: address.trim() };
+          const next = { ...s, isWalletConnected: false, walletAddress: '' };
           return { ...next, ...resolveActive(next) };
         });
       },
@@ -218,9 +209,9 @@ export const useSettingsStore = create<SettingsState>()(
           return { ...next, ...resolveActive(next) };
         });
       },
-      setWalletApiKeyName: (val) => {
+      setWalletApiKeyName: (_val) => {
         set((s) => {
-          const next = { ...s, walletApiKeyName: val.trim() };
+          const next = { ...s, walletApiKeyName: '' };
           return { ...next, ...resolveActive(next) };
         });
       },
@@ -354,6 +345,9 @@ export const useSettingsStore = create<SettingsState>()(
       // credentials without needing the user to touch the UI.
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        state.isWalletConnected = false;
+        state.walletAddress = '';
+        state.walletApiKeyName = '';
         const active = resolveActive(state);
         state.apiKeyName = active.apiKeyName;
         state.privateKey = active.privateKey;

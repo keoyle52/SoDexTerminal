@@ -12,7 +12,6 @@ import { Input } from '../components/common/Input';
 import { Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { cn } from '../lib/utils';
-import { WalletConnect } from '../components/WalletConnect';
 
 const TABS = [
   { id: 'api' as const, label: 'API Connection', icon: Key },
@@ -170,23 +169,6 @@ export const Settings: React.FC = () => {
                     </p>
                   </div>
                 )}
-              </Card>
-
-              {/* Web3 Wallet Connection Card */}
-              <Card>
-                <div className="flex items-center gap-2 mb-5">
-                  <Wallet size={16} className="text-primary" />
-                  <h3 className="text-sm font-semibold">Web3 Browser Wallet</h3>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <p className="text-xs text-text-muted leading-relaxed">
-                    Connect your MetaMask or another Web3 browser wallet to securely sign orders via EIP-712.
-                    This is highly recommended since your private key remains secure in your wallet.
-                  </p>
-                  
-                  <WalletConnect />
-                </div>
               </Card>
 
               {/* ───── Mainnet credentials (hidden on testnet) ───── */}
