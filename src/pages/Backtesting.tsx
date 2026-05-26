@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   FlaskConical, Play, BarChart3, TrendingUp, TrendingDown,
   Target, AlertTriangle, Zap, Layers,
-  CheckCircle2, Award, TrendingUp as TrendingUpIcon
+  CheckCircle2, Award, TrendingUp as TrendingUpIcon, Download
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { Card, StatCard } from '../components/common/Card';
@@ -868,6 +868,154 @@ export const Backtesting: React.FC = () => {
     }
   }, [symbol, timeframe, candleCount, selectedBot, params, takerFee]);
 
+  const handleDownloadPDF = useCallback(() => {
+    if (!result) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Pop-up blocked. Please allow pop-ups to download the Report Card.');
+      return;
+    }
+
+    const botName = BOT_CONFIGS[selectedBot].name;
+    const validationText = result.daysCovered >= 30 ? 'VALIDATED ✓' : 'INSUFFICIENT DATA';
+    const validationColor = result.daysCovered >= 30 ? '#10B981' : '#F59E0B';
+
+    // Build equity curve SVG points
+    const minEq = Math.min(...result.equityCurve.map(e => e.equity), 0);
+    const maxEq = Math.max(...result.equityCurve.map(e => e.equity), 0);
+    const range = maxEq - minEq || 1;
+    const svgWidth = 800;
+    const svgHeight = 250;
+
+    const points = result.equityCurve.map((p, i) => {
+      const x = (i / (result.equityCurve.length - 1)) * (svgWidth - 40) + 20;
+      const y = svgHeight - 20 - ((p.equity - minEq) / range) * (svgHeight - 40);
+      return `${x},${y}`;
+    }).join(' ');
+
+    const fillPoints = `20,${svgHeight - 20} ${points} ${svgWidth - 20},${svgHeight - 20}`;
+
+    const paramEntries = Object.entries(params[selectedBot])
+      .map(([k, v]) => `<div><strong>${BOT_CONFIGS[selectedBot].paramLabels[k] || k}:</strong> ${v}</div>`)
+      .join('');
+
+    const tradeRows = result.trades.slice(0, 100).map((t, i) => `
+      <tr style="border-bottom: 1px solid #E5E7EB;">
+        <td style="padding: 8px; font-family: monospace;">${i + 1}</td>
+        <td style="padding: 8px; font-family: monospace;">${t.entryTime}</td>
+        <td style="padding: 8px; font-family: monospace;">${t.exitTime}</td>
+        <td style="padding: 8px;">
+          <span style="padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: ${t.side === 'LONG' ? '#DEF7EC' : '#FDE8E8'}; color: ${t.side === 'LONG' ? '#03543F' : '#9B1C1C'};">
+            ${t.side}
+          </span>
+        </td>
+        <td style="padding: 8px; text-align: right; font-family: monospace;">$${t.entryPrice.toFixed(2)}</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace;">$${t.exitPrice.toFixed(2)}</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace; color: ${t.pnl >= 0 ? '#10B981' : '#EF4444'}; font-weight: bold;">
+          ${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}
+        </td>
+        <td style="padding: 8px;">
+          <span style="font-size: 10px; background: #F3F4F6; padding: 2px 6px; border-radius: 4px;">${t.exitReason}</span>
+        </td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Strategy Report Card - ${botName} (${symbol})</title>
+        <style>
+          body { font-family: 'Inter', -apple-system, sans-serif; color: #1F2937; line-height: 1.5; padding: 40px; margin: 0; background: #FFFFFF; }
+          header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #E5E7EB; padding-bottom: 20px; margin-bottom: 30px; }
+          .title h1 { margin: 0; font-size: 24px; font-weight: 800; color: #111827; }
+          .title p { margin: 5px 0 0 0; font-size: 12px; color: #6B7280; }
+          .validation-badge { background: ${validationColor}; color: white; font-weight: bold; padding: 8px 16px; border-radius: 8px; font-size: 13px; }
+          .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #4B5563; margin-bottom: 15px; border-bottom: 1px solid #F3F4F6; padding-bottom: 5px; }
+          .grid-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+          .info-card { background: #F9FAFB; border: 1px solid #E5E7EB; padding: 15px; border-radius: 8px; }
+          .info-card .label { font-size: 10px; font-weight: 600; color: #6B7280; text-transform: uppercase; margin-bottom: 5px; }
+          .info-card .value { font-size: 18px; font-weight: 700; color: #111827; }
+          .metrics-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+          .metrics-table th, .metrics-table td { border: 1px solid #E5E7EB; padding: 10px; text-align: left; font-size: 12px; }
+          .metrics-table th { background: #F3F4F6; font-weight: 600; }
+          .chart-container { margin-bottom: 35px; text-align: center; }
+          table.trades-list { width: 100%; border-collapse: collapse; font-size: 11px; }
+          table.trades-list th { background: #F9FAFB; border-bottom: 2px solid #E5E7EB; padding: 8px; text-align: left; }
+          .footer { margin-top: 50px; font-size: 10px; color: #9CA3AF; text-align: center; border-top: 1px solid #E5E7EB; padding-top: 20px; }
+          @media print { body { padding: 0; } .no-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="background: #F3F4F6; padding: 15px; text-align: center; margin-bottom: 20px; border-radius: 8px;">
+          <button onclick="window.print()" style="background: #6366F1; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px;">Print or Save as PDF</button>
+        </div>
+        <header>
+          <div class="title">
+            <h1>SoDEX PowerOps Strategy Report Card</h1>
+            <p>Generated on ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} | Platform: SoDEX Terminal</p>
+          </div>
+          <div class="validation-badge">${validationText}</div>
+        </header>
+        <div class="section-title">Backtest Settings & Context</div>
+        <div class="grid-info">
+          <div class="info-card"><div class="label">Strategy Name</div><div class="value">${botName}</div></div>
+          <div class="info-card"><div class="label">Market Instrument</div><div class="value">${symbol}</div></div>
+          <div class="info-card"><div class="label">Timeframe</div><div class="value">${timeframe}</div></div>
+          <div class="info-card"><div class="label">Historical Period</div><div class="value">${result.daysCovered.toFixed(1)} Days</div></div>
+        </div>
+        <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+          <div style="flex: 2;">
+            <div class="section-title">Bot Configuration Parameters</div>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 12px; background: #F9FAFB; padding: 15px; border-radius: 8px; border: 1px solid #E5E7EB;">${paramEntries}</div>
+          </div>
+          <div style="flex: 1;">
+            <div class="section-title">Validation Details</div>
+            <div style="font-size: 12px; background: #F9FAFB; padding: 15px; border-radius: 8px; border: 1px solid #E5E7EB;">
+              <div><strong>Status:</strong> <span style="color: ${validationColor}; font-weight: bold;">${validationText}</span></div>
+              <div style="margin-top: 8px;"><strong>Market Regime:</strong> ${result.marketRegime}</div>
+              <div style="margin-top: 8px;"><strong>Round-Trip Taker Fee:</strong> ${takerFee}%</div>
+            </div>
+          </div>
+        </div>
+        <div class="section-title">Performance Summary</div>
+        <table class="metrics-table">
+          <thead><tr><th>Net Profit / Loss</th><th>Win Rate</th><th>Sharpe Ratio</th><th>Profit Factor</th><th>Max Drawdown</th><th>Expectancy</th></tr></thead>
+          <tbody>
+            <tr>
+              <td style="font-size: 16px; font-weight: bold; color: ${result.totalPnl >= 0 ? '#10B981' : '#EF4444'};">${result.totalPnl >= 0 ? '+' : ''}$${result.totalPnl.toFixed(2)}</td>
+              <td style="font-size: 16px; font-weight: bold;">${result.winRate.toFixed(1)}%</td>
+              <td style="font-size: 16px; font-weight: bold;">${result.sharpeRatio.toFixed(2)}</td>
+              <td style="font-size: 16px; font-weight: bold;">${result.profitFactor === Infinity ? '∞' : result.profitFactor.toFixed(2)}</td>
+              <td style="font-size: 16px; font-weight: bold; color: #EF4444;">$${result.maxDrawdown.toFixed(2)}</td>
+              <td style="font-size: 16px; font-weight: bold; color: ${result.expectancy >= 0 ? '#10B981' : '#EF4444'};">${result.expectancy >= 0 ? '+' : ''}$${result.expectancy.toFixed(2)}</td>
+            </tr>
+            <tr><td colspan="2"><strong>Trades Count:</strong> ${result.totalTrades} (${result.winTrades} W / ${result.lossTrades} L)</td><td colspan="2"><strong>Avg Trade:</strong> ${result.avgTrade >= 0 ? '+' : ''}$${result.avgTrade.toFixed(2)}</td><td colspan="2"><strong>Best / Worst Trade:</strong> <span style="color: #10B981;">+$${result.bestTrade.toFixed(2)}</span> / <span style="color: #EF4444;">$${result.worstTrade.toFixed(2)}</span></td></tr>
+          </tbody>
+        </table>
+        <div class="section-title">Performance Curve (Equity Growth)</div>
+        <div class="chart-container">
+          <svg width="${svgWidth}" height="${svgHeight}" style="background: #FAFAFA; border: 1px solid #E5E7EB; border-radius: 8px;">
+            <polygon points="${fillPoints}" fill="#EEF2FF" />
+            <polyline points="${points}" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-linejoin="round" />
+            <line x1="20" y1="${svgHeight - 20}" x2="${svgWidth - 20}" y2="${svgHeight - 20}" stroke="#E5E7EB" stroke-width="1.5" />
+            <line x1="20" y1="${(svgHeight - 20) / 2 + 10}" x2="${svgWidth - 20}" y2="${(svgHeight - 20) / 2 + 10}" stroke="#F3F4F6" stroke-dasharray="4" />
+            <line x1="20" y1="20" x2="${svgWidth - 20}" y2="20" stroke="#F3F4F6" stroke-dasharray="4" />
+            <text x="25" y="35" font-family="sans-serif" font-size="10" fill="#6B7280" font-weight="bold">Peak: $${maxEq.toFixed(2)}</text>
+            <text x="25" y="${svgHeight - 28}" font-family="sans-serif" font-size="10" fill="#6B7280" font-weight="bold">Min: $${minEq.toFixed(2)}</text>
+          </svg>
+        </div>
+        <div class="section-title">Detailed Trade History (Last 100 Trades)</div>
+        <table class="trades-list"><thead><tr><th>#</th><th>Entry Time</th><th>Exit Time</th><th>Side</th><th style="text-align: right;">Entry Price</th><th style="text-align: right;">Exit Price</th><th style="text-align: right;">PnL</th><th>Exit Reason</th></tr></thead><tbody>${tradeRows}</tbody></table>
+        <div class="footer"><p>Confidential Strategy Evaluation Report • Powered by SoDEX PowerOps Engine • Wave 2 Compliance Document</p></div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  }, [result, selectedBot, symbol, timeframe, params, takerFee]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -1067,6 +1215,16 @@ export const Backtesting: React.FC = () => {
                     : `Only ${result.daysCovered.toFixed(1)} days of data. ` +
                       `Increase candle count to reach 30-day minimum for valid backtest.`}
                 </p>
+              </div>
+              <div className="shrink-0 self-center">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleDownloadPDF}
+                  icon={<Download size={14} />}
+                >
+                  Download Report Card
+                </Button>
               </div>
             </div>
           </Card>

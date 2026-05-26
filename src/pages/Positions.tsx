@@ -490,7 +490,8 @@ export const Positions: React.FC = () => {
         )}
 
         {activeTab === 'risk' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 flex-1">
+          <div className="flex flex-col gap-5 flex-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Risk Control Overview */}
             <Card className="p-5 flex flex-col gap-4">
               <div className="flex items-center gap-2.5 pb-3 border-b border-border/50">
@@ -606,7 +607,65 @@ export const Positions: React.FC = () => {
               </div>
             </Card>
           </div>
-        )}
+
+          {/* Failure-Case Analysis & Mitigation Panel (Full Width) */}
+          <Card className="p-5 flex flex-col gap-4">
+            <div className="flex items-center gap-2.5 pb-3 border-b border-border/50">
+              <AlertTriangle className="text-danger" size={18} />
+              <span className="text-sm font-semibold text-text-primary">Failure-Case Analysis & Mitigation Protocols</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Sideways Regimes */}
+              <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-text-primary">Sideways Whipsaw (Yatay Piyasa)</span>
+                    <span className="px-2 py-0.5 rounded bg-warning/10 text-warning text-[9px] font-bold uppercase">Moderate Risk</span>
+                  </div>
+                  <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
+                    <strong>Failure Mode:</strong> Trend-following algorithms (BTC Predictor, Signal Bot) execute entries on false breakouts, causing rapid whipsaws and consecutive SL triggers.
+                  </p>
+                </div>
+                <div className="p-2.5 bg-success/5 border border-success/20 rounded-lg text-[10px] text-success leading-relaxed">
+                  <strong>Mitigation:</strong> Score-margin threshold checks filter low-conviction signals. Dynamic rotation to Grid Bot sweeps market-maker spreads.
+                </div>
+              </div>
+
+              {/* Trending Crashes */}
+              <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-text-primary">Flash Crashes (Sert Düşüşler)</span>
+                    <span className="px-2 py-0.5 rounded bg-danger/20 text-danger text-[9px] font-bold uppercase">High Risk</span>
+                  </div>
+                  <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
+                    <strong>Failure Mode:</strong> Grid Bot accumulates long positions down to the lower boundary during price drops, depleting margin and triggering liquidation.
+                  </p>
+                </div>
+                <div className="p-2.5 bg-success/5 border border-success/20 rounded-lg text-[10px] text-success leading-relaxed">
+                  <strong>Mitigation:</strong> Hard Stop-Loss exits close positions. Dynamic grid density expands lower boundary pricing, reducing liquidation exposure.
+                </div>
+              </div>
+
+              {/* News Volatility */}
+              <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-text-primary">Toxic Flow & Slippage (Haber Şoku)</span>
+                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-bold uppercase">Low Risk</span>
+                  </div>
+                  <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
+                    <strong>Failure Mode:</strong> High-impact macroeconomic news widens bid-ask spreads. MM bots fill toxic flows, and orders suffer severe slippage.
+                  </p>
+                </div>
+                <div className="p-2.5 bg-success/5 border border-success/20 rounded-lg text-[10px] text-success leading-relaxed">
+                  <strong>Mitigation:</strong> WebSocket latency checks halt order flow during anomalies. Re-quote buffer offset widens bids to capture higher spreads.
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
         {activeTab === 'history' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1">
