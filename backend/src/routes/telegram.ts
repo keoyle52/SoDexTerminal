@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getBot, isRegistered, registerChat, linkAccount } from '../bot';
+import { getBot, isRegistered, registerChat, linkAccount, getBotStates, updateBotState } from '../bot';
 
 const router = Router();
 
@@ -98,7 +98,7 @@ router.post('/verify', async (req: Request, res: Response) => {
 
 // GET /api/telegram/status
 // Query: ?chatId=...
-// Returns registration link status.
+// Returns registration link status and bot running states.
 router.get('/status', (req: Request, res: Response) => {
   const { chatId } = req.query;
 
@@ -113,7 +113,44 @@ router.get('/status', (req: Request, res: Response) => {
     return;
   }
 
-  res.json({ ok: true, registered: isRegistered(numericId) });
+  res.json({
+    ok: true,
+    registered: isRegistered(numericId),
+    botStates: getBotStates(numericId)
+  });
+});
+
+// POST /api/telegram/states
+// Body: { chatId, botStates: { grid?, mm?, signal?, predictor? } }
+// Updates running bot states on the backend.
+router.post('/states', (req: Request, res: Response) => {
+  const { chatId, botStates } = req.body as {
+    chatId?: string | number;
+    botStates?: {
+      grid?: 'RUNNING' | 'STOPPED';
+      mm?: 'RUNNING' | 'STOPPED';
+      signal?: 'RUNNING' | 'STOPPED';
+      predictor?: 'RUNNING' | 'STOPPED';
+    };
+  };
+
+  if (!chatId || !botStates) {
+    res.status(400).json({ error: 'chatId and botStates are required' });
+    return;
+  }
+
+  const numericId = Number(chatId);
+  if (!Number.isFinite(numericId)) {
+    res.status(400).json({ error: 'chatId must be a numeric value' });
+    return;
+  }
+
+  if (botStates.grid) updateBotState(numericId, 'grid', botStates.grid);
+  if (botStates.mm) updateBotState(numericId, 'mm', botStates.mm);
+  if (botStates.signal) updateBotState(numericId, 'signal', botStates.signal);
+  if (botStates.predictor) updateBotState(numericId, 'predictor', botStates.predictor);
+
+  res.json({ ok: true });
 });
 
 // POST /api/telegram/disconnect

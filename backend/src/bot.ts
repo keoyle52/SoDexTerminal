@@ -12,7 +12,7 @@ interface LinkedAccount {
 }
 const chatAccounts = new Map<number, LinkedAccount>();
 
-interface BotStates {
+export interface BotStates {
   grid: 'RUNNING' | 'STOPPED';
   mm: 'RUNNING' | 'STOPPED';
   signal: 'RUNNING' | 'STOPPED';
@@ -611,11 +611,95 @@ export function startBot(): void {
   });
 
   bot.onText(/\/startbot$/, (msg) => {
-    bot!.sendMessage(msg.chat.id, '❌ Please specify a bot key.\nUse: `/startbot grid`, `/startbot mm`, `/startbot signal`, `/startbot predictor`', { parse_mode: 'Markdown' });
+    const chatId = msg.chat.id;
+    const acct = chatAccounts.get(chatId);
+    if (!acct) {
+      bot!.sendMessage(chatId, '⚠️ No SoDEX account linked. Verify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
+      return;
+    }
+    bot!.sendMessage(chatId, '🤖 *Select a SoDEX trading bot to START:*', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🟢 Start Grid Bot', callback_data: 'start_grid' },
+            { text: '🟢 Start Market Maker', callback_data: 'start_mm' }
+          ],
+          [
+            { text: '🟢 Start Signal Bot', callback_data: 'start_signal' },
+            { text: '🟢 Start BTC Predictor', callback_data: 'start_predictor' }
+          ]
+        ]
+      }
+    });
   });
 
   bot.onText(/\/stopbot$/, (msg) => {
-    bot!.sendMessage(msg.chat.id, '❌ Please specify a bot key.\nUse: `/stopbot grid`, `/stopbot mm`, `/stopbot signal`, `/stopbot predictor`', { parse_mode: 'Markdown' });
+    const chatId = msg.chat.id;
+    const acct = chatAccounts.get(chatId);
+    if (!acct) {
+      bot!.sendMessage(chatId, '⚠️ No SoDEX account linked. Verify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const bStates = getOrInitBotStates(chatId);
+    const activeBots = [];
+    if (bStates.grid === 'RUNNING') activeBots.push([{ text: '🔴 Stop Grid Bot', callback_data: 'stop_grid' }]);
+    if (bStates.mm === 'RUNNING') activeBots.push([{ text: '🔴 Stop Market Maker', callback_data: 'stop_mm' }]);
+    if (bStates.signal === 'RUNNING') activeBots.push([{ text: '🔴 Stop Signal Bot', callback_data: 'stop_signal' }]);
+    if (bStates.predictor === 'RUNNING') activeBots.push([{ text: '🔴 Stop BTC Predictor', callback_data: 'stop_predictor' }]);
+
+    if (activeBots.length === 0) {
+      bot!.sendMessage(chatId, 'ℹ️ No trading bots are currently running.', { parse_mode: 'Markdown' });
+    } else {
+      bot!.sendMessage(chatId, '🤖 *Select a SoDEX trading bot to STOP:*', {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: activeBots
+        }
+      });
+    }
+  });
+
+  bot.on('callback_query', (query) => {
+    const chatId = query.message?.chat.id;
+    const data = query.data;
+    if (!chatId || !data) return;
+
+    const bStates = getOrInitBotStates(chatId);
+    const acct = chatAccounts.get(chatId);
+    
+    bot!.answerCallbackQuery(query.id).catch(() => {});
+
+    if (!acct) {
+      bot!.sendMessage(chatId, '⚠️ No SoDEX account linked. Verify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    if (data === 'start_grid') {
+      bStates.grid = 'RUNNING';
+      bot!.sendMessage(chatId, '🟢 *Grid Bot* has been STARTED. Initializing grid parameters and placing orders.');
+    } else if (data === 'start_mm') {
+      bStates.mm = 'RUNNING';
+      bot!.sendMessage(chatId, '🟢 *Market Maker Bot* has been STARTED. Quoting limit orders on BBO.');
+    } else if (data === 'start_signal') {
+      bStates.signal = 'RUNNING';
+      bot!.sendMessage(chatId, '🟢 *Signal Bot* has been STARTED. Scanning combined technical signals.');
+    } else if (data === 'start_predictor') {
+      bStates.predictor = 'RUNNING';
+      bot!.sendMessage(chatId, '🟢 *BTC Predictor* auto-trade has been ENABLED.');
+    } else if (data === 'stop_grid') {
+      bStates.grid = 'STOPPED';
+      bot!.sendMessage(chatId, '🔴 *Grid Bot* has been STOPPED. Cancelled pending orders.');
+    } else if (data === 'stop_mm') {
+      bStates.mm = 'STOPPED';
+      bot!.sendMessage(chatId, '🔴 *Market Maker Bot* has been STOPPED. Removed open limit quotes.');
+    } else if (data === 'stop_signal') {
+      bStates.signal = 'STOPPED';
+      bot!.sendMessage(chatId, '🔴 *Signal Bot* has been STOPPED. Active signal trades remain open.');
+    } else if (data === 'stop_predictor') {
+      bStates.predictor = 'STOPPED';
+      bot!.sendMessage(chatId, '🔴 *BTC Predictor* auto-trade has been DISABLED.');
+    }
   });
 
   bot.onText(/\/alerts/, (msg) => {
@@ -647,4 +731,13 @@ export function unregisterChat(chatId: number): void {
   registeredChats.delete(chatId);
   chatAccounts.delete(chatId);
   userBotStates.delete(chatId);
+}
+
+export function getBotStates(chatId: number): BotStates {
+  return getOrInitBotStates(chatId);
+}
+
+export function updateBotState(chatId: number, botKey: keyof BotStates, state: 'RUNNING' | 'STOPPED'): void {
+  const bStates = getOrInitBotStates(chatId);
+  bStates[botKey] = state;
 }

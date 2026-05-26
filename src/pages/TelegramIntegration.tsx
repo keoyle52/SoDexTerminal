@@ -276,6 +276,92 @@ export const TelegramIntegration: React.FC = () => {
     toast.error('Telegram bot disconnected. All trading bots stopped & unfilled orders cancelled.');
   }, [telegramChatId, isDemoMode, addTerminalLog, setTelegramChatId]);
 
+  const syncStateToBackend = useCallback(async (botKey: 'grid' | 'mm' | 'signal' | 'predictor', state: 'RUNNING' | 'STOPPED') => {
+    if (!telegramChatId) return;
+    try {
+      await fetch(`${API_BASE}/api/telegram/states`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: telegramChatId,
+          botStates: { [botKey]: state }
+        })
+      });
+    } catch (err) {
+      // ignore
+    }
+  }, [telegramChatId]);
+
+  const syncBotsToBackendStates = useCallback(async (backendStates: {
+    grid: 'RUNNING' | 'STOPPED';
+    mm: 'RUNNING' | 'STOPPED';
+    signal: 'RUNNING' | 'STOPPED';
+    predictor: 'RUNNING' | 'STOPPED';
+  }) => {
+    // Sync Grid Bot
+    const activeGrid = useBotStore.getState().gridBot;
+    if (backendStates.grid === 'RUNNING' && activeGrid.status !== 'RUNNING') {
+      useBotStore.getState().gridBot.setField('status', 'RUNNING');
+      addTerminalLog('GRID', 'INFO', 'Grid Bot started via Telegram command.');
+    } else if (backendStates.grid === 'STOPPED' && activeGrid.status === 'RUNNING') {
+      useBotStore.getState().gridBot.setField('status', 'STOPPED');
+      if (!isDemoMode) {
+        const market = activeGrid.isSpot ? 'spot' : 'perps';
+        await cancelAllOrders(activeGrid.symbol, market).catch(() => {});
+      }
+      gridLevelsRef.current = [];
+      addTerminalLog('GRID', 'INFO', 'Grid Bot stopped via Telegram command.');
+    }
+
+    // Sync Market Maker Bot
+    const activeMm = useBotStore.getState().marketMakerBot;
+    if (backendStates.mm === 'RUNNING' && activeMm.status !== 'RUNNING') {
+      useBotStore.getState().marketMakerBot.setField('status', 'RUNNING');
+      useBotStore.getState().marketMakerBot.setField('sessionStartedAt', Date.now());
+      addTerminalLog('MM', 'INFO', 'Market Maker Bot started via Telegram command.');
+    } else if (backendStates.mm === 'STOPPED' && activeMm.status === 'RUNNING') {
+      useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
+      useBotStore.getState().marketMakerBot.setField('sessionStartedAt', null);
+      if (!isDemoMode) {
+        await cancelAllOrders(activeMm.symbol, 'spot').catch(() => {});
+      }
+      mmOrdersRef.current.clear();
+      sessionIdRef.current = '';
+      addTerminalLog('MM', 'INFO', 'Market Maker Bot stopped via Telegram command.');
+    }
+
+    // Sync Signal Bot
+    const activeSig = useBotStore.getState().signalBot;
+    if (backendStates.signal === 'RUNNING' && activeSig.status !== 'RUNNING') {
+      useBotStore.getState().signalBot.setField('status', 'RUNNING');
+      addTerminalLog('SIGNAL', 'INFO', 'Signal Bot started via Telegram command.');
+    } else if (backendStates.signal === 'STOPPED' && activeSig.status === 'RUNNING') {
+      useBotStore.getState().signalBot.setField('status', 'STOPPED');
+      if (!isDemoMode && activeSig.activePositions.length > 0) {
+        const market = activeSig.isSpot ? 'spot' : 'perps';
+        const stopIds: string[] = [];
+        activeSig.activePositions.forEach(p => {
+          if (p.tpOrderId) stopIds.push(p.tpOrderId);
+          if (p.slOrderId) stopIds.push(p.slOrderId);
+        });
+        if (stopIds.length > 0) {
+          await Promise.all(stopIds.map(id => cancelOrder(id, activeSig.symbol, market).catch(() => {})));
+        }
+      }
+      addTerminalLog('SIGNAL', 'INFO', 'Signal Bot stopped via Telegram command.');
+    }
+
+    // Sync Predictor
+    const activePred = usePredictorStore.getState().autoTradeEnabled;
+    if (backendStates.predictor === 'RUNNING' && !activePred) {
+      usePredictorStore.getState().setAutoTradeEnabled(true);
+      addTerminalLog('PREDICTOR', 'INFO', 'BTC Predictor auto-trade enabled via Telegram command.');
+    } else if (backendStates.predictor === 'STOPPED' && activePred) {
+      usePredictorStore.getState().setAutoTradeEnabled(false);
+      addTerminalLog('PREDICTOR', 'INFO', 'BTC Predictor auto-trade disabled via Telegram command.');
+    }
+  }, [isDemoMode, addTerminalLog]);
+
   // Auto scroll console
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -343,10 +429,22 @@ export const TelegramIntegration: React.FC = () => {
           try {
             const res = await fetch(`${API_BASE}/api/telegram/status?chatId=${telegramChatId}`);
             if (res.ok) {
-              const data = await res.json() as { ok: boolean; registered: boolean };
+              const data = await res.json() as {
+                ok: boolean;
+                registered: boolean;
+                botStates?: {
+                  grid: 'RUNNING' | 'STOPPED';
+                  mm: 'RUNNING' | 'STOPPED';
+                  signal: 'RUNNING' | 'STOPPED';
+                  predictor: 'RUNNING' | 'STOPPED';
+                };
+              };
               if (data.ok && !data.registered) {
                 void disconnectAndStopAllBots(true);
                 return;
+              }
+              if (data.ok && data.botStates) {
+                await syncBotsToBackendStates(data.botStates);
               }
             }
           } catch {
@@ -1200,7 +1298,7 @@ export const TelegramIntegration: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode, telegramChatId, disconnectAndStopAllBots]);
+  }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode, telegramChatId, disconnectAndStopAllBots, syncBotsToBackendStates]);
 
   // AI Auto configure parameters helper
   const handleAiConfigure = async () => {
@@ -1289,6 +1387,7 @@ export const TelegramIntegration: React.FC = () => {
       if (grid.status === 'RUNNING') {
         useBotStore.getState().gridBot.setField('status', 'STOPPED');
         addTerminalLog('GRID', 'INFO', 'Grid Bot stop signal received. Cancelling grid layers...');
+        void syncStateToBackend('grid', 'STOPPED');
         toast.success('Grid Bot stopped!');
       } else {
         // sync overrides to store
@@ -1303,6 +1402,7 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().gridBot.setField('stopLossPrice', gridParams.stopLossPrice);
         useBotStore.getState().gridBot.setField('takeProfitPrice', gridParams.takeProfitPrice);
         useBotStore.getState().gridBot.setField('status', 'RUNNING');
+        void syncStateToBackend('grid', 'RUNNING');
         toast.success('Grid Bot started!');
       }
     } else if (activeTab === 'MM') {
@@ -1310,6 +1410,7 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
         useBotStore.getState().marketMakerBot.setField('sessionStartedAt', null);
         addTerminalLog('MM', 'INFO', 'Market Maker stopped. Open limit orders removed.');
+        void syncStateToBackend('mm', 'STOPPED');
         toast.success('Market Maker stopped!');
       } else {
         useBotStore.getState().marketMakerBot.setField('symbol', mmParams.symbol);
@@ -1323,12 +1424,14 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().marketMakerBot.setField('feeBudgetUsdt', mmParams.feeBudgetUsdt);
         useBotStore.getState().marketMakerBot.setField('status', 'RUNNING');
         useBotStore.getState().marketMakerBot.setField('sessionStartedAt', Date.now());
+        void syncStateToBackend('mm', 'RUNNING');
         toast.success('Market Maker started!');
       }
     } else if (activeTab === 'SIGNAL') {
       if (sig.status === 'RUNNING') {
         useBotStore.getState().signalBot.setField('status', 'STOPPED');
         addTerminalLog('SIGNAL', 'INFO', 'Signal Bot stopped.');
+        void syncStateToBackend('signal', 'STOPPED');
         toast.success('Signal Bot stopped!');
       } else {
         useBotStore.getState().signalBot.setField('symbol', sigParams.symbol);
@@ -1344,17 +1447,20 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().signalBot.setField('onConflictingSignal', sigParams.onConflictingSignal as any);
         useBotStore.getState().signalBot.setField('isSpot', sigParams.isSpot);
         useBotStore.getState().signalBot.setField('status', 'RUNNING');
+        void syncStateToBackend('signal', 'RUNNING');
         toast.success('Signal Bot started!');
       }
     } else if (activeTab === 'PREDICTOR') {
       if (pred) {
         usePredictorStore.getState().setAutoTradeEnabled(false);
         addTerminalLog('PREDICTOR', 'INFO', 'BTC Predictor auto-trade disabled.');
+        void syncStateToBackend('predictor', 'STOPPED');
         toast.success('Auto-trade disabled!');
       } else {
         usePredictorStore.getState().setTradeAmountUsdt(predParams.amount || '100');
         usePredictorStore.getState().setTradeLeverage(parseInt(predParams.leverage) || 10);
         usePredictorStore.getState().setAutoTradeEnabled(true);
+        void syncStateToBackend('predictor', 'RUNNING');
         toast.success('BTC Predictor auto-trade enabled!');
       }
     }
