@@ -18,16 +18,19 @@ import { usePredictorStore } from '../store/predictorStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import {
   fetchPositions,
-  fetchTickers,
-  normalizeSymbol
+  normalizeSymbol,
+  placeOrder,
+  cancelAllOrders,
+  fetchBookTickers,
+  fetchOpenOrders,
+  fetchOrderStatus,
+  fetchOrderbook,
+  updatePerpsLeverage,
+  cancelOrder,
+  batchCancelOrders
 } from '../api/services';
-import {
-  classifyRegime,
-  recommendBot,
-  regimeLabel,
-  botLabel,
-  type RegimeInputs,
-} from '../api/aiOrchestrator';
+import { buildContext, recommendGridBot, recommendMarketMakerBot, recommendSignalBot } from '../api/aiAutoConfig';
+import { classifyRegime, recommendBot, regimeLabel, botLabel, type RegimeInputs } from '../api/aiOrchestrator';
 
 interface Message {
   sender: 'user' | 'bot';
@@ -61,6 +64,40 @@ async function verifyAndConnect(chatId: string, account?: AccountInfo): Promise<
 
 type TabType = 'GRID' | 'MM' | 'SIGNAL' | 'PREDICTOR';
 
+interface LocalGridLevel {
+  price: number;
+  orderId?: string;
+  side?: 'BUY' | 'SELL';
+  status: 'EMPTY' | 'ACTIVE' | 'FILLED';
+}
+
+interface LocalManagedOrder {
+  clOrdID: string;
+  orderID?: string;
+  side: 'BUY' | 'SELL';
+  price: number;
+  quantity: number;
+  postedAt: number;
+}
+
+function buildGridLevels(
+  lower: number,
+  upper: number,
+  count: number,
+  spacing: 'ARITHMETIC' | 'GEOMETRIC',
+): number[] {
+  if (lower <= 0 || upper <= 0 || count < 2 || lower >= upper) return [];
+  const levels: number[] = [];
+  if (spacing === 'GEOMETRIC') {
+    const ratio = Math.pow(upper / lower, 1 / count);
+    for (let i = 0; i <= count; i++) levels.push(lower * Math.pow(ratio, i));
+  } else {
+    const step = (upper - lower) / count;
+    for (let i = 0; i <= count; i++) levels.push(lower + step * i);
+  }
+  return levels;
+}
+
 export const TelegramIntegration: React.FC = () => {
   const { 
     telegramChatId, 
@@ -68,7 +105,9 @@ export const TelegramIntegration: React.FC = () => {
     evmAddress, 
     apiKeyName, 
     isTestnet, 
-    privateKey 
+    privateKey,
+    isDemoMode,
+    setIsDemoMode
   } = useSettingsStore();
 
   const grid = useBotStore(state => state.gridBot);
@@ -91,6 +130,15 @@ export const TelegramIntegration: React.FC = () => {
   const [alertEnabled, setAlertEnabled] = useState(true);
   const [orderFillsEnabled, setOrderFillsEnabled] = useState(true);
 
+  const gridLevelsRef = useRef<LocalGridLevel[]>([]);
+  const mmOrdersRef = useRef<Map<string, LocalManagedOrder>>(new Map());
+  const seqRef = useRef(0);
+  const sessionIdRef = useRef('');
+  const lastCancelAtRef = useRef(0);
+  const consecutiveErrorsRef = useRef<Record<string, number>>({ GRID: 0, MM: 0, SIGNAL: 0, PREDICTOR: 0 });
+  const reconcileBusyRef = useRef(false);
+  const pollBusyRef = useRef(false);
+
   // Chat Preview messages
   const [messages, setMessages] = useState<Message[]>([
     { sender: 'bot', text: '🤖 SoDEX PowerOps Bot\n\nConnected and ready! I will notify you about regime changes, P&L reports, and order fills.\n\nType /help to see available commands.', timestamp: '14:20' },
@@ -107,9 +155,43 @@ export const TelegramIntegration: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('GRID');
   
   // Local params overrides to prevent direct stores writes before clicking Start
-  const [gridParams, setGridParams] = useState({ symbol: 'BTC_USDC', lowerPrice: '60000', upperPrice: '70000', gridCount: '10', spacing: 'ARITHMETIC', amount: '0.01' });
-  const [mmParams, setMmParams] = useState({ symbol: 'BTC_USDC', budget: '100', size: '10', spread: '0.25', rebalance: '2.5' });
-  const [sigParams, setSigParams] = useState({ symbol: 'BTC-USD', leverage: '5', amount: '50', tp: '3', sl: '2' });
+  const [gridParams, setGridParams] = useState({
+    symbol: 'BTC_USDC',
+    lowerPrice: '60000',
+    upperPrice: '70000',
+    gridCount: '10',
+    spacing: 'ARITHMETIC',
+    amount: '0.01',
+    isSpot: true,
+    leverage: '5',
+    stopLossPrice: '',
+    takeProfitPrice: ''
+  });
+  const [mmParams, setMmParams] = useState({
+    symbol: 'BTC_USDC',
+    budget: '100',
+    size: '10',
+    spread: '5',
+    rebalance: '10',
+    layers: '3',
+    makerFeeRate: '0.0001',
+    volumeTargetUsdt: '',
+    feeBudgetUsdt: ''
+  });
+  const [sigParams, setSigParams] = useState({
+    symbol: 'BTC-USD',
+    leverage: '5',
+    amount: '50',
+    tp: '3',
+    sl: '2',
+    combineMode: 'ANY',
+    checkInterval: '60',
+    klineInterval: '1m',
+    cooldownSeconds: '120',
+    maxOpenPositions: '1',
+    onConflictingSignal: 'CLOSE_AND_REVERSE',
+    isSpot: false
+  });
   const [predParams, setPredParams] = useState({ amount: '100', leverage: '10' });
 
   // Terminal Console state
@@ -175,13 +257,13 @@ export const TelegramIntegration: React.FC = () => {
     toast.success('SoDEX API credentials saved successfully!');
   };
 
-  // Bot execution simulations inside the background loop
+  // Bot execution states/refs inside the background loop
   const gridStepRef = useRef(0);
   const mmStepRef = useRef(0);
   const sigStepRef = useRef(0);
   const predStepRef = useRef(0);
 
-  // Main Background Bot execution simulation loop
+  // Main Background Bot execution loop (Simulated or Real SoDEX API)
   useEffect(() => {
     const interval = setInterval(async () => {
       const activeGrid = useBotStore.getState().gridBot;
@@ -197,43 +279,238 @@ export const TelegramIntegration: React.FC = () => {
           return;
         }
 
-        const step = gridStepRef.current;
-        if (step === 0) {
-          addTerminalLog('GRID', 'INFO', `Initializing Grid Bot on ${activeGrid.symbol}. Mode: ${activeGrid.mode}`);
-          addTerminalLog('GRID', 'INFO', `Placing ${activeGrid.gridCount} limit grid levels between $${activeGrid.lowerPrice} and $${activeGrid.upperPrice}...`);
-          gridStepRef.current = 1;
-        } else if (step === 1) {
-          addTerminalLog('GRID', 'SUCCESS', `Placed initial Buy and Sell grids successfully. Orders active.`);
-          gridStepRef.current = 2;
-        } else if (step >= 2) {
-          // Simulate dynamic order fill every few cycles
-          if (Math.random() > 0.6) {
-            const side = Math.random() > 0.5 ? 'BUY' : 'SELL';
-            const price = side === 'BUY' ? parseFloat(activeGrid.lowerPrice) * 1.01 : parseFloat(activeGrid.upperPrice) * 0.99;
-            const pnl = parseFloat(activeGrid.amountPerGrid) * price * 0.015;
-            
-            addTerminalLog('GRID', 'TRADE', `${side} Limit filled at $${price.toFixed(2)}. PnL: +$${pnl.toFixed(2)} USDT.`);
-            useBotStore.getState().gridBot.bumpField('completedGrids', 1);
-            useBotStore.getState().gridBot.bumpField('realizedPnl', pnl);
-            useBotPnlStore.getState().recordTrade('grid', {
-              pnlUsdt: pnl,
-              ts: Date.now(),
-              note: `${side} grid filled @ ${price.toFixed(2)}`,
-            });
+        if (isDemoMode) {
+          // Simulation Mode
+          const step = gridStepRef.current;
+          if (step === 0) {
+            addTerminalLog('GRID', 'INFO', `[DEMO] Initializing Grid Bot on ${activeGrid.symbol}. Mode: ${activeGrid.mode}`);
+            addTerminalLog('GRID', 'INFO', `[DEMO] Placing ${activeGrid.gridCount} limit grid levels between $${activeGrid.lowerPrice} and $${activeGrid.upperPrice}...`);
+            gridStepRef.current = 1;
+          } else if (step === 1) {
+            addTerminalLog('GRID', 'SUCCESS', `[DEMO] Placed initial Buy and Sell grids successfully. Orders active.`);
+            gridStepRef.current = 2;
+          } else if (step >= 2) {
+            // Simulate dynamic order fill every few cycles
+            if (Math.random() > 0.6) {
+              const side = Math.random() > 0.5 ? 'BUY' : 'SELL';
+              const price = side === 'BUY' ? parseFloat(activeGrid.lowerPrice) * 1.01 : parseFloat(activeGrid.upperPrice) * 0.99;
+              const pnl = parseFloat(activeGrid.amountPerGrid) * price * 0.015;
+              
+              addTerminalLog('GRID', 'TRADE', `[DEMO] ${side} Limit filled at $${price.toFixed(2)}. PnL: +$${pnl.toFixed(2)} USDT.`);
+              useBotStore.getState().gridBot.bumpField('completedGrids', 1);
+              useBotStore.getState().gridBot.bumpField('realizedPnl', pnl);
+              useBotPnlStore.getState().recordTrade('grid', {
+                pnlUsdt: pnl,
+                ts: Date.now(),
+                note: `[DEMO] ${side} grid filled @ ${price.toFixed(2)}`,
+              });
 
-            // Send notification to phone chat
-            if (orderFillsEnabled) {
-              const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              setMessages(prev => [...prev, {
-                sender: 'bot',
-                text: `🤖 *Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${side}\n• Price: $${price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`,
-                timestamp: timeStr
-              }]);
+              if (orderFillsEnabled) {
+                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                setMessages(prev => [...prev, {
+                  sender: 'bot',
+                  text: `🤖 *[DEMO] Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${side}\n• Price: $${price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`,
+                  timestamp: timeStr
+                }]);
+              }
             }
+          }
+        } else {
+          // REAL API Grid Bot Mode!
+          if (pollBusyRef.current) return;
+          pollBusyRef.current = true;
+          try {
+            const market: 'spot' | 'perps' = activeGrid.isSpot ? 'spot' : 'perps';
+            // Get last price
+            const tickers = await fetchBookTickers(market);
+            const arr = Array.isArray(tickers) ? tickers : [];
+            const normalizedSym = normalizeSymbol(activeGrid.symbol, market);
+            const ticker = arr.find((t: any) => t.symbol === normalizedSym) as any;
+            if (!ticker) {
+              addTerminalLog('GRID', 'ERROR', `Could not fetch price for ${activeGrid.symbol}`);
+              return;
+            }
+            const bid = parseFloat(String(ticker.bidPrice ?? ticker.bid ?? '0'));
+            const ask = parseFloat(String(ticker.askPrice ?? ticker.ask ?? '0'));
+            const mid = (bid + ask) / 2;
+
+            // Check stop conditions
+            if (activeGrid.stopLossPrice && mid <= parseFloat(activeGrid.stopLossPrice)) {
+              addTerminalLog('GRID', 'INFO', `Stop Loss triggered at $${mid.toFixed(2)}. Stopping bot.`);
+              await cancelAllOrders(activeGrid.symbol, market);
+              useBotStore.getState().gridBot.setField('status', 'STOPPED');
+              gridLevelsRef.current = [];
+              return;
+            }
+            if (activeGrid.takeProfitPrice && mid >= parseFloat(activeGrid.takeProfitPrice)) {
+              addTerminalLog('GRID', 'INFO', `Take Profit triggered at $${mid.toFixed(2)}. Stopping bot.`);
+              await cancelAllOrders(activeGrid.symbol, market);
+              useBotStore.getState().gridBot.setField('status', 'STOPPED');
+              gridLevelsRef.current = [];
+              return;
+            }
+
+            // Check if initialized
+            if (gridLevelsRef.current.length === 0) {
+              addTerminalLog('GRID', 'INFO', `Initializing Grid Bot on ${activeGrid.symbol}. Mode: ${activeGrid.mode}`);
+              
+              if (!activeGrid.isSpot) {
+                await updatePerpsLeverage(activeGrid.symbol, parseInt(activeGrid.leverage) || 5, 2);
+              }
+
+              const prices = buildGridLevels(
+                parseFloat(activeGrid.lowerPrice),
+                parseFloat(activeGrid.upperPrice),
+                parseInt(activeGrid.gridCount),
+                activeGrid.spacing as any
+              );
+              
+              const levels: LocalGridLevel[] = prices.map(price => ({ price, status: 'EMPTY' }));
+              
+              addTerminalLog('GRID', 'INFO', `Placing ${activeGrid.gridCount} grid orders...`);
+              
+              for (let i = 0; i < levels.length; i++) {
+                const level = levels[i];
+                let side: 'BUY' | 'SELL' | null = null;
+                if (activeGrid.mode === 'NEUTRAL') {
+                  side = level.price < mid ? 'BUY' : 'SELL';
+                } else if (activeGrid.mode === 'LONG') {
+                  if (level.price < mid) side = 'BUY';
+                } else if (activeGrid.mode === 'SHORT') {
+                  if (level.price > mid) side = 'SELL';
+                }
+                
+                if (side) {
+                  try {
+                    const res = await placeOrder({
+                      symbol: activeGrid.symbol,
+                      side: side === 'BUY' ? 1 : 2,
+                      type: 1, // LIMIT
+                      quantity: activeGrid.amountPerGrid,
+                      price: level.price.toFixed(2),
+                      timeInForce: 1, // GTC
+                    }, market) as any;
+                    
+                    const orderId = String(res?.orderID ?? res?.orderId ?? res?.id ?? '');
+                    if (orderId) {
+                      levels[i] = {
+                        ...level,
+                        status: 'ACTIVE',
+                        orderId,
+                        side
+                      };
+                      addTerminalLog('GRID', 'INFO', `Placed ${side} @ $${level.price.toFixed(2)} (${orderId.slice(-8)})`);
+                    }
+                  } catch (err: any) {
+                    addTerminalLog('GRID', 'ERROR', `Place failed @ $${level.price.toFixed(2)}: ${getErrorMessage(err)}`);
+                  }
+                }
+              }
+              
+              gridLevelsRef.current = levels;
+              useBotStore.getState().gridBot.setField('status', 'RUNNING');
+              addTerminalLog('GRID', 'SUCCESS', `Initial grids successfully placed.`);
+            } else {
+              // Monitor live orders
+              const openOrders = await fetchOpenOrders(market, activeGrid.symbol) as any[];
+              const openOrderIds = new Set(openOrders.map(o => String(o.orderID ?? o.orderId ?? o.id ?? '')));
+              
+              const levels = [...gridLevelsRef.current];
+              for (let i = 0; i < levels.length; i++) {
+                const level = levels[i];
+                if (level.status === 'ACTIVE' && level.orderId && !openOrderIds.has(level.orderId)) {
+                  try {
+                    const status = await fetchOrderStatus(level.orderId, activeGrid.symbol, market);
+                    if (status && status.status === 'FILLED') {
+                      const neighbourIdx = level.side === 'BUY' ? i + 1 : i - 1;
+                      const neighbourPrice = (neighbourIdx >= 0 && neighbourIdx < levels.length)
+                        ? levels[neighbourIdx].price
+                        : level.price;
+                      
+                      const realQty = status.filledQty > 0 ? status.filledQty : parseFloat(activeGrid.amountPerGrid);
+                      const pnl = Math.abs(neighbourPrice - level.price) * realQty;
+                      
+                      addTerminalLog('GRID', 'TRADE', `${level.side} filled @ $${level.price.toFixed(2)}. PnL: +$${pnl.toFixed(2)} USDT.`);
+                      
+                      useBotStore.getState().gridBot.bumpField('completedGrids', 1);
+                      useBotStore.getState().gridBot.bumpField('realizedPnl', pnl);
+                      useBotPnlStore.getState().recordTrade('grid', {
+                        pnlUsdt: pnl,
+                        ts: Date.now(),
+                        note: `${level.side} grid filled @ ${level.price.toFixed(2)}`,
+                      });
+
+                      if (orderFillsEnabled) {
+                        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        setMessages(prev => [...prev, {
+                          sender: 'bot',
+                          text: `🤖 *Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${level.side}\n• Price: $${level.price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`,
+                          timestamp: timeStr
+                        }]);
+                      }
+
+                      // Place replenishment
+                      const replSide = level.side === 'BUY' ? 'SELL' : 'BUY';
+                      const replPrice = level.side === 'BUY' ? levels[i + 1]?.price : levels[i - 1]?.price;
+                      
+                      if (replPrice) {
+                        try {
+                          const res = await placeOrder({
+                            symbol: activeGrid.symbol,
+                            side: replSide === 'BUY' ? 1 : 2,
+                            type: 1, // LIMIT
+                            quantity: activeGrid.amountPerGrid,
+                            price: replPrice.toFixed(2),
+                            timeInForce: 1,
+                          }, market) as any;
+                          
+                          const orderId = String(res?.orderID ?? res?.orderId ?? res?.id ?? '');
+                          if (orderId) {
+                            const replIdx = level.side === 'BUY' ? i + 1 : i - 1;
+                            levels[replIdx] = {
+                              price: replPrice,
+                              status: 'ACTIVE',
+                              orderId,
+                              side: replSide
+                            };
+                            addTerminalLog('GRID', 'INFO', `Replenished: Placed ${replSide} @ $${replPrice.toFixed(2)} (${orderId.slice(-8)})`);
+                          }
+                        } catch (err: any) {
+                          addTerminalLog('GRID', 'ERROR', `Replenishment failed @ $${replPrice.toFixed(2)}: ${getErrorMessage(err)}`);
+                        }
+                      }
+                      
+                      levels[i] = { ...level, status: 'FILLED', orderId: undefined, side: undefined };
+                    } else if (status && status.status === 'EXPIRED') {
+                      addTerminalLog('GRID', 'INFO', `Order ${level.orderId.slice(-8)} was cancelled on exchange.`);
+                      levels[i] = { ...level, status: 'EMPTY', orderId: undefined, side: undefined };
+                    }
+                  } catch (err) {
+                    // Ignore transient
+                  }
+                }
+              }
+              gridLevelsRef.current = levels;
+              
+              const activeCount = levels.filter(l => l.status === 'ACTIVE').length;
+              useBotStore.getState().gridBot.setField('activeOrders', activeCount);
+            }
+            consecutiveErrorsRef.current.GRID = 0;
+          } catch (err: any) {
+            consecutiveErrorsRef.current.GRID += 1;
+            addTerminalLog('GRID', 'ERROR', `Runner error: ${getErrorMessage(err)}`);
+            if (consecutiveErrorsRef.current.GRID >= 4) {
+              addTerminalLog('GRID', 'ERROR', `Too many errors. Stopping Grid Bot.`);
+              useBotStore.getState().gridBot.setField('status', 'STOPPED');
+              gridLevelsRef.current = [];
+            }
+          } finally {
+            pollBusyRef.current = false;
           }
         }
       } else {
         gridStepRef.current = 0;
+        gridLevelsRef.current = [];
       }
 
       // ── Market Maker Loop ──
@@ -244,35 +521,256 @@ export const TelegramIntegration: React.FC = () => {
           return;
         }
 
-        const step = mmStepRef.current;
-        if (step === 0) {
-          addTerminalLog('MM', 'INFO', `Market Maker started on ${activeMm.symbol}. Budget: $${activeMm.budgetUsdt} USDT.`);
-          addTerminalLog('MM', 'INFO', `Quoting bid/ask layers at spread ${activeMm.spreadBps} bps...`);
-          mmStepRef.current = 1;
-        } else if (step >= 1) {
-          if (Math.random() > 0.5) {
-            const side = Math.random() > 0.5 ? 'BUY' : 'SELL';
-            const price = 64200 + (Math.random() - 0.5) * 100;
-            const volume = parseFloat(activeMm.orderSizeUsdt);
-            const fee = volume * 0.0001; // maker fee
+        if (isDemoMode) {
+          // Simulation
+          const step = mmStepRef.current;
+          if (step === 0) {
+            addTerminalLog('MM', 'INFO', `[DEMO] Market Maker started on ${activeMm.symbol}. Budget: $${activeMm.budgetUsdt} USDT.`);
+            addTerminalLog('MM', 'INFO', `[DEMO] Quoting bid/ask layers at spread ${activeMm.spreadBps} bps...`);
+            mmStepRef.current = 1;
+          } else if (step >= 1) {
+            if (Math.random() > 0.5) {
+              const side = Math.random() > 0.5 ? 'BUY' : 'SELL';
+              const price = 64200 + (Math.random() - 0.5) * 100;
+              const volume = parseFloat(activeMm.orderSizeUsdt);
+              const fee = volume * 0.0001; // maker fee
+              
+              addTerminalLog('MM', 'TRADE', `[DEMO] Maker ${side} order filled @ $${price.toFixed(2)}. Volume: $${volume} USDT.`);
+              useBotStore.getState().marketMakerBot.bumpField('ordersFilled', 1);
+              useBotStore.getState().marketMakerBot.bumpField('volumeUsdt', volume);
+              useBotStore.getState().marketMakerBot.bumpField('feesUsdt', fee);
 
-            addTerminalLog('MM', 'TRADE', `Maker ${side} order filled @ $${price.toFixed(2)}. Volume: $${volume} USDT.`);
-            useBotStore.getState().marketMakerBot.bumpField('ordersFilled', 1);
-            useBotStore.getState().marketMakerBot.bumpField('volumeUsdt', volume);
-            useBotStore.getState().marketMakerBot.bumpField('feesUsdt', fee);
-
-            if (orderFillsEnabled && Math.random() > 0.7) {
-              const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              setMessages(prev => [...prev, {
-                sender: 'bot',
-                text: `🤖 *MM Bot Order Fill*\n• Pair: ${activeMm.symbol}\n• Side: ${side}\n• Size: $${volume} USDT\n• Total Volume: $${useBotStore.getState().marketMakerBot.volumeUsdt.toFixed(2)} USDT`,
-                timestamp: timeStr
-              }]);
+              if (orderFillsEnabled && Math.random() > 0.7) {
+                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                setMessages(prev => [...prev, {
+                  sender: 'bot',
+                  text: `🤖 *[DEMO] MM Bot Order Fill*\n• Pair: ${activeMm.symbol}\n• Side: ${side}\n• Size: $${volume} USDT\n• Total Volume: $${useBotStore.getState().marketMakerBot.volumeUsdt.toFixed(2)} USDT`,
+                  timestamp: timeStr
+                }]);
+              }
             }
+          }
+        } else {
+          // REAL API Market Maker Mode!
+          if (reconcileBusyRef.current) return;
+          reconcileBusyRef.current = true;
+          try {
+            if (!sessionIdRef.current) {
+              sessionIdRef.current = Math.random().toString(36).slice(2, 8);
+              seqRef.current = 0;
+            }
+
+            const ob = await fetchOrderbook(activeMm.symbol, 'spot', 5) as any;
+            let topBid = parseFloat(String(ob?.bids?.[0]?.[0] ?? 0));
+            let topAsk = parseFloat(String(ob?.asks?.[0]?.[0] ?? 0));
+            
+            if (topBid <= 0 || topAsk <= topBid) {
+              const bts = await fetchBookTickers('spot') as any[];
+              const row = bts.find(t => t.symbol === activeMm.symbol);
+              topBid = parseFloat(String(row?.bidPrice ?? row?.bid ?? 0));
+              topAsk = parseFloat(String(row?.askPrice ?? row?.ask ?? 0));
+            }
+
+            if (topBid <= 0 || topAsk <= topBid) {
+              addTerminalLog('MM', 'ERROR', `Orderbook unavailable for ${activeMm.symbol}`);
+              return;
+            }
+
+            const openOrders = await fetchOpenOrders('spot', activeMm.symbol) as any[];
+            const openByCloid = new Map<string, any>();
+            for (const o of openOrders) {
+              const cl = String(o.clOrdID ?? o.clientOrderId ?? '');
+              if (cl.startsWith('mm_')) openByCloid.set(cl, o);
+            }
+
+            const missingOrders: [string, LocalManagedOrder][] = [];
+            const stillOpen = new Map<string, LocalManagedOrder>();
+            for (const [cloid, mo] of mmOrdersRef.current.entries()) {
+              if (openByCloid.has(cloid)) {
+                stillOpen.set(cloid, mo);
+              } else {
+                missingOrders.push([cloid, mo]);
+              }
+            }
+            mmOrdersRef.current = stillOpen;
+
+            if (missingOrders.length > 0) {
+              for (const [cloid, mo] of missingOrders) {
+                try {
+                  const status = await fetchOrderStatus(mo.orderID ?? cloid, activeMm.symbol, 'spot');
+                  if (status && status.status === 'FILLED' && status.filledQty > 0) {
+                    const realQty = status.filledQty;
+                    const realPrice = status.avgFillPrice > 0 ? status.avgFillPrice : mo.price;
+                    const realNotional = status.filledValue > 0 ? status.filledValue : realQty * realPrice;
+                    const realFee = status.totalFee > 0 ? status.totalFee : realNotional * 0.0001;
+
+                    useBotStore.getState().marketMakerBot.bumpField('ordersFilled', 1);
+                    useBotStore.getState().marketMakerBot.bumpField('volumeUsdt', realNotional);
+                    useBotStore.getState().marketMakerBot.bumpField('feesUsdt', realFee);
+                    useBotStore.getState().marketMakerBot.bumpField('inventoryBase', mo.side === 'BUY' ? realQty : -realQty);
+
+                    useBotPnlStore.getState().recordTrade('marketmaker', {
+                      pnlUsdt: -realFee,
+                      ts: Date.now(),
+                      note: `${mo.side} MM fill ${realQty.toFixed(4)} @ ${realPrice.toFixed(2)}`,
+                    });
+
+                    addTerminalLog('MM', 'TRADE', `✓ Maker ${mo.side} filled @ $${realPrice.toFixed(2)}. Vol +$${realNotional.toFixed(2)}, Fee: $${realFee.toFixed(4)}`);
+
+                    if (orderFillsEnabled) {
+                      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      setMessages(prev => [...prev, {
+                        sender: 'bot',
+                        text: `🤖 *MM Bot Order Fill*\n• Side: ${mo.side}\n• Price: $${realPrice.toFixed(2)}\n• Size: $${realNotional.toFixed(2)} USDT\n• Inventory: ${useBotStore.getState().marketMakerBot.inventoryBase.toFixed(4)}`,
+                        timestamp: timeStr
+                      }]);
+                    }
+                  } else {
+                    useBotStore.getState().marketMakerBot.bumpField('ordersCancelled', 1);
+                    addTerminalLog('MM', 'INFO', `✗ Maker ${mo.side} @ $${mo.price.toFixed(2)} expired/cancelled.`);
+                  }
+                } catch {
+                  // fallback
+                }
+              }
+            }
+
+            const postFillMm = useBotStore.getState().marketMakerBot;
+            const volTarget = parseFloat(activeMm.volumeTargetUsdt) || 0;
+            const feeBudget = parseFloat(activeMm.feeBudgetUsdt) || 0;
+            if (volTarget > 0 && postFillMm.volumeUsdt >= volTarget) {
+              addTerminalLog('MM', 'SUCCESS', `Volume target $${volTarget} reached. Stopping.`);
+              await cancelAllOrders(activeMm.symbol, 'spot');
+              useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
+              return;
+            }
+            if (feeBudget > 0 && postFillMm.feesUsdt >= feeBudget) {
+              addTerminalLog('MM', 'SUCCESS', `Fee budget $${feeBudget} reached. Stopping.`);
+              await cancelAllOrders(activeMm.symbol, 'spot');
+              useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
+              return;
+            }
+
+            const requoteThreshold = (parseFloat(activeMm.requoteBps) || 5) * 0.0001;
+            const toCancel: string[] = [];
+            for (const [cloid, mo] of mmOrdersRef.current.entries()) {
+              const ref = mo.side === 'BUY' ? topBid : topAsk;
+              if (Math.abs(mo.price - ref) / ref > requoteThreshold) {
+                toCancel.push(mo.orderID ?? cloid);
+                mmOrdersRef.current.delete(cloid);
+              }
+            }
+
+            if (toCancel.length > 0) {
+              await batchCancelOrders(toCancel, activeMm.symbol, 'spot');
+              useBotStore.getState().marketMakerBot.bumpField('ordersCancelled', toCancel.length);
+              lastCancelAtRef.current = Date.now();
+              addTerminalLog('MM', 'INFO', `Re-quote: cancelled ${toCancel.length} stale order(s).`);
+            }
+
+            if (Date.now() - lastCancelAtRef.current < 5000) {
+              return;
+            }
+
+            const layers = Math.max(1, Math.min(5, parseInt(activeMm.layers) || 1));
+            const liveBuys = [...openByCloid.values()].filter(o => o.side === 1 || o.side === 'BUY');
+            const liveSells = [...openByCloid.values()].filter(o => o.side === 2 || o.side === 'SELL');
+            
+            const offsetMul = (parseFloat(activeMm.spreadBps) || 0) * 0.0001;
+            const qtyPerOrder = parseFloat(activeMm.orderSizeUsdt) / topBid;
+
+            const budget = parseFloat(activeMm.budgetUsdt) || 100;
+            const orderSize = parseFloat(activeMm.orderSizeUsdt) || 10;
+            const committedBuyUsdt = liveBuys.reduce((sum, o) => sum + (parseFloat(o.price ?? 0) * parseFloat(o.quantity ?? o.qty ?? 0)), 0);
+            const remainingBuyBudget = Math.max(0, budget - committedBuyUsdt);
+            const buySlots = Math.min(layers, liveBuys.length + Math.floor(remainingBuyBudget / orderSize));
+
+            for (let i = liveBuys.length; i < buySlots; i++) {
+              const px = topBid * (1 - offsetMul) - i * 0.01;
+              seqRef.current += 1;
+              const cloid = `mm_${sessionIdRef.current}_${seqRef.current.toString(36)}`;
+              try {
+                const res = await placeOrder({
+                  symbol: activeMm.symbol,
+                  side: 1,
+                  type: 1,
+                  quantity: qtyPerOrder.toFixed(4),
+                  price: px.toFixed(2),
+                  timeInForce: 4,
+                  clOrdID: cloid,
+                }, 'spot') as any;
+
+                const orderID = String(res?.orderID ?? res?.orderId ?? cloid);
+                mmOrdersRef.current.set(cloid, {
+                  clOrdID: cloid,
+                  orderID,
+                  side: 'BUY',
+                  price: px,
+                  quantity: qtyPerOrder,
+                  postedAt: Date.now()
+                });
+                useBotStore.getState().marketMakerBot.bumpField('ordersPlaced', 1);
+                addTerminalLog('MM', 'INFO', `↗ BUY ${qtyPerOrder.toFixed(4)} @ $${px.toFixed(2)} posted.`);
+              } catch (err: any) {
+                if (!/post.?only|would.?cross/i.test(getErrorMessage(err))) {
+                  addTerminalLog('MM', 'ERROR', `Place failed: ${getErrorMessage(err)}`);
+                }
+              }
+            }
+
+            const liveInventory = useBotStore.getState().marketMakerBot.inventoryBase;
+            const reservedSellQty = liveSells.reduce((sum, o) => sum + parseFloat(o.quantity ?? o.qty ?? 0), 0);
+            const availableInventory = Math.max(0, liveInventory - reservedSellQty);
+            const sellSlots = Math.min(layers, liveSells.length + Math.floor(availableInventory / qtyPerOrder));
+
+            for (let i = liveSells.length; i < sellSlots; i++) {
+              const px = topAsk * (1 + offsetMul) + i * 0.01;
+              seqRef.current += 1;
+              const cloid = `mm_${sessionIdRef.current}_${seqRef.current.toString(36)}`;
+              try {
+                const res = await placeOrder({
+                  symbol: activeMm.symbol,
+                  side: 2,
+                  type: 1,
+                  quantity: qtyPerOrder.toFixed(4),
+                  price: px.toFixed(2),
+                  timeInForce: 4,
+                  clOrdID: cloid,
+                }, 'spot') as any;
+
+                const orderID = String(res?.orderID ?? res?.orderId ?? cloid);
+                mmOrdersRef.current.set(cloid, {
+                  clOrdID: cloid,
+                  orderID,
+                  side: 'SELL',
+                  price: px,
+                  quantity: qtyPerOrder,
+                  postedAt: Date.now()
+                });
+                useBotStore.getState().marketMakerBot.bumpField('ordersPlaced', 1);
+                addTerminalLog('MM', 'INFO', `↘ SELL ${qtyPerOrder.toFixed(4)} @ $${px.toFixed(2)} posted.`);
+              } catch (err: any) {
+                if (!/post.?only|would.?cross/i.test(getErrorMessage(err))) {
+                  addTerminalLog('MM', 'ERROR', `Place failed: ${getErrorMessage(err)}`);
+                }
+              }
+            }
+            consecutiveErrorsRef.current.MM = 0;
+          } catch (err: any) {
+            consecutiveErrorsRef.current.MM += 1;
+            addTerminalLog('MM', 'ERROR', `MM runner error: ${getErrorMessage(err)}`);
+            if (consecutiveErrorsRef.current.MM >= 4) {
+              addTerminalLog('MM', 'ERROR', `Too many MM errors. Stopping MM bot.`);
+              useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
+            }
+          } finally {
+            reconcileBusyRef.current = false;
           }
         }
       } else {
         mmStepRef.current = 0;
+        mmOrdersRef.current.clear();
+        sessionIdRef.current = '';
       }
 
       // ── Signal Bot Loop ──
@@ -292,50 +790,221 @@ export const TelegramIntegration: React.FC = () => {
           if (Math.random() > 0.8) {
             const side: 'LONG' | 'SHORT' = Math.random() > 0.5 ? 'LONG' : 'SHORT';
             addTerminalLog('SIGNAL', 'INFO', `Indicator crossover alert! RSI oversold / MACD Bullish on ${activeSig.symbol}.`);
-            addTerminalLog('SIGNAL', 'TRADE', `Executing ${side} market entry at $${(64000).toFixed(2)}. Size: $${activeSig.amountUsdt} USDT.`);
             
-            // Add fake active position
-            const newPos = {
-              id: Math.random().toString(36).substr(2, 9),
-              symbol: activeSig.symbol,
-              side,
-              entryPrice: 64000,
-              quantity: parseFloat(activeSig.amountUsdt) / 64000,
-              leverage: parseInt(activeSig.leverage),
-              tpPrice: side === 'LONG' ? 64000 * 1.03 : 64000 * 0.97,
-              slPrice: side === 'LONG' ? 64000 * 0.98 : 64000 * 1.02,
-              openTime: Date.now(),
-              triggeredBy: ['RSI', 'MACD'],
-              unrealizedPnl: 0,
-              status: 'OPEN' as const
-            };
-            useBotStore.getState().signalBot.setField('activePositions', [newPos]);
-            sigStepRef.current = 2;
+            if (isDemoMode) {
+              const entryPrice = 64000;
+              addTerminalLog('SIGNAL', 'TRADE', `[DEMO] Executing ${side} market entry at $${entryPrice.toFixed(2)}. Size: $${activeSig.amountUsdt} USDT.`);
+              
+              const newPos = {
+                id: Math.random().toString(36).substr(2, 9),
+                symbol: activeSig.symbol,
+                side,
+                entryPrice,
+                quantity: parseFloat(activeSig.amountUsdt) / entryPrice,
+                leverage: parseInt(activeSig.leverage),
+                tpPrice: side === 'LONG' ? entryPrice * 1.03 : entryPrice * 0.97,
+                slPrice: side === 'LONG' ? entryPrice * 0.98 : entryPrice * 1.02,
+                openTime: Date.now(),
+                triggeredBy: ['RSI', 'MACD'],
+                unrealizedPnl: 0,
+                status: 'OPEN' as const
+              };
+              useBotStore.getState().signalBot.setField('activePositions', [newPos]);
+              sigStepRef.current = 2;
+            } else {
+              // REAL API Signal Trade!
+              try {
+                const tickers = await fetchBookTickers('perps');
+                const row = tickers.find((t: any) => t.symbol === activeSig.symbol) as any;
+                const price = row ? (parseFloat(row.bidPrice) + parseFloat(row.askPrice)) / 2 : 64000;
+                
+                const qty = (parseFloat(activeSig.amountUsdt) * parseInt(activeSig.leverage)) / price;
+                
+                addTerminalLog('SIGNAL', 'TRADE', `Executing ${side} market entry at $${price.toFixed(2)}. Size: $${activeSig.amountUsdt} USDT (Leverage ${activeSig.leverage}x).`);
+                
+                await updatePerpsLeverage(activeSig.symbol, parseInt(activeSig.leverage) || 5, 2);
+                
+                const res = await placeOrder({
+                  symbol: activeSig.symbol,
+                  side: side === 'LONG' ? 1 : 2,
+                  type: 2, // MARKET
+                  quantity: qty.toFixed(4)
+                }, 'perps') as any;
+                
+                const orderId = String(res?.orderID ?? res?.orderId ?? res?.id ?? '');
+                
+                if (orderId) {
+                  let avgPrice = price;
+                  let filledQty = qty;
+                  
+                  for (let attempt = 0; attempt < 3; attempt++) {
+                    await new Promise(r => setTimeout(r, 600));
+                    const status = await fetchOrderStatus(orderId, activeSig.symbol, 'perps');
+                    if (status && status.filledQty > 0) {
+                      avgPrice = status.avgFillPrice;
+                      filledQty = status.filledQty;
+                      break;
+                    }
+                  }
+
+                  const tpPct = parseFloat(activeSig.takeProfitPct) || 3.0;
+                  const slPct = parseFloat(activeSig.stopLossPct) || 2.0;
+                  
+                  const tpPrice = side === 'LONG' ? avgPrice * (1 + tpPct/100) : avgPrice * (1 - tpPct/100);
+                  const slPrice = side === 'LONG' ? avgPrice * (1 - slPct/100) : avgPrice * (1 + slPct/100);
+
+                  addTerminalLog('SIGNAL', 'TRADE', `Market order filled at $${avgPrice.toFixed(2)}. Placing stop orders (TP @ $${tpPrice.toFixed(2)}, SL @ $${slPrice.toFixed(2)}).`);
+
+                  const closeSide = side === 'LONG' ? 2 : 1;
+                  
+                  let tpOrderId = '';
+                  let slOrderId = '';
+
+                  try {
+                    const tpRes = await placeOrder({
+                      symbol: activeSig.symbol,
+                      side: closeSide,
+                      type: 2,
+                      quantity: filledQty.toFixed(4),
+                      stopPrice: tpPrice.toFixed(2),
+                      stopType: 2,
+                      triggerType: 2,
+                      reduceOnly: true
+                    }, 'perps') as any;
+                    tpOrderId = String(tpRes?.orderID ?? tpRes?.orderId ?? '');
+                  } catch (err) {
+                    addTerminalLog('SIGNAL', 'ERROR', `Could not place TP Stop Order: ${getErrorMessage(err)}`);
+                  }
+
+                  try {
+                    const slRes = await placeOrder({
+                      symbol: activeSig.symbol,
+                      side: closeSide,
+                      type: 2,
+                      quantity: filledQty.toFixed(4),
+                      stopPrice: slPrice.toFixed(2),
+                      stopType: 1,
+                      triggerType: 2,
+                      reduceOnly: true
+                    }, 'perps') as any;
+                    slOrderId = String(slRes?.orderID ?? slRes?.orderId ?? '');
+                  } catch (err) {
+                    addTerminalLog('SIGNAL', 'ERROR', `Could not place SL Stop Order: ${getErrorMessage(err)}`);
+                  }
+
+                  const newPos = {
+                    id: orderId,
+                    symbol: activeSig.symbol,
+                    side,
+                    entryPrice: avgPrice,
+                    quantity: filledQty,
+                    leverage: parseInt(activeSig.leverage),
+                    tpPrice,
+                    slPrice,
+                    openTime: Date.now(),
+                    triggeredBy: ['RSI', 'MACD'],
+                    tpOrderId,
+                    slOrderId,
+                    unrealizedPnl: 0,
+                    status: 'OPEN' as const
+                  };
+                  
+                  useBotStore.getState().signalBot.setField('activePositions', [newPos]);
+                  sigStepRef.current = 2;
+                }
+              } catch (err: any) {
+                addTerminalLog('SIGNAL', 'ERROR', `Signal trade execution failed: ${getErrorMessage(err)}`);
+              }
+            }
           }
         } else if (step === 2) {
-          // Simulate position running or closing
           const currentPos = useBotStore.getState().signalBot.activePositions[0];
           if (currentPos) {
-            if (Math.random() > 0.7) {
-              const win = Math.random() > 0.4;
-              const finalPnl = win ? parseFloat(activeSig.amountUsdt) * 0.03 : -parseFloat(activeSig.amountUsdt) * 0.02;
-              addTerminalLog('SIGNAL', 'TRADE', `Closed position ${currentPos.id}. Reason: ${win ? 'TP_HIT' : 'SL_HIT'}. PnL: $${finalPnl.toFixed(2)} USDT.`);
-              
-              const prevTrades = useBotStore.getState().signalBot.totalTrades;
-              const prevWins = useBotStore.getState().signalBot.winTrades;
-              useBotStore.getState().signalBot.setField('totalTrades', prevTrades + 1);
-              if (win) useBotStore.getState().signalBot.setField('winTrades', prevWins + 1);
-              useBotStore.getState().signalBot.setField('realizedPnl', useBotStore.getState().signalBot.realizedPnl + finalPnl);
-              useBotStore.getState().signalBot.setField('activePositions', []);
-              sigStepRef.current = 1;
+            if (isDemoMode) {
+              if (Math.random() > 0.7) {
+                const win = Math.random() > 0.4;
+                const finalPnl = win ? parseFloat(activeSig.amountUsdt) * 0.03 : -parseFloat(activeSig.amountUsdt) * 0.02;
+                addTerminalLog('SIGNAL', 'TRADE', `[DEMO] Closed position ${currentPos.id}. Reason: ${win ? 'TP_HIT' : 'SL_HIT'}. PnL: $${finalPnl.toFixed(2)} USDT.`);
+                
+                const prevTrades = useBotStore.getState().signalBot.totalTrades;
+                const prevWins = useBotStore.getState().signalBot.winTrades;
+                useBotStore.getState().signalBot.setField('totalTrades', prevTrades + 1);
+                if (win) useBotStore.getState().signalBot.setField('winTrades', prevWins + 1);
+                useBotStore.getState().signalBot.setField('realizedPnl', useBotStore.getState().signalBot.realizedPnl + finalPnl);
+                useBotStore.getState().signalBot.setField('activePositions', []);
+                sigStepRef.current = 1;
 
-              if (orderFillsEnabled) {
-                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                setMessages(prev => [...prev, {
-                  sender: 'bot',
-                  text: `🤖 *Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Side: ${currentPos.side}\n• Outcome: ${win ? '🟢 TAKE PROFIT ✓' : '🔴 STOP LOSS ✗'}\n• Realized PnL: ${finalPnl >= 0 ? '+' : ''}$${finalPnl.toFixed(2)} USDT`,
-                  timestamp: timeStr
-                }]);
+                if (orderFillsEnabled) {
+                  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  setMessages(prev => [...prev, {
+                    sender: 'bot',
+                    text: `🤖 *[DEMO] Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Side: ${currentPos.side}\n• Outcome: ${win ? 'Take Profit' : 'Stop Loss'}\n• Realized PnL: +$${finalPnl.toFixed(2)} USDT`,
+                    timestamp: timeStr
+                  }]);
+                }
+              }
+            } else {
+              // Real Position Tracking (high freq TP/SL checks)
+              try {
+                const tickers = await fetchBookTickers('perps');
+                const row = tickers.find((t: any) => t.symbol === currentPos.symbol) as any;
+                if (row) {
+                  const price = (parseFloat(row.bidPrice) + parseFloat(row.askPrice)) / 2;
+                  const side = currentPos.side;
+                  const pnl = currentPos.quantity * (side === 'LONG' ? (price - currentPos.entryPrice) : (currentPos.entryPrice - price));
+                  
+                  const posCopy = { ...currentPos, unrealizedPnl: pnl };
+                  useBotStore.getState().signalBot.setField('activePositions', [posCopy]);
+                  
+                  const tpPrice = currentPos.tpPrice || 0;
+                  const slPrice = currentPos.slPrice || 0;
+                  
+                  const tpHit = side === 'LONG' ? price >= tpPrice : price <= tpPrice;
+                  const slHit = side === 'LONG' ? price <= slPrice : price >= slPrice;
+
+                  if (tpHit || slHit) {
+                    const win = tpHit;
+                    addTerminalLog('SIGNAL', 'TRADE', `TP/SL target crossed at $${price.toFixed(2)}. Closing position.`);
+                    
+                    const closeSide = side === 'LONG' ? 2 : 1;
+                    await placeOrder({
+                      symbol: currentPos.symbol,
+                      side: closeSide,
+                      type: 2,
+                      quantity: currentPos.quantity.toFixed(4),
+                      reduceOnly: true
+                    }, 'perps');
+
+                    if (currentPos.tpOrderId) await cancelOrder(currentPos.tpOrderId, currentPos.symbol, 'perps');
+                    if (currentPos.slOrderId) await cancelOrder(currentPos.slOrderId, currentPos.symbol, 'perps');
+
+                    addTerminalLog('SIGNAL', 'TRADE', `Closed position ${currentPos.id}. Outcome: ${win ? 'TP_HIT' : 'SL_HIT'}. PnL: $${pnl.toFixed(2)} USDT.`);
+                    
+                    const prevTrades = useBotStore.getState().signalBot.totalTrades;
+                    const prevWins = useBotStore.getState().signalBot.winTrades;
+                    useBotStore.getState().signalBot.setField('totalTrades', prevTrades + 1);
+                    if (win) useBotStore.getState().signalBot.setField('winTrades', prevWins + 1);
+                    useBotStore.getState().signalBot.setField('realizedPnl', useBotStore.getState().signalBot.realizedPnl + pnl);
+                    useBotPnlStore.getState().recordTrade('signal', {
+                      pnlUsdt: pnl,
+                      ts: Date.now(),
+                      note: `Signal closed @ ${price.toFixed(2)}`,
+                    });
+                    useBotStore.getState().signalBot.setField('activePositions', []);
+                    sigStepRef.current = 1;
+
+                    if (orderFillsEnabled) {
+                      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      setMessages(prev => [...prev, {
+                        sender: 'bot',
+                        text: `🤖 *Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Outcome: ${win ? 'Take Profit' : 'Stop Loss'}\n• PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT`,
+                        timestamp: timeStr
+                      }]);
+                    }
+                  }
+                }
+              } catch (err) {
+                // Ignore transient
               }
             }
           } else {
@@ -361,17 +1030,78 @@ export const TelegramIntegration: React.FC = () => {
         } else if (step === 1) {
           if (Math.random() > 0.8) {
             const verdict = usePredictorStore.getState().aiVerdict?.decision ?? 'BULLISH';
-            const price = 64300 + (Math.random() - 0.5) * 50;
-            addTerminalLog('PREDICTOR', 'INFO', `Model check: ETF Flow = Positive, Sentiment = Bullish. Confidence: 88%.`);
-            addTerminalLog('PREDICTOR', 'TRADE', `Opening forecast trade (${verdict}) at $${price.toFixed(2)}. Size: $${usePredictorStore.getState().tradeAmountUsdt} USDT.`);
             
-            // Randomly update PnL after a cycle
-            setTimeout(() => {
-              if (usePredictorStore.getState().autoTradeEnabled) {
-                const pnl = (verdict === 'BULLISH' ? 1 : -1) * parseFloat(usePredictorStore.getState().tradeAmountUsdt) * 0.012;
-                addTerminalLog('PREDICTOR', 'TRADE', `Forecast cycle complete. Profit settled: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT.`);
+            if (isDemoMode) {
+              const price = 64300 + (Math.random() - 0.5) * 50;
+              addTerminalLog('PREDICTOR', 'INFO', `[DEMO] Model check: ETF Flow = Positive, Sentiment = Bullish. Confidence: 88%.`);
+              addTerminalLog('PREDICTOR', 'TRADE', `[DEMO] Opening forecast trade (${verdict}) at $${price.toFixed(2)}. Size: $${usePredictorStore.getState().tradeAmountUsdt} USDT.`);
+              
+              setTimeout(() => {
+                if (usePredictorStore.getState().autoTradeEnabled) {
+                  const pnl = (verdict === 'BULLISH' ? 1 : -1) * parseFloat(usePredictorStore.getState().tradeAmountUsdt) * 0.012;
+                  addTerminalLog('PREDICTOR', 'TRADE', `[DEMO] Forecast cycle complete. Profit settled: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT.`);
+                }
+              }, 4000);
+            } else {
+              // REAL API Predictor Trade!
+              try {
+                const tickers = await fetchBookTickers('perps');
+                const row = tickers.find((t: any) => t.symbol === 'BTC-USD') as any;
+                const price = row ? (parseFloat(row.bidPrice) + parseFloat(row.askPrice)) / 2 : 64300;
+
+                const amount = usePredictorStore.getState().tradeAmountUsdt;
+                const leverage = usePredictorStore.getState().tradeLeverage;
+                const qty = (parseFloat(amount) * leverage) / price;
+
+                addTerminalLog('PREDICTOR', 'INFO', `Model check: ETF Flow = Positive, Sentiment = Bullish. Confidence: 88%.`);
+                addTerminalLog('PREDICTOR', 'TRADE', `Opening forecast trade (${verdict}) at $${price.toFixed(2)}. Size: $${amount} USDT.`);
+
+                await updatePerpsLeverage('BTC-USD', leverage, 2);
+
+                const res = await placeOrder({
+                  symbol: 'BTC-USD',
+                  side: verdict === 'BULLISH' ? 1 : 2,
+                  type: 2,
+                  quantity: qty.toFixed(4)
+                }, 'perps') as any;
+
+                const orderId = String(res?.orderID ?? res?.orderId ?? '');
+
+                if (orderId) {
+                  setTimeout(async () => {
+                    if (usePredictorStore.getState().autoTradeEnabled) {
+                      try {
+                        const tickersAfter = await fetchBookTickers('perps');
+                        const rowAfter = tickersAfter.find((t: any) => t.symbol === 'BTC-USD') as any;
+                        const priceAfter = rowAfter ? (parseFloat(rowAfter.bidPrice) + parseFloat(rowAfter.askPrice)) / 2 : price;
+                        
+                        const pnl = qty * (verdict === 'BULLISH' ? (priceAfter - price) : (price - priceAfter));
+
+                        await placeOrder({
+                          symbol: 'BTC-USD',
+                          side: verdict === 'BULLISH' ? 2 : 1,
+                          type: 2,
+                          quantity: qty.toFixed(4),
+                          reduceOnly: true
+                        }, 'perps');
+
+                        addTerminalLog('PREDICTOR', 'TRADE', `Forecast cycle complete. Closed swap at $${priceAfter.toFixed(2)}. PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT.`);
+
+                        useBotPnlStore.getState().recordTrade('predictor', {
+                          pnlUsdt: pnl,
+                          ts: Date.now(),
+                          note: `Predictor closed @ ${priceAfter.toFixed(2)}`,
+                        });
+                      } catch (err) {
+                        // ignore
+                      }
+                    }
+                  }, 8000);
+                }
+              } catch (err: any) {
+                addTerminalLog('PREDICTOR', 'ERROR', `Predictor order failed: ${getErrorMessage(err)}`);
               }
-            }, 4000);
+            }
           }
         }
       } else {
@@ -381,62 +1111,82 @@ export const TelegramIntegration: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog]);
+  }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode]);
 
   // AI Auto configure parameters helper
   const handleAiConfigure = async () => {
     addTerminalLog('SYSTEM', 'INFO', 'Invoking AI analysis model...');
     try {
-      const market: 'spot' | 'perps' = activeTab === 'GRID' || activeTab === 'MM' ? 'spot' : 'perps';
-      const sym = activeTab === 'GRID' ? gridParams.symbol : activeTab === 'MM' ? mmParams.symbol : activeTab === 'SIGNAL' ? sigParams.symbol : 'BTC-USD';
-      
-      const tickersRes = await fetchTickers(market);
-      const tickersArr = Array.isArray(tickersRes) ? tickersRes : [];
-      const normalizedSym = normalizeSymbol(sym, market);
-      const ticker = tickersArr.find((t: any) => t.symbol === normalizedSym) as any;
-      const lastPrice = ticker ? parseFloat(String(ticker.lastPrice ?? ticker.close ?? 64000)) : 64000;
-
       if (activeTab === 'GRID') {
-        const lower = lastPrice * 0.95;
-        const upper = lastPrice * 1.05;
+        const market = gridParams.isSpot ? 'spot' : 'perps';
+        const ctx = await buildContext(gridParams.symbol, market);
+        const budget = parseFloat(gridParams.amount) * parseInt(gridParams.gridCount) * ctx.price || 200;
+        const rec = recommendGridBot(ctx, budget);
         setGridParams(prev => ({
           ...prev,
-          lowerPrice: lower.toFixed(0),
-          upperPrice: upper.toFixed(0),
-          gridCount: '12',
-          spacing: 'GEOMETRIC'
+          lowerPrice: rec.preset.lowerPrice as string,
+          upperPrice: rec.preset.upperPrice as string,
+          gridCount: rec.preset.gridCount as string,
+          amount: rec.preset.amountPerGrid as string,
+          spacing: rec.preset.spacing as string,
         }));
-        addTerminalLog('GRID', 'SUCCESS', `AI Configuration updated: set Lower=$${lower.toFixed(0)}, Upper=$${upper.toFixed(0)}, Levels=12, Spacing=GEOMETRIC based on ATR volatility.`);
+        addTerminalLog('GRID', 'SUCCESS', `AI Configuration applied: ${rec.rationale}`);
       } else if (activeTab === 'MM') {
+        const ctx = await buildContext(mmParams.symbol, 'spot');
+        const budget = parseFloat(mmParams.budget) || 100;
+        const rec = recommendMarketMakerBot(ctx, budget);
         setMmParams(prev => ({
           ...prev,
-          spread: '0.20',
-          rebalance: '3.0'
+          budget: rec.preset.budgetUsdt as string,
+          size: rec.preset.orderSizeUsdt as string,
+          spread: rec.preset.spreadBps as string,
+          rebalance: rec.preset.requoteBps as string,
+          layers: rec.preset.layers as string,
+          makerFeeRate: rec.preset.makerFeeRate as string,
         }));
-        addTerminalLog('MM', 'SUCCESS', `AI Configuration updated: spread=0.20% and rebalance=3.0% calibrated to BBO order book depth.`);
+        addTerminalLog('MM', 'SUCCESS', `AI Configuration applied: ${rec.rationale}`);
       } else if (activeTab === 'SIGNAL') {
+        const market = sigParams.isSpot ? 'spot' : 'perps';
+        const ctx = await buildContext(sigParams.symbol, market);
+        const rec = recommendSignalBot(ctx);
         setSigParams(prev => ({
           ...prev,
-          tp: '3.5',
-          sl: '1.5'
+          leverage: rec.preset.leverage as string,
+          amount: rec.preset.amountUsdt as string,
+          tp: rec.preset.takeProfitPct as string,
+          sl: rec.preset.stopLossPct as string,
+          combineMode: rec.preset.combineMode as string,
+          checkInterval: rec.preset.checkInterval as string,
+          klineInterval: rec.preset.klineInterval as string,
+          cooldownSeconds: rec.preset.cooldownSeconds as string,
+          maxOpenPositions: rec.preset.maxOpenPositions as string,
+          onConflictingSignal: rec.preset.onConflictingSignal as string,
         }));
-        addTerminalLog('SIGNAL', 'SUCCESS', 'AI Configuration updated: risk RRR set to 3.5% TP / 1.5% SL.');
+        if (rec.preset.signalsJson) {
+          try {
+            const parsed = JSON.parse(rec.preset.signalsJson);
+            if (Array.isArray(parsed)) {
+              useBotStore.getState().signalBot.setField('signals', parsed);
+            }
+          } catch {}
+        }
+        addTerminalLog('SIGNAL', 'SUCCESS', `AI Configuration applied: ${rec.rationale}`);
       } else if (activeTab === 'PREDICTOR') {
         setPredParams(prev => ({
           ...prev,
-          leverage: '15'
+          leverage: '15',
+          amount: '100'
         }));
-        addTerminalLog('PREDICTOR', 'SUCCESS', 'AI Configuration updated: forecast margin leverage optimized to 15x.');
+        addTerminalLog('PREDICTOR', 'SUCCESS', 'AI Configuration applied: forecast margin leverage set to 15x, trade amount 100 USDT.');
       }
       toast.success('AI configurations applied!');
     } catch (err) {
-      toast.error('AI configure failed. Using static models.');
-      // fallback static configs
-      if (activeTab === 'GRID') {
-        setGridParams(prev => ({ ...prev, lowerPrice: '61000', upperPrice: '67000', gridCount: '10' }));
-      }
+      const msg = getErrorMessage(err);
+      toast.error(`AI configure failed: ${msg}`);
+      addTerminalLog('SYSTEM', 'ERROR', `AI configure failed: ${msg}`);
     }
   };
+
 
   const handleStartStopBot = () => {
     // Validate credentials
@@ -459,6 +1209,10 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().gridBot.setField('gridCount', gridParams.gridCount);
         useBotStore.getState().gridBot.setField('amountPerGrid', gridParams.amount);
         useBotStore.getState().gridBot.setField('spacing', gridParams.spacing as any);
+        useBotStore.getState().gridBot.setField('isSpot', gridParams.isSpot);
+        useBotStore.getState().gridBot.setField('leverage', gridParams.leverage);
+        useBotStore.getState().gridBot.setField('stopLossPrice', gridParams.stopLossPrice);
+        useBotStore.getState().gridBot.setField('takeProfitPrice', gridParams.takeProfitPrice);
         useBotStore.getState().gridBot.setField('status', 'RUNNING');
         toast.success('Grid Bot started!');
       }
@@ -472,6 +1226,12 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().marketMakerBot.setField('symbol', mmParams.symbol);
         useBotStore.getState().marketMakerBot.setField('budgetUsdt', mmParams.budget);
         useBotStore.getState().marketMakerBot.setField('orderSizeUsdt', mmParams.size);
+        useBotStore.getState().marketMakerBot.setField('spreadBps', mmParams.spread);
+        useBotStore.getState().marketMakerBot.setField('requoteBps', mmParams.rebalance);
+        useBotStore.getState().marketMakerBot.setField('layers', mmParams.layers);
+        useBotStore.getState().marketMakerBot.setField('makerFeeRate', mmParams.makerFeeRate);
+        useBotStore.getState().marketMakerBot.setField('volumeTargetUsdt', mmParams.volumeTargetUsdt);
+        useBotStore.getState().marketMakerBot.setField('feeBudgetUsdt', mmParams.feeBudgetUsdt);
         useBotStore.getState().marketMakerBot.setField('status', 'RUNNING');
         useBotStore.getState().marketMakerBot.setField('sessionStartedAt', Date.now());
         toast.success('Market Maker started!');
@@ -487,6 +1247,13 @@ export const TelegramIntegration: React.FC = () => {
         useBotStore.getState().signalBot.setField('amountUsdt', sigParams.amount);
         useBotStore.getState().signalBot.setField('takeProfitPct', sigParams.tp);
         useBotStore.getState().signalBot.setField('stopLossPct', sigParams.sl);
+        useBotStore.getState().signalBot.setField('combineMode', sigParams.combineMode as any);
+        useBotStore.getState().signalBot.setField('checkInterval', sigParams.checkInterval);
+        useBotStore.getState().signalBot.setField('klineInterval', sigParams.klineInterval);
+        useBotStore.getState().signalBot.setField('cooldownSeconds', sigParams.cooldownSeconds);
+        useBotStore.getState().signalBot.setField('maxOpenPositions', sigParams.maxOpenPositions);
+        useBotStore.getState().signalBot.setField('onConflictingSignal', sigParams.onConflictingSignal as any);
+        useBotStore.getState().signalBot.setField('isSpot', sigParams.isSpot);
         useBotStore.getState().signalBot.setField('status', 'RUNNING');
         toast.success('Signal Bot started!');
       }
@@ -803,6 +1570,11 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
               <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Fills & Regime Alerts</span>
             </div>
             <Toggle
+              label="Demo Mode (Simulate Trades)"
+              checked={isDemoMode}
+              onChange={setIsDemoMode}
+            />
+            <Toggle
               label="Regime Change Alerts"
               checked={alertEnabled}
               onChange={setAlertEnabled}
@@ -820,11 +1592,14 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
         <div className="lg:col-span-3 flex flex-col items-center">
           <div className="w-full flex items-center justify-between mb-2 px-1">
             <span className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">Interactive Chat Preview</span>
-            {!isConfigured && (
-              <span className="text-[10px] text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                Demo Chat Mode
-              </span>
-            )}
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full border",
+              isDemoMode 
+                ? "text-amber-400 border-amber-500/20 bg-amber-500/10" 
+                : "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
+            )}>
+              {isDemoMode ? 'Demo Chat Mode' : 'Live Trading Mode'}
+            </span>
           </div>
           <div className="w-full max-w-[360px] h-[550px] bg-[#121214] border-[6px] border-[#2A2A2E] rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col">
             {/* Notch */}
@@ -925,10 +1700,20 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
           <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
             {activeTab === 'GRID' && (
               <>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => !isCurrentBotRunning && setGridParams(p => ({ ...p, isSpot: true }))}
+                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', gridParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
+                  >Spot</button>
+                  <button
+                    onClick={() => !isCurrentBotRunning && setGridParams(p => ({ ...p, isSpot: false }))}
+                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', !gridParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
+                  >Perps</button>
+                </div>
                 <SymbolSelector
                   value={gridParams.symbol}
                   onChange={(v) => setGridParams(p => ({ ...p, symbol: v }))}
-                  market="spot"
+                  market={gridParams.isSpot ? 'spot' : 'perps'}
                   disabled={isCurrentBotRunning}
                 />
                 <div className="grid grid-cols-2 gap-3">
@@ -963,16 +1748,47 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
                     disabled={isCurrentBotRunning}
                   />
                 </div>
-                <Select
-                  label="Spacing spacing"
-                  value={gridParams.spacing}
-                  onChange={(e) => setGridParams(p => ({ ...p, spacing: e.target.value }))}
-                  disabled={isCurrentBotRunning}
-                  options={[
-                    { value: 'ARITHMETIC', label: 'Arithmetic (Constant Step)' },
-                    { value: 'GEOMETRIC', label: 'Geometric (Constant %)' }
-                  ]}
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    label="Spacing"
+                    value={gridParams.spacing}
+                    onChange={(e) => setGridParams(p => ({ ...p, spacing: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    options={[
+                      { value: 'ARITHMETIC', label: 'Arithmetic' },
+                      { value: 'GEOMETRIC', label: 'Geometric' }
+                    ]}
+                  />
+                  {!gridParams.isSpot ? (
+                    <Input
+                      label="Leverage"
+                      type="number"
+                      value={gridParams.leverage}
+                      onChange={(e) => setGridParams(p => ({ ...p, leverage: e.target.value }))}
+                      disabled={isCurrentBotRunning}
+                    />
+                  ) : (
+                    <div />
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Stop Loss Price"
+                    type="number"
+                    value={gridParams.stopLossPrice}
+                    onChange={(e) => setGridParams(p => ({ ...p, stopLossPrice: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    placeholder="None"
+                  />
+                  <Input
+                    label="Take Profit Price"
+                    type="number"
+                    value={gridParams.takeProfitPrice}
+                    onChange={(e) => setGridParams(p => ({ ...p, takeProfitPrice: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    placeholder="None"
+                  />
+                </div>
               </>
             )}
 
@@ -1002,18 +1818,55 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="Bid-Ask Spread (%)"
+                    label="Spread Offset (bps)"
                     type="number"
                     value={mmParams.spread}
                     onChange={(e) => setMmParams(p => ({ ...p, spread: e.target.value }))}
                     disabled={isCurrentBotRunning}
                   />
                   <Input
-                    label="Rebalance Stop (%)"
+                    label="Re-quote Threshold (bps)"
                     type="number"
                     value={mmParams.rebalance}
                     onChange={(e) => setMmParams(p => ({ ...p, rebalance: e.target.value }))}
                     disabled={isCurrentBotRunning}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Ladder Layers"
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={mmParams.layers}
+                    onChange={(e) => setMmParams(p => ({ ...p, layers: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                  />
+                  <Input
+                    label="Maker Fee Rate"
+                    type="number"
+                    step="0.00001"
+                    value={mmParams.makerFeeRate}
+                    onChange={(e) => setMmParams(p => ({ ...p, makerFeeRate: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Volume Target (USDT)"
+                    type="number"
+                    value={mmParams.volumeTargetUsdt}
+                    onChange={(e) => setMmParams(p => ({ ...p, volumeTargetUsdt: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    placeholder="None"
+                  />
+                  <Input
+                    label="Fee Budget (USDT)"
+                    type="number"
+                    value={mmParams.feeBudgetUsdt}
+                    onChange={(e) => setMmParams(p => ({ ...p, feeBudgetUsdt: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    placeholder="None"
                   />
                 </div>
               </>
@@ -1021,10 +1874,20 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
 
             {activeTab === 'SIGNAL' && (
               <>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => !isCurrentBotRunning && setSigParams(p => ({ ...p, isSpot: true }))}
+                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', sigParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
+                  >Spot</button>
+                  <button
+                    onClick={() => !isCurrentBotRunning && setSigParams(p => ({ ...p, isSpot: false }))}
+                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', !sigParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
+                  >Perps</button>
+                </div>
                 <SymbolSelector
                   value={sigParams.symbol}
                   onChange={(v) => setSigParams(p => ({ ...p, symbol: v }))}
-                  market="perps"
+                  market={sigParams.isSpot ? 'spot' : 'perps'}
                   disabled={isCurrentBotRunning}
                 />
                 <div className="grid grid-cols-2 gap-3">
@@ -1056,6 +1919,53 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
                     type="number"
                     value={sigParams.sl}
                     onChange={(e) => setSigParams(p => ({ ...p, sl: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    label="Combine Mode"
+                    value={sigParams.combineMode}
+                    onChange={(e) => setSigParams(p => ({ ...p, combineMode: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    options={[
+                      { value: 'ANY', label: 'ANY (Or)' },
+                      { value: 'ALL', label: 'ALL (And)' },
+                      { value: 'MAJORITY', label: 'MAJORITY' }
+                    ]}
+                  />
+                  <Select
+                    label="Conflict Mode"
+                    value={sigParams.onConflictingSignal}
+                    onChange={(e) => setSigParams(p => ({ ...p, onConflictingSignal: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                    options={[
+                      { value: 'IGNORE', label: 'Ignore' },
+                      { value: 'CLOSE_ONLY', label: 'Close Only' },
+                      { value: 'CLOSE_AND_REVERSE', label: 'Close & Reverse' }
+                    ]}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    label="Check (s)"
+                    type="number"
+                    value={sigParams.checkInterval}
+                    onChange={(e) => setSigParams(p => ({ ...p, checkInterval: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                  />
+                  <Input
+                    label="Cooldown (s)"
+                    type="number"
+                    value={sigParams.cooldownSeconds}
+                    onChange={(e) => setSigParams(p => ({ ...p, cooldownSeconds: e.target.value }))}
+                    disabled={isCurrentBotRunning}
+                  />
+                  <Input
+                    label="Max Positions"
+                    type="number"
+                    value={sigParams.maxOpenPositions}
+                    onChange={(e) => setSigParams(p => ({ ...p, maxOpenPositions: e.target.value }))}
                     disabled={isCurrentBotRunning}
                   />
                 </div>
@@ -1116,6 +2026,12 @@ ${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
             <span className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               SoDEX PowerOps Terminal
+              <span className={cn(
+                "ml-2 text-[9px] px-1.5 py-0.5 rounded font-sans tracking-normal uppercase",
+                isDemoMode ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+              )}>
+                {isDemoMode ? 'Demo Mode' : 'Live Trading'}
+              </span>
             </span>
             <div className="flex items-center gap-2">
               <button
