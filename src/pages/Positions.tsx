@@ -84,7 +84,7 @@ export const Positions: React.FC = () => {
       setMarginBalance(totalBalance);
 
       // Parse history/fills
-      let fills = Array.isArray(rawFills) ? (rawFills as HistoricalFill[]) : [];
+      let fills = Array.isArray(rawFills) ? (rawFills as any[]) : [];
       // If demo mode, pre-populate history with realistic items to make the dashboard shine
       if (store.isDemoMode && fills.length === 0) {
         fills = [
@@ -95,7 +95,16 @@ export const Positions: React.FC = () => {
           { time: Date.now() - 48 * 3600000, symbol: 'BNB-USD', side: 1, price: 605, quantity: 4.0, feeAmt: 0.97, tradeID: 995 },
         ];
       }
-      setHistoryFills(fills);
+      const parsedFills: HistoricalFill[] = fills.map((f: any) => ({
+        time: Number(f.time ?? f.timestamp ?? 0),
+        symbol: String(f.symbol ?? ''),
+        side: Number(f.side ?? 1),
+        price: parseFloat(String(f.price ?? 0)),
+        quantity: parseFloat(String(f.quantity ?? f.qty ?? 0)),
+        feeAmt: parseFloat(String(f.feeAmt ?? f.fee ?? 0)),
+        tradeID: Number(f.tradeID ?? f.tradeId ?? 0),
+      }));
+      setHistoryFills(parsedFills);
 
       // Parse positions
       const positionsArr = Array.isArray(rawPositions) ? rawPositions : [];
