@@ -199,6 +199,7 @@ export const BtcPredictor: React.FC = () => {
   const [backtest, setBacktest] = useState<BacktestRun | null>(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [btDuration, setBtDuration] = useState<CycleDurationMinutes>(5);
+  const [showEvidence, setShowEvidence] = useState(false);
 
   // ── Live mark price ───────────────────────────────────────────────────────
   // We layer two sources so the "Live" + "Δ since entry" overlay never falls
@@ -759,6 +760,74 @@ export const BtcPredictor: React.FC = () => {
                   <div className="text-[10px] text-amber-200 leading-snug">
                     <span className="font-bold">Trade skipped:</span> {lastResult.skippedReason}
                   </div>
+                </div>
+              )}
+
+              {/* Collapsible Decision Anchors & Evidence */}
+              {predictor.currentSignals && (
+                <div className="border-t border-border/50 pt-2.5 mt-1">
+                  <button
+                    onClick={() => setShowEvidence(!showEvidence)}
+                    className="flex items-center justify-between w-full text-[10px] font-bold text-text-muted hover:text-text-secondary transition-colors uppercase tracking-wider"
+                  >
+                    <span>🔍 Karar Kanıtları & Veri Akışı</span>
+                    {showEvidence ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  {showEvidence && (
+                    <div className="mt-2 space-y-2.5 bg-background/50 rounded-lg p-2.5 border border-border/30 text-[10px] leading-relaxed text-left">
+                      {/* SoSoValue intelligence */}
+                      <div>
+                        <div className="text-primary font-bold tracking-wider mb-1 flex items-center justify-between">
+                          <span>📊 SOSOVALUE VERİLERİ</span>
+                          <a 
+                            href="https://sosovalue.xyz" 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-[9px] text-sky-400 hover:underline hover:text-sky-300 font-semibold"
+                          >
+                            Kaynağı Gör →
+                          </a>
+                        </div>
+                        <ul className="space-y-1 text-text-secondary list-disc pl-3">
+                          <li>
+                            Haber Duyarlılığı: <span className="font-semibold text-text-primary">{predictor.currentSignals.newsSentiment > 0.15 ? '🟢 Boğa (Bullish)' : predictor.currentSignals.newsSentiment < -0.15 ? '🔴 Ayı (Bearish)' : '🟡 Nötr (Neutral)'}</span> ({predictor.currentSignals.newsSentiment.toFixed(2)})
+                            {predictor.currentSignals.newsFallback && <span className="text-[8px] text-amber-300 ml-1">(Yedek Veri)</span>}
+                          </li>
+                          <li>
+                            ETF Giriş/Çıkış Skoru: <span className="font-semibold text-text-primary">{predictor.currentSignals.etfFlow > 0.15 ? '🟢 Pozitif' : predictor.currentSignals.etfFlow < -0.15 ? '🔴 Negatif' : '🟡 Yatay'}</span> ({predictor.currentSignals.etfFlow.toFixed(2)})
+                            {predictor.currentSignals.etfFallback && <span className="text-[8px] text-amber-300 ml-1">(Yedek Veri)</span>}
+                          </li>
+                          {typeof predictor.currentSignals.treasurySignal === 'number' && (
+                            <li>
+                              Kurumsal Hazine Birikimi: <span className="font-semibold text-text-primary">{predictor.currentSignals.treasurySignal > 0.15 ? '🟢 Akümülasyon' : predictor.currentSignals.treasurySignal < -0.15 ? '🔴 Dağıtım' : '🟡 Kararsız'}</span>
+                              {predictor.currentSignals.treasuryTopBuyer && ` (En Çok Alan: ${predictor.currentSignals.treasuryTopBuyer})`}
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+
+                      {/* Technical and order book details */}
+                      <div>
+                        <div className="text-amber-400 font-bold tracking-wider mb-1 flex items-center justify-between">
+                          <span>⚙️ TEKNİK & EMİR DEFTERİ</span>
+                        </div>
+                        <ul className="space-y-1 text-text-secondary list-disc pl-3">
+                          <li>
+                            RSI(14): <span className="font-semibold text-text-primary">{predictor.currentSignals.rsi.toFixed(1)}</span> ({predictor.currentSignals.rsi > 70 ? 'Aşırı Alım' : predictor.currentSignals.rsi < 30 ? 'Aşırı Satım' : 'Normal'})
+                          </li>
+                          <li>
+                            EMA & MACD Sinyali: <span className="font-semibold text-text-primary">{predictor.currentSignals.emaSignal > 0 ? '🟢 Boğa' : predictor.currentSignals.emaSignal < 0 ? '🔴 Ayı' : '🟡 Nötr'}</span>
+                          </li>
+                          <li>
+                            Borsa Emir Dengesizliği: <span className="font-semibold text-text-primary">{(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}% alıcı (bid-side)</span>
+                          </li>
+                          <li>
+                            Fonlama Oranı: <span className="font-semibold text-text-primary">{(predictor.currentSignals.fundingRate * 100).toFixed(4)}%</span> ({predictor.currentSignals.fundingRateSignal > 0.15 ? 'Boğa Eğilimli' : predictor.currentSignals.fundingRateSignal < -0.15 ? 'Ayı Eğilimli' : 'Dengeli'})
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </>
