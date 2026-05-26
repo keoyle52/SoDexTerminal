@@ -619,7 +619,7 @@ export const Positions: React.FC = () => {
               <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-text-primary">Sideways Whipsaw (Yatay Piyasa)</span>
+                    <span className="text-xs font-bold text-text-primary">Sideways Whipsaw</span>
                     <span className="px-2 py-0.5 rounded bg-warning/10 text-warning text-[9px] font-bold uppercase">Moderate Risk</span>
                   </div>
                   <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
@@ -635,7 +635,7 @@ export const Positions: React.FC = () => {
               <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-text-primary">Flash Crashes (Sert Düşüşler)</span>
+                    <span className="text-xs font-bold text-text-primary">Flash Crashes</span>
                     <span className="px-2 py-0.5 rounded bg-danger/20 text-danger text-[9px] font-bold uppercase">High Risk</span>
                   </div>
                   <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
@@ -651,7 +651,7 @@ export const Positions: React.FC = () => {
               <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-text-primary">Toxic Flow & Slippage (Haber Şoku)</span>
+                    <span className="text-xs font-bold text-text-primary">Toxic Flow & Slippage</span>
                     <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-bold uppercase">Low Risk</span>
                   </div>
                   <p className="text-[11px] text-text-secondary leading-relaxed mb-3">

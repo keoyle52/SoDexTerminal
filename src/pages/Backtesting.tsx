@@ -53,6 +53,7 @@ interface TradeEntry {
   pnl: number;
   pnlPercent: number;
   exitReason: 'SIGNAL' | 'STOP' | 'TARGET' | 'END';
+  quantity?: number;
 }
 
 type BotType = 'GRID' | 'DCA' | 'TWAP' | 'MARKET_MAKER' | 'SIGNAL';
@@ -80,21 +81,21 @@ const BOT_CONFIGS: Record<BotType, BotConfig> = {
     type: 'DCA',
     name: 'DCA Bot',
     description: 'Dollar-cost averaging for systematic accumulation',
-    defaultParams: { interval: 24, amount: 100, totalOrders: 30 },
+    defaultParams: { interval: 12, amount: 100, totalOrders: 10 },
     paramLabels: { interval: 'Interval (hours)', amount: 'Order Amount', totalOrders: 'Total Orders' },
   },
   TWAP: {
     type: 'TWAP',
     name: 'TWAP Bot',
     description: 'Time-weighted average price execution for large orders',
-    defaultParams: { slices: 12, duration: 4, slippage: 0.1 },
+    defaultParams: { slices: 10, duration: 4, slippage: 0.05 },
     paramLabels: { slices: 'Slices', duration: 'Duration (hours)', slippage: 'Max Slippage (%)' },
   },
   MARKET_MAKER: {
     type: 'MARKET_MAKER',
     name: 'Market Maker',
     description: 'Liquidity provisioning with bid-ask spread capture',
-    defaultParams: { spread: 0.1, inventory: 5000, rebalance: 1 },
+    defaultParams: { spread: 0.25, inventory: 5000, rebalance: 2.5 },
     paramLabels: { spread: 'Spread (%)', inventory: 'Inventory (USDT)', rebalance: 'Rebalance (%)' },
   },
   SIGNAL: {
@@ -423,7 +424,7 @@ function runDcaBacktest(
       const currentPrice = closes[i];
       const move = (currentPrice - avgPrice) / avgPrice;
 
-      if (move >= 0.03) {
+      if (move >= 0.05) {
         const pnl = (currentPrice - avgPrice) * totalQty;
         trades.push({
           entryTime,
@@ -434,12 +435,13 @@ function runDcaBacktest(
           pnl,
           pnlPercent: move * 100,
           exitReason: 'TARGET',
+          quantity: totalQty,
         });
         totalCost = 0;
         totalQty = 0;
         activeDca = false;
         buysCount = 0;
-      } else if (move <= -0.05) {
+      } else if (move <= -0.15) {
         const pnl = (currentPrice - avgPrice) * totalQty;
         trades.push({
           entryTime,
@@ -450,6 +452,7 @@ function runDcaBacktest(
           pnl,
           pnlPercent: move * 100,
           exitReason: 'STOP',
+          quantity: totalQty,
         });
         totalCost = 0;
         totalQty = 0;
@@ -472,6 +475,7 @@ function runDcaBacktest(
       pnl,
       pnlPercent: ((exitPrice - avgPrice) / avgPrice) * 100,
       exitReason: 'END',
+      quantity: totalQty,
     });
   }
 
@@ -514,7 +518,7 @@ function runTwapBacktest(
         const sliceIdx = i + s * barsPerSlice;
         if (sliceIdx >= closes.length) break;
         const price = closes[sliceIdx];
-        const executionPrice = price * (1 + (params.slippage || 0.1) / 100);
+        const executionPrice = price * (1 + (params.slippage || 0.05) / 100);
         totalSpent += 100;
         totalQty += 100 / executionPrice;
       }
@@ -528,12 +532,12 @@ function runTwapBacktest(
       for (let j = i + durationBars; j < closes.length; j++) {
         const price = closes[j];
         const move = (price - avgEntryPrice) / avgEntryPrice;
-        if (move >= 0.02) {
+        if (move >= 0.035) {
           exitPrice = price;
           exitIdx = j;
           exitReason = 'TARGET';
           break;
-        } else if (move <= -0.01) {
+        } else if (move <= -0.02) {
           exitPrice = price;
           exitIdx = j;
           exitReason = 'STOP';
@@ -551,6 +555,7 @@ function runTwapBacktest(
         pnl,
         pnlPercent: ((exitPrice - avgEntryPrice) / avgEntryPrice) * 100,
         exitReason,
+        quantity: totalQty,
       });
 
       i = exitIdx + 1;
@@ -570,7 +575,7 @@ function runMarketMakerBacktest(
   params: { spread: number; inventory: number; rebalance: number }
 ): TradeEntry[] {
   const trades: TradeEntry[] = [];
-  const spreadPct = params.spread || 0.1;
+  const spreadPct = params.spread || 0.25;
   const maxInventory = params.inventory || 5000;
   
   let position: 'LONG' | 'SHORT' | null = null;
@@ -596,6 +601,7 @@ function runMarketMakerBacktest(
           pnl: profit,
           pnlPercent: spreadPct,
           exitReason: 'TARGET',
+          quantity: maxInventory / bid,
         });
       } else if (lows[i] <= bid) {
         position = 'LONG';
@@ -610,7 +616,7 @@ function runMarketMakerBacktest(
       }
     } else if (position === 'LONG') {
       const targetSell = entryPrice * (1 + spreadPct / 100);
-      const stopLoss = entryPrice * (1 - (params.rebalance || 1.0) / 100);
+      const stopLoss = entryPrice * (1 - (params.rebalance || 2.5) / 100);
 
       if (highs[i] >= targetSell) {
         const pnl = (targetSell - entryPrice) * (inventory / entryPrice);
@@ -623,6 +629,7 @@ function runMarketMakerBacktest(
           pnl,
           pnlPercent: spreadPct,
           exitReason: 'TARGET',
+          quantity: inventory / entryPrice,
         });
         position = null;
         inventory = 0;
@@ -635,15 +642,16 @@ function runMarketMakerBacktest(
           entryPrice,
           exitPrice: stopLoss,
           pnl,
-          pnlPercent: -(params.rebalance || 1.0),
+          pnlPercent: -(params.rebalance || 2.5),
           exitReason: 'STOP',
+          quantity: inventory / entryPrice,
         });
         position = null;
         inventory = 0;
       }
     } else if (position === 'SHORT') {
       const targetBuy = entryPrice * (1 - spreadPct / 100);
-      const stopLoss = entryPrice * (1 + (params.rebalance || 1.0) / 100);
+      const stopLoss = entryPrice * (1 + (params.rebalance || 2.5) / 100);
 
       if (lows[i] <= targetBuy) {
         const pnl = (entryPrice - targetBuy) * (inventory / entryPrice);
@@ -656,6 +664,7 @@ function runMarketMakerBacktest(
           pnl,
           pnlPercent: spreadPct,
           exitReason: 'TARGET',
+          quantity: inventory / entryPrice,
         });
         position = null;
         inventory = 0;
@@ -668,8 +677,9 @@ function runMarketMakerBacktest(
           entryPrice,
           exitPrice: stopLoss,
           pnl,
-          pnlPercent: -(params.rebalance || 1.0),
+          pnlPercent: -(params.rebalance || 2.5),
           exitReason: 'STOP',
+          quantity: inventory / entryPrice,
         });
         position = null;
         inventory = 0;
@@ -696,9 +706,9 @@ export const Backtesting: React.FC = () => {
   const [params, setParams] = useState<Record<BotType, Record<string, string>>>({
     SIGNAL: { rsiPeriod: '14', rsiOverbought: '70', rsiOversold: '30' },
     GRID: { gridCount: '10', gridSize: '1.5', investment: '1000' },
-    DCA: { interval: '24', amount: '100', totalOrders: '30' },
-    TWAP: { slices: '12', duration: '4', slippage: '0.1' },
-    MARKET_MAKER: { spread: '0.1', inventory: '5000', rebalance: '1' },
+    DCA: { interval: '12', amount: '100', totalOrders: '10' },
+    TWAP: { slices: '10', duration: '4', slippage: '0.05' },
+    MARKET_MAKER: { spread: '0.25', inventory: '5000', rebalance: '2.5' },
   });
 
   const currentBot = BOT_CONFIGS[selectedBot];
@@ -779,11 +789,18 @@ export const Backtesting: React.FC = () => {
 
       // Apply taker fees
       const feeRate = parseFloat(takerFee) / 100;
-      trades = trades.map(t => ({
-        ...t,
-        pnl: t.pnl - (t.entryPrice * feeRate * 2), // Entry + exit fees
-        pnlPercent: t.pnlPercent - (feeRate * 200),
-      }));
+      trades = trades.map(t => {
+        const qty = t.quantity ?? 1;
+        const entryFee = t.entryPrice * feeRate * qty;
+        const exitFee = t.exitPrice * feeRate * qty;
+        const totalFee = entryFee + exitFee;
+        const feePercent = (totalFee / (t.entryPrice * qty)) * 100;
+        return {
+          ...t,
+          pnl: t.pnl - totalFee,
+          pnlPercent: t.pnlPercent - feePercent,
+        };
+      });
 
       // Calculate comprehensive stats
       const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);

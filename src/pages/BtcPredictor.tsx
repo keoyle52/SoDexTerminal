@@ -770,7 +770,7 @@ export const BtcPredictor: React.FC = () => {
                     onClick={() => setShowEvidence(!showEvidence)}
                     className="flex items-center justify-between w-full text-[10px] font-bold text-text-muted hover:text-text-secondary transition-colors uppercase tracking-wider"
                   >
-                    <span>🔍 Karar Kanıtları & Veri Akışı</span>
+                    <span>🔍 Decision Evidence & Data Stream</span>
                     {showEvidence ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </button>
                   {showEvidence && (
@@ -778,29 +778,29 @@ export const BtcPredictor: React.FC = () => {
                       {/* SoSoValue intelligence */}
                       <div>
                         <div className="text-primary font-bold tracking-wider mb-1 flex items-center justify-between">
-                          <span>📊 SOSOVALUE VERİLERİ</span>
+                          <span>📊 SOSOVALUE DATA</span>
                           <a 
                             href="https://sosovalue.xyz" 
                             target="_blank" 
                             rel="noopener noreferrer" 
                             className="text-[9px] text-sky-400 hover:underline hover:text-sky-300 font-semibold"
                           >
-                            Kaynağı Gör →
+                            View Source →
                           </a>
                         </div>
                         <ul className="space-y-1 text-text-secondary list-disc pl-3">
                           <li>
-                            Haber Duyarlılığı: <span className="font-semibold text-text-primary">{predictor.currentSignals.newsSentiment > 0.15 ? '🟢 Boğa (Bullish)' : predictor.currentSignals.newsSentiment < -0.15 ? '🔴 Ayı (Bearish)' : '🟡 Nötr (Neutral)'}</span> ({predictor.currentSignals.newsSentiment.toFixed(2)})
-                            {predictor.currentSignals.newsFallback && <span className="text-[8px] text-amber-300 ml-1">(Yedek Veri)</span>}
+                            News Sentiment: <span className="font-semibold text-text-primary">{predictor.currentSignals.newsSentiment > 0.15 ? '🟢 Bullish' : predictor.currentSignals.newsSentiment < -0.15 ? '🔴 Bearish' : '🟡 Neutral'}</span> ({predictor.currentSignals.newsSentiment.toFixed(2)})
+                            {predictor.currentSignals.newsFallback && <span className="text-[8px] text-amber-300 ml-1">(Fallback Data)</span>}
                           </li>
                           <li>
-                            ETF Giriş/Çıkış Skoru: <span className="font-semibold text-text-primary">{predictor.currentSignals.etfFlow > 0.15 ? '🟢 Pozitif' : predictor.currentSignals.etfFlow < -0.15 ? '🔴 Negatif' : '🟡 Yatay'}</span> ({predictor.currentSignals.etfFlow.toFixed(2)})
-                            {predictor.currentSignals.etfFallback && <span className="text-[8px] text-amber-300 ml-1">(Yedek Veri)</span>}
+                            ETF Flow Score: <span className="font-semibold text-text-primary">{predictor.currentSignals.etfFlow > 0.15 ? '🟢 Positive' : predictor.currentSignals.etfFlow < -0.15 ? '🔴 Negative' : '🟡 Sideways'}</span> ({predictor.currentSignals.etfFlow.toFixed(2)})
+                            {predictor.currentSignals.etfFallback && <span className="text-[8px] text-amber-300 ml-1">(Fallback Data)</span>}
                           </li>
                           {typeof predictor.currentSignals.treasurySignal === 'number' && (
                             <li>
-                              Kurumsal Hazine Birikimi: <span className="font-semibold text-text-primary">{predictor.currentSignals.treasurySignal > 0.15 ? '🟢 Akümülasyon' : predictor.currentSignals.treasurySignal < -0.15 ? '🔴 Dağıtım' : '🟡 Kararsız'}</span>
-                              {predictor.currentSignals.treasuryTopBuyer && ` (En Çok Alan: ${predictor.currentSignals.treasuryTopBuyer})`}
+                              Institutional Treasury Accumulation: <span className="font-semibold text-text-primary">{predictor.currentSignals.treasurySignal > 0.15 ? '🟢 Accumulation' : predictor.currentSignals.treasurySignal < -0.15 ? '🔴 Distribution' : '🟡 Undecided'}</span>
+                              {predictor.currentSignals.treasuryTopBuyer && ` (Top Buyer: ${predictor.currentSignals.treasuryTopBuyer})`}
                             </li>
                           )}
                         </ul>
@@ -809,20 +809,20 @@ export const BtcPredictor: React.FC = () => {
                       {/* Technical and order book details */}
                       <div>
                         <div className="text-amber-400 font-bold tracking-wider mb-1 flex items-center justify-between">
-                          <span>⚙️ TEKNİK & EMİR DEFTERİ</span>
+                          <span>⚙️ TECHNICAL & ORDER BOOK</span>
                         </div>
                         <ul className="space-y-1 text-text-secondary list-disc pl-3">
                           <li>
-                            RSI(14): <span className="font-semibold text-text-primary">{predictor.currentSignals.rsi.toFixed(1)}</span> ({predictor.currentSignals.rsi > 70 ? 'Aşırı Alım' : predictor.currentSignals.rsi < 30 ? 'Aşırı Satım' : 'Normal'})
+                            RSI(14): <span className="font-semibold text-text-primary">{predictor.currentSignals.rsi.toFixed(1)}</span> ({predictor.currentSignals.rsi > 70 ? 'Overbought' : predictor.currentSignals.rsi < 30 ? 'Oversold' : 'Normal'})
                           </li>
                           <li>
-                            EMA & MACD Sinyali: <span className="font-semibold text-text-primary">{predictor.currentSignals.emaSignal > 0 ? '🟢 Boğa' : predictor.currentSignals.emaSignal < 0 ? '🔴 Ayı' : '🟡 Nötr'}</span>
+                            EMA & MACD Signal: <span className="font-semibold text-text-primary">{predictor.currentSignals.emaSignal > 0 ? '🟢 Bull' : predictor.currentSignals.emaSignal < 0 ? '🔴 Bear' : '🟡 Neutral'}</span>
                           </li>
                           <li>
-                            Borsa Emir Dengesizliği: <span className="font-semibold text-text-primary">{(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}% alıcı (bid-side)</span>
+                            Exchange Order Imbalance: <span className="font-semibold text-text-primary">{(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}% buyers (bid-side)</span>
                           </li>
                           <li>
-                            Fonlama Oranı: <span className="font-semibold text-text-primary">{(predictor.currentSignals.fundingRate * 100).toFixed(4)}%</span> ({predictor.currentSignals.fundingRateSignal > 0.15 ? 'Boğa Eğilimli' : predictor.currentSignals.fundingRateSignal < -0.15 ? 'Ayı Eğilimli' : 'Dengeli'})
+                            Funding Rate: <span className="font-semibold text-text-primary">{(predictor.currentSignals.fundingRate * 100).toFixed(4)}%</span> ({predictor.currentSignals.fundingRateSignal > 0.15 ? 'Bullish Bias' : predictor.currentSignals.fundingRateSignal < -0.15 ? 'Bearish Bias' : 'Balanced'})
                           </li>
                         </ul>
                       </div>
