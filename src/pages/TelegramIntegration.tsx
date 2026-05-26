@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   MessageSquare, Send, Smartphone, ShieldCheck, Bell,
-  CheckCircle2, Play, Square, Settings, RefreshCw, Trash2, Cpu
+  CheckCircle2, RefreshCw, Trash2
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Toggle } from '../components/common/Input';
-import { Input, Select } from '../components/common/Input';
-import { SymbolSelector } from '../components/common/SymbolSelector';
 import toast from 'react-hot-toast';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useSettingsStore } from '../store/settingsStore';
@@ -29,7 +27,7 @@ import {
   cancelOrder,
   batchCancelOrders
 } from '../api/services';
-import { buildContext, recommendGridBot, recommendMarketMakerBot, recommendSignalBot } from '../api/aiAutoConfig';
+
 import { classifyRegime, recommendBot, regimeLabel, botLabel, type RegimeInputs } from '../api/aiOrchestrator';
 
 interface Message {
@@ -61,8 +59,6 @@ async function verifyAndConnect(chatId: string, account?: AccountInfo): Promise<
   const data = await res.json() as { ok: boolean; registered?: boolean; reason?: string; error?: string };
   if (!data.ok) throw new Error(data.reason ?? data.error ?? 'Could not verify Chat ID');
 }
-
-type TabType = 'GRID' | 'MM' | 'SIGNAL' | 'PREDICTOR';
 
 interface LocalGridLevel {
   price: number;
@@ -153,48 +149,6 @@ export const TelegramIntegration: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<'START_SELECT' | 'STOP_SELECT' | null>(null);
   const [runningBotsList, setRunningBotsList] = useState<string[]>([]);
 
-  // Bot Controller Panel tabs & values
-  const [activeTab, setActiveTab] = useState<TabType>('GRID');
-  
-  // Local params overrides to prevent direct stores writes before clicking Start
-  const [gridParams, setGridParams] = useState({
-    symbol: 'BTC_USDC',
-    lowerPrice: '60000',
-    upperPrice: '70000',
-    gridCount: '10',
-    spacing: 'ARITHMETIC',
-    amount: '0.01',
-    isSpot: true,
-    leverage: '5',
-    stopLossPrice: '',
-    takeProfitPrice: ''
-  });
-  const [mmParams, setMmParams] = useState({
-    symbol: 'BTC_USDC',
-    budget: '100',
-    size: '10',
-    spread: '5',
-    rebalance: '10',
-    layers: '3',
-    makerFeeRate: '0.0001',
-    volumeTargetUsdt: '',
-    feeBudgetUsdt: ''
-  });
-  const [sigParams, setSigParams] = useState({
-    symbol: 'BTC-USD',
-    leverage: '5',
-    amount: '50',
-    tp: '3',
-    sl: '2',
-    combineMode: 'ANY',
-    checkInterval: '60',
-    klineInterval: '1m',
-    cooldownSeconds: '120',
-    maxOpenPositions: '1',
-    onConflictingSignal: 'CLOSE_AND_REVERSE',
-    isSpot: false
-  });
-  const [predParams, setPredParams] = useState({ amount: '100', leverage: '10' });
 
   // Terminal Console state
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
@@ -276,21 +230,7 @@ export const TelegramIntegration: React.FC = () => {
     toast.error('Telegram bot disconnected. All trading bots stopped & unfilled orders cancelled.');
   }, [telegramChatId, isDemoMode, addTerminalLog, setTelegramChatId]);
 
-  const syncStateToBackend = useCallback(async (botKey: 'grid' | 'mm' | 'signal' | 'predictor', state: 'RUNNING' | 'STOPPED') => {
-    if (!telegramChatId) return;
-    try {
-      await fetch(`${API_BASE}/api/telegram/states`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId: telegramChatId,
-          botStates: { [botKey]: state }
-        })
-      });
-    } catch (err) {
-      // ignore
-    }
-  }, [telegramChatId]);
+
 
   const syncBotsToBackendStates = useCallback(async (backendStates: {
     grid: 'RUNNING' | 'STOPPED';
@@ -1300,171 +1240,7 @@ export const TelegramIntegration: React.FC = () => {
     return () => clearInterval(interval);
   }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode, telegramChatId, disconnectAndStopAllBots, syncBotsToBackendStates]);
 
-  // AI Auto configure parameters helper
-  const handleAiConfigure = async () => {
-    addTerminalLog('SYSTEM', 'INFO', 'Invoking AI analysis model...');
-    try {
-      if (activeTab === 'GRID') {
-        const market = gridParams.isSpot ? 'spot' : 'perps';
-        const ctx = await buildContext(gridParams.symbol, market);
-        const budget = parseFloat(gridParams.amount) * parseInt(gridParams.gridCount) * ctx.price || 200;
-        const rec = recommendGridBot(ctx, budget);
-        setGridParams(prev => ({
-          ...prev,
-          lowerPrice: rec.preset.lowerPrice as string,
-          upperPrice: rec.preset.upperPrice as string,
-          gridCount: rec.preset.gridCount as string,
-          amount: rec.preset.amountPerGrid as string,
-          spacing: rec.preset.spacing as string,
-        }));
-        addTerminalLog('GRID', 'SUCCESS', `AI Configuration applied: ${rec.rationale}`);
-      } else if (activeTab === 'MM') {
-        const ctx = await buildContext(mmParams.symbol, 'spot');
-        const budget = parseFloat(mmParams.budget) || 100;
-        const rec = recommendMarketMakerBot(ctx, budget);
-        setMmParams(prev => ({
-          ...prev,
-          budget: rec.preset.budgetUsdt as string,
-          size: rec.preset.orderSizeUsdt as string,
-          spread: rec.preset.spreadBps as string,
-          rebalance: rec.preset.requoteBps as string,
-          layers: rec.preset.layers as string,
-          makerFeeRate: rec.preset.makerFeeRate as string,
-        }));
-        addTerminalLog('MM', 'SUCCESS', `AI Configuration applied: ${rec.rationale}`);
-      } else if (activeTab === 'SIGNAL') {
-        const market = sigParams.isSpot ? 'spot' : 'perps';
-        const ctx = await buildContext(sigParams.symbol, market);
-        const rec = recommendSignalBot(ctx);
-        setSigParams(prev => ({
-          ...prev,
-          leverage: rec.preset.leverage as string,
-          amount: rec.preset.amountUsdt as string,
-          tp: rec.preset.takeProfitPct as string,
-          sl: rec.preset.stopLossPct as string,
-          combineMode: rec.preset.combineMode as string,
-          checkInterval: rec.preset.checkInterval as string,
-          klineInterval: rec.preset.klineInterval as string,
-          cooldownSeconds: rec.preset.cooldownSeconds as string,
-          maxOpenPositions: rec.preset.maxOpenPositions as string,
-          onConflictingSignal: rec.preset.onConflictingSignal as string,
-        }));
-        if (rec.preset.signalsJson) {
-          try {
-            const parsed = JSON.parse(rec.preset.signalsJson);
-            if (Array.isArray(parsed)) {
-              useBotStore.getState().signalBot.setField('signals', parsed);
-            }
-          } catch {}
-        }
-        addTerminalLog('SIGNAL', 'SUCCESS', `AI Configuration applied: ${rec.rationale}`);
-      } else if (activeTab === 'PREDICTOR') {
-        setPredParams(prev => ({
-          ...prev,
-          leverage: '15',
-          amount: '100'
-        }));
-        addTerminalLog('PREDICTOR', 'SUCCESS', 'AI Configuration applied: forecast margin leverage set to 15x, trade amount 100 USDT.');
-      }
-      toast.success('AI configurations applied!');
-    } catch (err) {
-      const msg = getErrorMessage(err);
-      toast.error(`AI configure failed: ${msg}`);
-      addTerminalLog('SYSTEM', 'ERROR', `AI configure failed: ${msg}`);
-    }
-  };
 
-
-  const handleStartStopBot = () => {
-    // Validate credentials
-    if (!evmAddress || !privateKey) {
-      addTerminalLog('SYSTEM', 'ERROR', 'Bot launch failed: EVM address or Private Key is not set.');
-      toast.error('Please configure your API credentials first!');
-      return;
-    }
-
-    if (activeTab === 'GRID') {
-      if (grid.status === 'RUNNING') {
-        useBotStore.getState().gridBot.setField('status', 'STOPPED');
-        addTerminalLog('GRID', 'INFO', 'Grid Bot stop signal received. Cancelling grid layers...');
-        void syncStateToBackend('grid', 'STOPPED');
-        toast.success('Grid Bot stopped!');
-      } else {
-        // sync overrides to store
-        useBotStore.getState().gridBot.setField('symbol', gridParams.symbol);
-        useBotStore.getState().gridBot.setField('lowerPrice', gridParams.lowerPrice);
-        useBotStore.getState().gridBot.setField('upperPrice', gridParams.upperPrice);
-        useBotStore.getState().gridBot.setField('gridCount', gridParams.gridCount);
-        useBotStore.getState().gridBot.setField('amountPerGrid', gridParams.amount);
-        useBotStore.getState().gridBot.setField('spacing', gridParams.spacing as any);
-        useBotStore.getState().gridBot.setField('isSpot', gridParams.isSpot);
-        useBotStore.getState().gridBot.setField('leverage', gridParams.leverage);
-        useBotStore.getState().gridBot.setField('stopLossPrice', gridParams.stopLossPrice);
-        useBotStore.getState().gridBot.setField('takeProfitPrice', gridParams.takeProfitPrice);
-        useBotStore.getState().gridBot.setField('status', 'RUNNING');
-        void syncStateToBackend('grid', 'RUNNING');
-        toast.success('Grid Bot started!');
-      }
-    } else if (activeTab === 'MM') {
-      if (mm.status === 'RUNNING') {
-        useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
-        useBotStore.getState().marketMakerBot.setField('sessionStartedAt', null);
-        addTerminalLog('MM', 'INFO', 'Market Maker stopped. Open limit orders removed.');
-        void syncStateToBackend('mm', 'STOPPED');
-        toast.success('Market Maker stopped!');
-      } else {
-        useBotStore.getState().marketMakerBot.setField('symbol', mmParams.symbol);
-        useBotStore.getState().marketMakerBot.setField('budgetUsdt', mmParams.budget);
-        useBotStore.getState().marketMakerBot.setField('orderSizeUsdt', mmParams.size);
-        useBotStore.getState().marketMakerBot.setField('spreadBps', mmParams.spread);
-        useBotStore.getState().marketMakerBot.setField('requoteBps', mmParams.rebalance);
-        useBotStore.getState().marketMakerBot.setField('layers', mmParams.layers);
-        useBotStore.getState().marketMakerBot.setField('makerFeeRate', mmParams.makerFeeRate);
-        useBotStore.getState().marketMakerBot.setField('volumeTargetUsdt', mmParams.volumeTargetUsdt);
-        useBotStore.getState().marketMakerBot.setField('feeBudgetUsdt', mmParams.feeBudgetUsdt);
-        useBotStore.getState().marketMakerBot.setField('status', 'RUNNING');
-        useBotStore.getState().marketMakerBot.setField('sessionStartedAt', Date.now());
-        void syncStateToBackend('mm', 'RUNNING');
-        toast.success('Market Maker started!');
-      }
-    } else if (activeTab === 'SIGNAL') {
-      if (sig.status === 'RUNNING') {
-        useBotStore.getState().signalBot.setField('status', 'STOPPED');
-        addTerminalLog('SIGNAL', 'INFO', 'Signal Bot stopped.');
-        void syncStateToBackend('signal', 'STOPPED');
-        toast.success('Signal Bot stopped!');
-      } else {
-        useBotStore.getState().signalBot.setField('symbol', sigParams.symbol);
-        useBotStore.getState().signalBot.setField('leverage', sigParams.leverage);
-        useBotStore.getState().signalBot.setField('amountUsdt', sigParams.amount);
-        useBotStore.getState().signalBot.setField('takeProfitPct', sigParams.tp);
-        useBotStore.getState().signalBot.setField('stopLossPct', sigParams.sl);
-        useBotStore.getState().signalBot.setField('combineMode', sigParams.combineMode as any);
-        useBotStore.getState().signalBot.setField('checkInterval', sigParams.checkInterval);
-        useBotStore.getState().signalBot.setField('klineInterval', sigParams.klineInterval);
-        useBotStore.getState().signalBot.setField('cooldownSeconds', sigParams.cooldownSeconds);
-        useBotStore.getState().signalBot.setField('maxOpenPositions', sigParams.maxOpenPositions);
-        useBotStore.getState().signalBot.setField('onConflictingSignal', sigParams.onConflictingSignal as any);
-        useBotStore.getState().signalBot.setField('isSpot', sigParams.isSpot);
-        useBotStore.getState().signalBot.setField('status', 'RUNNING');
-        void syncStateToBackend('signal', 'RUNNING');
-        toast.success('Signal Bot started!');
-      }
-    } else if (activeTab === 'PREDICTOR') {
-      if (pred) {
-        usePredictorStore.getState().setAutoTradeEnabled(false);
-        addTerminalLog('PREDICTOR', 'INFO', 'BTC Predictor auto-trade disabled.');
-        void syncStateToBackend('predictor', 'STOPPED');
-        toast.success('Auto-trade disabled!');
-      } else {
-        usePredictorStore.getState().setTradeAmountUsdt(predParams.amount || '100');
-        usePredictorStore.getState().setTradeLeverage(parseInt(predParams.leverage) || 10);
-        usePredictorStore.getState().setAutoTradeEnabled(true);
-        void syncStateToBackend('predictor', 'RUNNING');
-        toast.success('BTC Predictor auto-trade enabled!');
-      }
-    }
-  };
 
   const handleSend = async () => {
     if (!inputValue.trim()) return;
@@ -1641,14 +1417,6 @@ Your account has been unlinked from this Telegram chat. All active terminal bots
     }
   };
 
-  const getBotStatusText = (botKey: TabType) => {
-    if (botKey === 'GRID') return grid.status;
-    if (botKey === 'MM') return mm.status;
-    if (botKey === 'SIGNAL') return sig.status;
-    return pred ? 'RUNNING' : 'STOPPED';
-  };
-
-  const isCurrentBotRunning = getBotStatusText(activeTab) === 'RUNNING';
 
   return (
     <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
@@ -1871,367 +1639,11 @@ Your account has been unlinked from this Telegram chat. All active terminal bots
 
       </div>
 
-      {/* Bot Control Center and Terminal Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 flex-1 min-h-[380px]">
-        
-        {/* Quick Config / Controller Dashboard */}
-        <Card className="xl:col-span-2 p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-border/50">
-            <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-              <Settings size={14} className="text-primary" /> Bot Control Panel
-            </span>
-            <span className={cn(
-              "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-              isCurrentBotRunning ? "bg-success/15 text-success" : "bg-text-muted/10 text-text-muted"
-            )}>
-              {getBotStatusText(activeTab)}
-            </span>
-          </div>
-
-          {/* Tab buttons */}
-          <div className="grid grid-cols-4 gap-1.5 mb-4 shrink-0">
-            {(['GRID', 'MM', 'SIGNAL', 'PREDICTOR'] as TabType[]).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "py-2 rounded-lg text-[10px] font-bold transition-all border",
-                  activeTab === tab 
-                    ? "bg-primary/10 border-primary text-primary" 
-                    : "bg-surface border-border text-text-secondary hover:text-text-primary"
-                )}
-              >
-                {tab === 'MM' ? 'MM' : tab}
-              </button>
-            ))}
-          </div>
-
-          {/* Config Editor Form per bot */}
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
-            {activeTab === 'GRID' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => !isCurrentBotRunning && setGridParams(p => ({ ...p, isSpot: true }))}
-                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', gridParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
-                  >Spot</button>
-                  <button
-                    onClick={() => !isCurrentBotRunning && setGridParams(p => ({ ...p, isSpot: false }))}
-                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', !gridParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
-                  >Perps</button>
-                </div>
-                <SymbolSelector
-                  value={gridParams.symbol}
-                  onChange={(v) => setGridParams(p => ({ ...p, symbol: v }))}
-                  market={gridParams.isSpot ? 'spot' : 'perps'}
-                  disabled={isCurrentBotRunning}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Lower Price"
-                    type="number"
-                    value={gridParams.lowerPrice}
-                    onChange={(e) => setGridParams(p => ({ ...p, lowerPrice: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Upper Price"
-                    type="number"
-                    value={gridParams.upperPrice}
-                    onChange={(e) => setGridParams(p => ({ ...p, upperPrice: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Grid Levels"
-                    type="number"
-                    value={gridParams.gridCount}
-                    onChange={(e) => setGridParams(p => ({ ...p, gridCount: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Amount/Grid"
-                    type="number"
-                    value={gridParams.amount}
-                    onChange={(e) => setGridParams(p => ({ ...p, amount: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Select
-                    label="Spacing"
-                    value={gridParams.spacing}
-                    onChange={(e) => setGridParams(p => ({ ...p, spacing: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    options={[
-                      { value: 'ARITHMETIC', label: 'Arithmetic' },
-                      { value: 'GEOMETRIC', label: 'Geometric' }
-                    ]}
-                  />
-                  {!gridParams.isSpot ? (
-                    <Input
-                      label="Leverage"
-                      type="number"
-                      value={gridParams.leverage}
-                      onChange={(e) => setGridParams(p => ({ ...p, leverage: e.target.value }))}
-                      disabled={isCurrentBotRunning}
-                    />
-                  ) : (
-                    <div />
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Stop Loss Price"
-                    type="number"
-                    value={gridParams.stopLossPrice}
-                    onChange={(e) => setGridParams(p => ({ ...p, stopLossPrice: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    placeholder="None"
-                  />
-                  <Input
-                    label="Take Profit Price"
-                    type="number"
-                    value={gridParams.takeProfitPrice}
-                    onChange={(e) => setGridParams(p => ({ ...p, takeProfitPrice: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    placeholder="None"
-                  />
-                </div>
-              </>
-            )}
-
-            {activeTab === 'MM' && (
-              <>
-                <SymbolSelector
-                  value={mmParams.symbol}
-                  onChange={(v) => setMmParams(p => ({ ...p, symbol: v }))}
-                  market="spot"
-                  disabled={isCurrentBotRunning}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Budget USDT"
-                    type="number"
-                    value={mmParams.budget}
-                    onChange={(e) => setMmParams(p => ({ ...p, budget: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Order size USDT"
-                    type="number"
-                    value={mmParams.size}
-                    onChange={(e) => setMmParams(p => ({ ...p, size: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Spread Offset (bps)"
-                    type="number"
-                    value={mmParams.spread}
-                    onChange={(e) => setMmParams(p => ({ ...p, spread: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Re-quote Threshold (bps)"
-                    type="number"
-                    value={mmParams.rebalance}
-                    onChange={(e) => setMmParams(p => ({ ...p, rebalance: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Ladder Layers"
-                    type="number"
-                    min="1"
-                    max="5"
-                    value={mmParams.layers}
-                    onChange={(e) => setMmParams(p => ({ ...p, layers: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Maker Fee Rate"
-                    type="number"
-                    step="0.00001"
-                    value={mmParams.makerFeeRate}
-                    onChange={(e) => setMmParams(p => ({ ...p, makerFeeRate: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Volume Target (USDT)"
-                    type="number"
-                    value={mmParams.volumeTargetUsdt}
-                    onChange={(e) => setMmParams(p => ({ ...p, volumeTargetUsdt: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    placeholder="None"
-                  />
-                  <Input
-                    label="Fee Budget (USDT)"
-                    type="number"
-                    value={mmParams.feeBudgetUsdt}
-                    onChange={(e) => setMmParams(p => ({ ...p, feeBudgetUsdt: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    placeholder="None"
-                  />
-                </div>
-              </>
-            )}
-
-            {activeTab === 'SIGNAL' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => !isCurrentBotRunning && setSigParams(p => ({ ...p, isSpot: true }))}
-                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', sigParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
-                  >Spot</button>
-                  <button
-                    onClick={() => !isCurrentBotRunning && setSigParams(p => ({ ...p, isSpot: false }))}
-                    className={cn('py-1.5 text-xs font-semibold rounded-lg border transition-all', !sigParams.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted', isCurrentBotRunning && 'opacity-50')}
-                  >Perps</button>
-                </div>
-                <SymbolSelector
-                  value={sigParams.symbol}
-                  onChange={(v) => setSigParams(p => ({ ...p, symbol: v }))}
-                  market={sigParams.isSpot ? 'spot' : 'perps'}
-                  disabled={isCurrentBotRunning}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Leverage margin"
-                    type="number"
-                    value={sigParams.leverage}
-                    onChange={(e) => setSigParams(p => ({ ...p, leverage: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Position Amount ($)"
-                    type="number"
-                    value={sigParams.amount}
-                    onChange={(e) => setSigParams(p => ({ ...p, amount: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Take profit %"
-                    type="number"
-                    value={sigParams.tp}
-                    onChange={(e) => setSigParams(p => ({ ...p, tp: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Stop loss %"
-                    type="number"
-                    value={sigParams.sl}
-                    onChange={(e) => setSigParams(p => ({ ...p, sl: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Select
-                    label="Combine Mode"
-                    value={sigParams.combineMode}
-                    onChange={(e) => setSigParams(p => ({ ...p, combineMode: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    options={[
-                      { value: 'ANY', label: 'ANY (Or)' },
-                      { value: 'ALL', label: 'ALL (And)' },
-                      { value: 'MAJORITY', label: 'MAJORITY' }
-                    ]}
-                  />
-                  <Select
-                    label="Conflict Mode"
-                    value={sigParams.onConflictingSignal}
-                    onChange={(e) => setSigParams(p => ({ ...p, onConflictingSignal: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                    options={[
-                      { value: 'IGNORE', label: 'Ignore' },
-                      { value: 'CLOSE_ONLY', label: 'Close Only' },
-                      { value: 'CLOSE_AND_REVERSE', label: 'Close & Reverse' }
-                    ]}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Input
-                    label="Check (s)"
-                    type="number"
-                    value={sigParams.checkInterval}
-                    onChange={(e) => setSigParams(p => ({ ...p, checkInterval: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Cooldown (s)"
-                    type="number"
-                    value={sigParams.cooldownSeconds}
-                    onChange={(e) => setSigParams(p => ({ ...p, cooldownSeconds: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Max Positions"
-                    type="number"
-                    value={sigParams.maxOpenPositions}
-                    onChange={(e) => setSigParams(p => ({ ...p, maxOpenPositions: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-              </>
-            )}
-
-            {activeTab === 'PREDICTOR' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Trade size USDT"
-                    type="number"
-                    value={predParams.amount}
-                    onChange={(e) => setPredParams(p => ({ ...p, amount: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                  <Input
-                    label="Margin Leverage"
-                    type="number"
-                    value={predParams.leverage}
-                    onChange={(e) => setPredParams(p => ({ ...p, leverage: e.target.value }))}
-                    disabled={isCurrentBotRunning}
-                  />
-                </div>
-                <p className="text-[10px] text-text-muted">
-                  BTC Predictor continuously monitors ETF inflows, treasury accumulation, and macro-news signals to enter LONG/SHORT swaps.
-                </p>
-              </>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex gap-3 mt-4 pt-3 border-t border-border/50 shrink-0">
-            {!isCurrentBotRunning && (
-              <Button
-                variant="primary"
-                className="flex-1 bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:opacity-90 border-0"
-                icon={<Cpu size={14} />}
-                onClick={handleAiConfigure}
-              >
-                AI Config
-              </Button>
-            )}
-            <Button
-              variant={isCurrentBotRunning ? 'danger' : 'primary'}
-              className="flex-1"
-              icon={isCurrentBotRunning ? <Square size={14} /> : <Play size={14} />}
-              onClick={handleStartStopBot}
-            >
-              {isCurrentBotRunning ? 'Stop Bot' : 'Start Bot'}
-            </Button>
-          </div>
-        </Card>
+      {/* Terminal Activity Log Section */}
+      <div className="flex-1 min-h-[380px] flex">
 
         {/* Live Terminal Console logs */}
-        <Card className="xl:col-span-3 p-0 flex flex-col overflow-hidden bg-black/90 border-black shadow-2xl relative">
+        <Card className="flex-1 p-0 flex flex-col overflow-hidden bg-black/90 border-black shadow-2xl relative rounded-2xl">
           <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between shrink-0 bg-neutral-900/80">
             <span className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
