@@ -114,6 +114,13 @@ router.post('/verify', async (req: Request, res: Response) => {
   }
 
   if (isRegistered(numericId)) {
+    if (evmAddress && apiKeyName) {
+      linkAccount(numericId, {
+        evmAddress,
+        apiKeyName,
+        isTestnet: isTestnet ?? false,
+      });
+    }
     res.json({ ok: true, registered: true });
     return;
   }

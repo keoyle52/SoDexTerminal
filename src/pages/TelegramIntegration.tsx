@@ -598,10 +598,22 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
     setTestStatus('testing');
     setTestError('');
     try {
-      const effectiveEvmAddress = (evmAddress ?? '').trim() || (privateKey ? deriveAddressFromPrivateKey(privateKey) : '');
+      // Auto-save credentials if filled in the input fields but not saved yet
+      if (addressInput.trim() && privateKeyInput.trim()) {
+        useSettingsStore.setState({
+          evmAddress: addressInput.trim(),
+          apiKeyName: apiKeyInput.trim() || addressInput.trim(),
+          privateKey: privateKeyInput.trim(),
+          isTestnet: testnetInput,
+          isWalletConnected: true
+        });
+      }
+
+      const effectiveEvmAddress = addressInput.trim() || (privateKeyInput.trim() ? deriveAddressFromPrivateKey(privateKeyInput.trim()) : '');
       const account = effectiveEvmAddress
-        ? { evmAddress: effectiveEvmAddress, apiKeyName: apiKeyName || effectiveEvmAddress, isTestnet }
+        ? { evmAddress: effectiveEvmAddress, apiKeyName: apiKeyInput.trim() || effectiveEvmAddress, isTestnet: testnetInput }
         : undefined;
+
       await verifyAndConnect(chatIdInput.trim(), account);
       setTelegramChatId(chatIdInput.trim());
       setTestStatus('ok');
