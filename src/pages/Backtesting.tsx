@@ -91,8 +91,8 @@ const BOT_CONFIGS: Record<BotType, BotConfig> = {
     type: 'TWAP',
     name: 'TWAP Bot',
     description: 'Time-weighted average price execution for large orders',
-    defaultParams: { slices: 10, duration: 4, slippage: 0.05 },
-    paramLabels: { slices: 'Slices', duration: 'Duration (hours)', slippage: 'Max Slippage (%)' },
+    defaultParams: { slices: 10, duration: 4, slippage: 0.05, investment: 1000 },
+    paramLabels: { slices: 'Slices', duration: 'Duration (hours)', slippage: 'Max Slippage (%)', investment: 'Investment (USDT)' },
   },
   MARKET_MAKER: {
     type: 'MARKET_MAKER',
@@ -347,13 +347,12 @@ function runGridBacktest(
 ): TradeEntry[] {
   const trades: TradeEntry[] = [];
   const startPrice = closes[0];
-  const priceRange = Math.max(...closes) - Math.min(...closes);
-  const halfRange = priceRange * 0.35 || startPrice * 0.1;
-  const lowerBound = startPrice - halfRange;
-  const upperBound = startPrice + halfRange;
-  
+  const gridSizePct = params.gridSize || 1.5;
+  const step = startPrice * (gridSizePct / 100);
   const gridCount = Math.max(2, Math.min(50, params.gridCount || 10));
-  const step = (upperBound - lowerBound) / gridCount;
+  
+  const lowerBound = startPrice - (gridCount / 2) * step;
+  const upperBound = startPrice + (gridCount / 2) * step;
 
   // Generate grid levels
   const gridLevels: number[] = [];
@@ -568,11 +567,13 @@ function runTwapBacktest(
   _highs: number[],
   _lows: number[],
   times: string[],
-  params: { slices: number; duration: number; slippage: number }
+  params: { slices: number; duration: number; slippage: number; investment?: number }
 ): TradeEntry[] {
   const trades: TradeEntry[] = [];
   const slices = params.slices || 12;
   const durationHours = params.duration || 4;
+  const investment = params.investment || 1000;
+  const sliceAmount = investment / slices;
   
   let barsPerHour = 1;
   if (closes.length > 1) {
@@ -600,8 +601,8 @@ function runTwapBacktest(
         if (sliceIdx >= closes.length) break;
         const price = closes[sliceIdx];
         const executionPrice = price * (1 + (params.slippage || 0.05) / 100);
-        totalSpent += 100;
-        totalQty += 100 / executionPrice;
+        totalSpent += sliceAmount;
+        totalQty += sliceAmount / executionPrice;
       }
       
       const avgEntryPrice = totalSpent / totalQty;
@@ -795,7 +796,7 @@ export const Backtesting: React.FC = () => {
     SIGNAL: { rsiPeriod: '14', rsiOverbought: '70', rsiOversold: '30', investment: '1000' },
     GRID: { gridCount: '10', gridSize: '1.5', investment: '1000' },
     DCA: { interval: '12', amount: '100', totalOrders: '10' },
-    TWAP: { slices: '10', duration: '4', slippage: '0.05' },
+    TWAP: { slices: '10', duration: '4', slippage: '0.05', investment: '1000' },
     MARKET_MAKER: { spread: '0.5', inventory: '1000', rebalance: '5.0' },
   });
 
@@ -2172,6 +2173,17 @@ const CompareBotsModal: React.FC<CompareBotsModalProps> = ({
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              {/* Simulation Note & Disclaimer Alert */}
+              <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-start gap-3">
+                <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h5 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Simülasyon Açıklamaları & Risk Uyarısı</h5>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    Tüm bot simülasyonları varsayılan <strong>1000 USDT</strong> başlangıç bakiyesi üzerinden gerçekleştirilmiştir. Grid ve DCA botları envanter ve fiyat taşıma riski barındırır. Trend yönündeki ardışık zararları engellemek amacıyla Signal Bot için <strong>8 bar</strong>, Market Maker için <strong>10 bar</strong> duraklama (cooldown) koruması aktif edilmiştir.
+                  </p>
                 </div>
               </div>
             </>
