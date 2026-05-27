@@ -4,6 +4,7 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Input, Select } from '../components/common/Input';
 import { useBotStore } from '../store/botStore';
+import { useSettingsStore } from '../store/settingsStore';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 
@@ -79,6 +80,7 @@ export const StrategyMarketplace: React.FC = () => {
 
   // Store references to load presets into
   const botStore = useBotStore();
+  const settings = useSettingsStore();
 
   const handleDeploy = (strat: Strategy) => {
     setDeployedStratId(strat.id);
@@ -131,16 +133,50 @@ export const StrategyMarketplace: React.FC = () => {
     setIsPublishing(true);
 
     setTimeout(() => {
+      const creatorName = settings.isWalletConnected && settings.walletAddress
+        ? `${settings.walletAddress.slice(0, 6)}...${settings.walletAddress.slice(-4)}`
+        : '0x71C7...976F';
+
+      let config: Record<string, any> = {};
+      if (botType === 'Grid') {
+        const grid = botStore.gridBot;
+        config = {
+          symbol: grid.symbol,
+          lowerPrice: grid.lowerPrice,
+          upperPrice: grid.upperPrice,
+          gridCount: grid.gridCount,
+          leverage: grid.leverage,
+        };
+      } else if (botType === 'Market Maker') {
+        const mm = botStore.marketMakerBot;
+        config = {
+          symbol: mm.symbol,
+          budgetUsdt: mm.budgetUsdt,
+          layers: mm.layers,
+          spreadBps: mm.spreadBps,
+          requoteBps: mm.requoteBps,
+        };
+      } else if (botType === 'Signal') {
+        const sig = botStore.signalBot;
+        config = {
+          symbol: sig.symbol,
+          leverage: sig.leverage,
+          amountUsdt: sig.amountUsdt,
+          TpPct: sig.takeProfitPct,
+          SlPct: sig.stopLossPct,
+        };
+      }
+
       const newStrat: Strategy = {
         id: `strat-${Date.now()}`,
         name: stratName,
-        creator: 'keolehunter (You)',
+        creator: creatorName,
         botType,
         roi30d: parseFloat((Math.random() * 15 + 5).toFixed(2)),
         sharpe: parseFloat((Math.random() * 1.5 + 1.2).toFixed(2)),
         drawdown: parseFloat((Math.random() * 3 + 1).toFixed(2)),
         description: desc,
-        config: botType === 'Grid' ? { symbol: 'BTC-USD', lowerPrice: 62000, upperPrice: 65000, gridCount: 10, leverage: 5 } : {},
+        config,
       };
 
       setStrategies(prev => [newStrat, ...prev]);
@@ -218,7 +254,9 @@ export const StrategyMarketplace: React.FC = () => {
                         {strat.botType} Bot
                       </span>
                       <h4 className="text-sm font-bold text-text-primary mt-2">{strat.name}</h4>
-                      <p className="text-[10px] text-text-muted mt-0.5">Shared by @{strat.creator}</p>
+                      <p className="text-[10px] text-text-muted mt-0.5">
+                        Shared by {strat.creator.startsWith('0x') ? strat.creator : '@' + strat.creator}
+                      </p>
                     </div>
 
                     <div className="text-right">
