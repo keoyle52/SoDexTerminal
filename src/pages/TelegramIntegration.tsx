@@ -107,7 +107,9 @@ export const TelegramIntegration: React.FC = () => {
   const pred = usePredictorStore(state => state.autoTradeEnabled);
 
   // Connection settings
-  const [chatIdInput, setChatIdInput] = useState(telegramChatId);
+  const [chatIdInput, setChatIdInput] = useState(() => {
+    return telegramChatId || localStorage.getItem('sodex_last_chat_id') || '';
+  });
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [_testError, setTestError] = useState('');
 
@@ -246,7 +248,6 @@ export const TelegramIntegration: React.FC = () => {
     }
 
     setTelegramChatId('');
-    setChatIdInput('');
     setTestStatus('idle');
     toast.error('Telegram bot disconnected. All trading bots stopped & unfilled orders cancelled.');
   }, [telegramChatId, isDemoMode, addTerminalLog, setTelegramChatId]);
@@ -595,24 +596,31 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
       toast.error('Enter your Chat ID');
       return;
     }
+    if (!addressInput.trim() || !privateKeyInput.trim()) {
+      toast.error('API credentials (EVM Address & Private Key) are required to connect Telegram.');
+      return;
+    }
     setTestStatus('testing');
     setTestError('');
     try {
       // Auto-save credentials if filled in the input fields but not saved yet
-      if (addressInput.trim() && privateKeyInput.trim()) {
-        useSettingsStore.setState({
-          evmAddress: addressInput.trim(),
-          apiKeyName: apiKeyInput.trim() || addressInput.trim(),
-          privateKey: privateKeyInput.trim(),
-          isTestnet: testnetInput,
-          isWalletConnected: true
-        });
-      }
+      useSettingsStore.setState({
+        evmAddress: addressInput.trim(),
+        apiKeyName: apiKeyInput.trim() || addressInput.trim(),
+        privateKey: privateKeyInput.trim(),
+        isTestnet: testnetInput,
+        isWalletConnected: true
+      });
+
+      // Save chat ID to localStorage for quick reconnection prefill
+      localStorage.setItem('sodex_last_chat_id', chatIdInput.trim());
 
       const effectiveEvmAddress = addressInput.trim() || (privateKeyInput.trim() ? deriveAddressFromPrivateKey(privateKeyInput.trim()) : '');
-      const account = effectiveEvmAddress
-        ? { evmAddress: effectiveEvmAddress, apiKeyName: apiKeyInput.trim() || effectiveEvmAddress, isTestnet: testnetInput }
-        : undefined;
+      const account = {
+        evmAddress: effectiveEvmAddress,
+        apiKeyName: apiKeyInput.trim() || effectiveEvmAddress,
+        isTestnet: testnetInput
+      };
 
       await verifyAndConnect(chatIdInput.trim(), account);
       setTelegramChatId(chatIdInput.trim());
