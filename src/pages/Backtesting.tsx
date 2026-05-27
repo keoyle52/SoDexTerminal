@@ -175,6 +175,8 @@ function runSignalBacktest(
   let position: 'LONG' | 'SHORT' | null = null;
   let entryPrice = 0;
   let entryTime = '';
+  let slPrice = 0;
+  let tpPrice = 0;
 
   const rsi = calculateRSI(closes, params.rsiPeriod);
   const atr = calculateATR(highs, lows, closes, params.rsiPeriod);
@@ -184,33 +186,28 @@ function runSignalBacktest(
     const curRsi = rsi[i];
     if (prevRsi == null || curRsi == null) continue;
 
-    const atrVal = atr[i] || (closes[i] * 0.001);
-
     if (position === 'LONG') {
-      const tp = entryPrice + atrVal * 2.0;
-      const sl = entryPrice - atrVal * 1.0;
-
-      if (lows[i] <= sl) {
-        const pnl = sl - entryPrice;
+      if (lows[i] <= slPrice) {
+        const pnl = slPrice - entryPrice;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'LONG',
           entryPrice,
-          exitPrice: sl,
+          exitPrice: slPrice,
           pnl,
           pnlPercent: (pnl / entryPrice) * 100,
           exitReason: 'STOP',
         });
         position = null;
-      } else if (highs[i] >= tp) {
-        const pnl = tp - entryPrice;
+      } else if (highs[i] >= tpPrice) {
+        const pnl = tpPrice - entryPrice;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'LONG',
           entryPrice,
-          exitPrice: tp,
+          exitPrice: tpPrice,
           pnl,
           pnlPercent: (pnl / entryPrice) * 100,
           exitReason: 'TARGET',
@@ -231,30 +228,27 @@ function runSignalBacktest(
         position = null;
       }
     } else if (position === 'SHORT') {
-      const tp = entryPrice - atrVal * 2.0;
-      const sl = entryPrice + atrVal * 1.0;
-
-      if (highs[i] >= sl) {
-        const pnl = entryPrice - sl;
+      if (highs[i] >= slPrice) {
+        const pnl = entryPrice - slPrice;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'SHORT',
           entryPrice,
-          exitPrice: sl,
+          exitPrice: slPrice,
           pnl,
           pnlPercent: (pnl / entryPrice) * 100,
           exitReason: 'STOP',
         });
         position = null;
-      } else if (lows[i] <= tp) {
-        const pnl = entryPrice - tp;
+      } else if (lows[i] <= tpPrice) {
+        const pnl = entryPrice - tpPrice;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'SHORT',
           entryPrice,
-          exitPrice: tp,
+          exitPrice: tpPrice,
           pnl,
           pnlPercent: (pnl / entryPrice) * 100,
           exitReason: 'TARGET',
@@ -281,10 +275,16 @@ function runSignalBacktest(
         position = 'LONG';
         entryPrice = closes[i];
         entryTime = times[i];
+        const atrVal = atr[i] || (closes[i] * 0.001);
+        slPrice = entryPrice - atrVal * 2.0; // 2x ATR stop loss
+        tpPrice = entryPrice + atrVal * 3.0; // 3x ATR take profit
       } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
         position = 'SHORT';
         entryPrice = closes[i];
         entryTime = times[i];
+        const atrVal = atr[i] || (closes[i] * 0.001);
+        slPrice = entryPrice + atrVal * 2.0; // 2x ATR stop loss
+        tpPrice = entryPrice - atrVal * 3.0; // 3x ATR take profit
       }
     }
   }
@@ -327,56 +327,115 @@ function runGridBacktest(
   params: { gridCount: number; gridSize: number; investment: number }
 ): TradeEntry[] {
   const trades: TradeEntry[] = [];
-  const gridSize = params.gridSize / 100;
+  const startPrice = closes[0];
   const priceRange = Math.max(...closes) - Math.min(...closes);
-  const centerPrice = closes[0];
-  const halfRange = priceRange * 0.3;
-  const lowerBound = centerPrice - halfRange;
-  const upperBound = centerPrice + halfRange;
+  const halfRange = priceRange * 0.35 || startPrice * 0.1;
+  const lowerBound = startPrice - halfRange;
+  const upperBound = startPrice + halfRange;
+  
+  const gridCount = Math.max(2, Math.min(50, params.gridCount || 10));
+  const step = (upperBound - lowerBound) / gridCount;
 
-  let inPosition = false;
-  let entryPrice = 0;
-  let entryTime = '';
+  // Generate grid levels
+  const gridLevels: number[] = [];
+  for (let i = 0; i <= gridCount; i++) {
+    gridLevels.push(lowerBound + i * step);
+  }
 
-  for (let i = 0; i < closes.length; i++) {
+  // Active bought levels. If levelsBought[g] !== null, we hold a long position bought at gridLevels[g]
+  const levelsBought: (number | null)[] = new Array(gridLevels.length).fill(null);
+  const qtyPerGrid = (params.investment / gridCount) / startPrice;
+
+  for (let i = 1; i < closes.length; i++) {
     const price = closes[i];
+    const prevPrice = closes[i - 1];
+    const minP = Math.min(prevPrice, price);
+    const maxP = Math.max(prevPrice, price);
 
-    if (!inPosition && price >= lowerBound && price <= upperBound) {
-      inPosition = true;
-      entryPrice = price;
-      entryTime = times[i];
-    } else if (inPosition) {
-      if (price < lowerBound || price > upperBound) {
-        const pnl = price - entryPrice;
-        trades.push({
-          entryTime,
-          exitTime: times[i],
-          side: price > entryPrice ? 'LONG' : 'SHORT',
-          entryPrice,
-          exitPrice: price,
-          pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
-          exitReason: 'STOP',
-        });
-        inPosition = false;
-      } else {
-        const move = Math.abs(price - entryPrice) / entryPrice;
-        if (move >= gridSize) {
-          const pnl = entryPrice * gridSize;
+    // Stop out if price leaves the grid bounds completely
+    if (price < lowerBound || price > upperBound) {
+      // Close all active grid levels at current price
+      for (let g = 0; g < levelsBought.length; g++) {
+        if (levelsBought[g] !== null) {
+          const buyPrice = levelsBought[g]!;
+          const pnl = (price - buyPrice) * qtyPerGrid;
           trades.push({
-            entryTime,
+            entryTime: times[i - 1],
             exitTime: times[i],
-            side: price > entryPrice ? 'LONG' : 'SHORT',
-            entryPrice,
+            side: 'LONG',
+            entryPrice: buyPrice,
             exitPrice: price,
             pnl,
-            pnlPercent: params.gridSize,
-            exitReason: 'TARGET',
+            pnlPercent: ((price - buyPrice) / buyPrice) * 100,
+            exitReason: 'STOP',
+            quantity: qtyPerGrid,
           });
-          entryPrice = price;
-          entryTime = times[i];
+          levelsBought[g] = null;
         }
       }
+      continue;
+    }
+
+    // Check level crossings
+    for (let g = 0; g < gridLevels.length; g++) {
+      const lvlPrice = gridLevels[g];
+      if (lvlPrice >= minP && lvlPrice <= maxP) {
+        const goingDown = price < prevPrice;
+
+        if (goingDown) {
+          // BUY: Price crossed level downwards, place buy order
+          if (levelsBought[g] === null) {
+            levelsBought[g] = lvlPrice;
+          }
+        } else {
+          // SELL: Price crossed level upwards, match with highest bought level below it
+          let matchIdx = -1;
+          for (let b = g - 1; b >= 0; b--) {
+            if (levelsBought[b] !== null) {
+              matchIdx = b;
+              break;
+            }
+          }
+
+          if (matchIdx !== -1) {
+            const buyPrice = levelsBought[matchIdx]!;
+            const sellPrice = lvlPrice;
+            const pnl = (sellPrice - buyPrice) * qtyPerGrid;
+            trades.push({
+              entryTime: times[i - 1],
+              exitTime: times[i],
+              side: 'LONG',
+              entryPrice: buyPrice,
+              exitPrice: sellPrice,
+              pnl,
+              pnlPercent: ((sellPrice - buyPrice) / buyPrice) * 100,
+              exitReason: 'TARGET',
+              quantity: qtyPerGrid,
+            });
+            levelsBought[matchIdx] = null;
+          }
+        }
+      }
+    }
+  }
+
+  // Close remaining unclosed grid levels at the final price to represent final equity honestly
+  const finalPrice = closes[closes.length - 1];
+  for (let g = 0; g < levelsBought.length; g++) {
+    if (levelsBought[g] !== null) {
+      const buyPrice = levelsBought[g]!;
+      const pnl = (finalPrice - buyPrice) * qtyPerGrid;
+      trades.push({
+        entryTime: times[closes.length - 2] || times[0],
+        exitTime: times[closes.length - 1],
+        side: 'LONG',
+        entryPrice: buyPrice,
+        exitPrice: finalPrice,
+        pnl,
+        pnlPercent: ((finalPrice - buyPrice) / buyPrice) * 100,
+        exitReason: 'END',
+        quantity: qtyPerGrid,
+      });
     }
   }
 
