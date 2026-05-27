@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, LineChart, FlaskConical, Settings, Menu, X, BarChart2,
-  Brain, MessageSquare, Layers,
+  Brain, MessageSquare, Layers, Award,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -13,6 +13,7 @@ const NAV_SECTIONS = [
       { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor', badge: 'Pro' },
       { to: '/trading-bots',  icon: Layers,         label: 'Trading Bots' },
+      { to: '/marketplace',   icon: Award,          label: 'Marketplace', badge: 'New' },
       { to: '/positions',     icon: LineChart,       label: 'Positions' },
       { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting' },
       { to: '/market-intel',  icon: BarChart2,      label: 'Market Intel', badge: 'New' },
