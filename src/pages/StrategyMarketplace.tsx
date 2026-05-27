@@ -22,47 +22,47 @@ interface Strategy {
 const COMMUNITY_STRATEGIES: Strategy[] = [
   {
     id: 'strat-1',
-    name: 'MSTR Treasury Momentum',
-    creator: '0xmiharbi',
-    botType: 'Signal',
-    roi30d: 24.18,
-    sharpe: 2.82,
-    drawdown: 1.82,
-    description: 'Triggered when institutional treasury purchases accelerate alongside funding rate compression. Calibrated for BTC-USD perps.',
-    config: { symbol: 'BTC-USD', leverage: 10, amountUsdt: 150, TpPct: 4, SlPct: 1.5 },
+    name: 'BTC-USD Range Sniper',
+    creator: 'keolehunter',
+    botType: 'Grid',
+    roi30d: 18.42,
+    sharpe: 2.45,
+    drawdown: 1.90,
+    description: 'Arithmetic Neutral Grid optimized for BTC range consolidation. Deploys 20 grid layers with tight 1.0% width around the 62k-68k baseline. Designed to farm sideways volatility with maximum fee rebate efficiency.',
+    config: { symbol: 'BTC-USD', lowerPrice: 62000, upperPrice: 68000, gridCount: 20, leverage: 5 },
   },
   {
     id: 'strat-2',
-    name: 'Calm Regime Volatility Capture',
-    creator: 'crypto4chun',
-    botType: 'Grid',
-    roi30d: 14.85,
-    sharpe: 2.15,
-    drawdown: 2.10,
-    description: 'Neutral Grid bot optimized for BTC-USDC calm ranges (61.5k - 64.5k) with 15 arithmetic grids. High fee efficiency.',
-    config: { symbol: 'BTC-USDC', lowerPrice: 61500, upperPrice: 64500, gridCount: 15, leverage: 5 },
+    name: 'Perp Funding Arbitrage Scalper',
+    creator: 'keolehunter',
+    botType: 'Signal',
+    roi30d: 27.85,
+    sharpe: 3.12,
+    drawdown: 1.25,
+    description: 'An indicator-driven momentum signal strategy that executes LONG entries on RSI oversold (under 35) and SHORT entries on RSI overbought (above 65) with 10x leverage. Extremely fast risk protection cooldowns.',
+    config: { symbol: 'BTC-USD', leverage: 10, amountUsdt: 200, TpPct: 3, SlPct: 1.5 },
   },
   {
     id: 'strat-3',
-    name: 'Spark High-Volume Maker Farming',
-    creator: 'Davislambo',
+    name: 'High-Frequency BBO Market Maker',
+    creator: 'keolehunter',
     botType: 'Market Maker',
-    roi30d: 18.92,
-    sharpe: 2.56,
-    drawdown: 0.95,
-    description: 'High-frequency liquidity provisioning with 4 layers and extremely tight 8 bps spread on SoDEX Spot Spark engine.',
-    config: { symbol: 'ETH-USDC', budgetUsdt: 500, layers: 4, spreadBps: 8, requoteBps: 10 },
+    roi30d: 22.60,
+    sharpe: 3.40,
+    drawdown: 0.75,
+    description: 'Pure market-making script that joins the best bid-ask queue (0 spread bps) with a 3-layer ladder. Quotes are automatically replaced if the BBO moves more than 4 bps. Perfect for spot volume farming.',
+    config: { symbol: 'BTC-USD', budgetUsdt: 500, layers: 3, spreadBps: 0, requoteBps: 4 },
   },
   {
     id: 'strat-4',
-    name: 'DCA Sector Blue Chip Accumulator',
-    creator: 'SmartCoded',
-    botType: 'DCA',
-    roi30d: 11.20,
-    sharpe: 1.95,
-    drawdown: 3.80,
-    description: 'Automated 12-hourly Dollar Cost Averaging purchases on premium ETF and sector spotlight indices. Built for long-term holds.',
-    config: { symbol: 'SOL-USDC', baseAmount: 25, intervalHours: 12 },
+    name: 'ETH Volatility Breakout Rider',
+    creator: 'keolehunter',
+    botType: 'Signal',
+    roi30d: 31.20,
+    sharpe: 2.89,
+    drawdown: 2.15,
+    description: 'Fires high-leverage positions on ETH when volatility spikes. Uses 3x ATR target locks and tight 1.5x ATR stops to capture explosive breakout moves during high-volume sessions.',
+    config: { symbol: 'ETH-USD', leverage: 5, amountUsdt: 300, TpPct: 5, SlPct: 2 },
   },
 ];
 
@@ -87,25 +87,25 @@ export const StrategyMarketplace: React.FC = () => {
     try {
       if (strat.botType === 'Grid') {
         const grid = botStore.gridBot;
-        grid.setField('symbol', strat.config.symbol);
-        grid.setField('lowerPrice', strat.config.lowerPrice);
-        grid.setField('upperPrice', strat.config.upperPrice);
-        grid.setField('gridCount', strat.config.gridCount);
-        grid.setField('leverage', strat.config.leverage);
+        grid.setField('symbol', String(strat.config.symbol ?? ''));
+        grid.setField('lowerPrice', String(strat.config.lowerPrice ?? ''));
+        grid.setField('upperPrice', String(strat.config.upperPrice ?? ''));
+        grid.setField('gridCount', String(strat.config.gridCount ?? ''));
+        grid.setField('leverage', String(strat.config.leverage ?? ''));
       } else if (strat.botType === 'Market Maker') {
         const mm = botStore.marketMakerBot;
-        mm.setField('symbol', strat.config.symbol);
-        mm.setField('budgetUsdt', strat.config.budgetUsdt);
-        mm.setField('layers', strat.config.layers);
-        mm.setField('spreadBps', strat.config.spreadBps);
-        mm.setField('requoteBps', strat.config.requoteBps);
+        mm.setField('symbol', String(strat.config.symbol ?? ''));
+        mm.setField('budgetUsdt', String(strat.config.budgetUsdt ?? ''));
+        mm.setField('layers', String(strat.config.layers ?? ''));
+        mm.setField('spreadBps', String(strat.config.spreadBps ?? ''));
+        mm.setField('requoteBps', String(strat.config.requoteBps ?? ''));
       } else if (strat.botType === 'Signal') {
         const sig = botStore.signalBot;
-        sig.setField('symbol', strat.config.symbol);
-        sig.setField('leverage', strat.config.leverage);
-        sig.setField('amountUsdt', strat.config.amountUsdt);
-        sig.setField('takeProfitPct', strat.config.TpPct);
-        sig.setField('stopLossPct', strat.config.SlPct);
+        sig.setField('symbol', String(strat.config.symbol ?? ''));
+        sig.setField('leverage', String(strat.config.leverage ?? ''));
+        sig.setField('amountUsdt', String(strat.config.amountUsdt ?? ''));
+        sig.setField('takeProfitPct', String(strat.config.TpPct ?? ''));
+        sig.setField('stopLossPct', String(strat.config.SlPct ?? ''));
       }
 
       toast.success(
@@ -134,7 +134,7 @@ export const StrategyMarketplace: React.FC = () => {
       const newStrat: Strategy = {
         id: `strat-${Date.now()}`,
         name: stratName,
-        creator: 'You (Author)',
+        creator: 'keolehunter (You)',
         botType,
         roi30d: parseFloat((Math.random() * 15 + 5).toFixed(2)),
         sharpe: parseFloat((Math.random() * 1.5 + 1.2).toFixed(2)),
@@ -282,12 +282,10 @@ export const StrategyMarketplace: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-border/40">
                     {[
-                      { rank: '🥇 1', name: '0xmiharbi', bot: 'Signal', roi: '+24.18%', sharpe: '2.82', dd: '-1.82%' },
-                      { rank: '🥈 2', name: 'Davislambo', bot: 'Market Maker', roi: '+18.92%', sharpe: '2.56', dd: '-0.95%' },
-                      { rank: '🥉 3', name: 'crypto4chun', bot: 'Grid', roi: '+14.85%', sharpe: '2.15', dd: '-2.10%' },
-                      { rank: '4', name: 'SmartCoded', bot: 'DCA', roi: '+11.20%', sharpe: '1.95', dd: '-3.80%' },
-                      { rank: '5', name: 'jzddd', bot: 'Signal', roi: '+9.45%', sharpe: '1.70', dd: '-2.45%' },
-                      { rank: '6', name: 'MuhammadBa', bot: 'Grid', roi: '+8.12%', sharpe: '1.55', dd: '-4.12%' },
+                      { rank: '🥇 1', name: 'keolehunter', bot: 'Signal', roi: '+31.20%', sharpe: '2.89', dd: '-2.15%' },
+                      { rank: '🥈 2', name: 'keolehunter', bot: 'Signal', roi: '+27.85%', sharpe: '3.12', dd: '-1.25%' },
+                      { rank: '🥉 3', name: 'keolehunter', bot: 'Market Maker', roi: '+22.60%', sharpe: '3.40', dd: '-0.75%' },
+                      { rank: '4', name: 'keolehunter', bot: 'Grid', roi: '+18.42%', sharpe: '2.45', dd: '-1.90%' },
                     ].map((row, i) => (
                       <tr key={i} className="hover:bg-surface-hover/30 transition-colors">
                         <td className="px-5 py-3 text-center font-bold text-xs font-mono">{row.rank}</td>
