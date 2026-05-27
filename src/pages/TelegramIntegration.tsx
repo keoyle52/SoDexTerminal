@@ -1471,10 +1471,22 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
               addTerminalLog('PREDICTOR', 'INFO', `[DEMO] Model check: ETF Flow = Positive, Sentiment = Bullish. Confidence: 88%.`);
               addTerminalLog('PREDICTOR', 'TRADE', `[DEMO] Opening forecast trade (${verdict}) at $${price.toFixed(2)}. Size: $${usePredictorStore.getState().tradeAmountUsdt} USDT.`);
               
+              sendTelegramNotification(`🧠 *BTC Predictor AI Analysis:*
+• ETF Flow: *Positive*
+• News Sentiment: *Bullish*
+• Confidence: *88%*
+• AI Verdict: *${verdict}*
+• Action: *Opening forecast swap* at *$${price.toFixed(2)}* (Size: *$${usePredictorStore.getState().tradeAmountUsdt} USDT*)`);
+
               setTimeout(() => {
                 if (usePredictorStore.getState().autoTradeEnabled) {
                   const pnl = (verdict === 'BULLISH' ? 1 : -1) * parseFloat(usePredictorStore.getState().tradeAmountUsdt) * 0.012;
                   addTerminalLog('PREDICTOR', 'TRADE', `[DEMO] Forecast cycle complete. Profit settled: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT.`);
+                  
+                  const exitPrice = price * (1 + (verdict === 'BULLISH' ? 0.012 : -0.012));
+                  sendTelegramNotification(`🏁 *Predictor Cycle Settled:*
+• Closed swap forecast at *$${exitPrice.toFixed(2)}*
+• PnL: *${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT*`);
                 }
               }, 4000);
             } else {
@@ -1490,6 +1502,13 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
 
                 addTerminalLog('PREDICTOR', 'INFO', `Model check: ETF Flow = Positive, Sentiment = Bullish. Confidence: 88%.`);
                 addTerminalLog('PREDICTOR', 'TRADE', `Opening forecast trade (${verdict}) at $${price.toFixed(2)}. Size: $${amount} USDT.`);
+
+                sendTelegramNotification(`🧠 *BTC Predictor AI Analysis:*
+• ETF Flow: *Positive*
+• News Sentiment: *Bullish*
+• Confidence: *88%*
+• AI Verdict: *${verdict}*
+• Action: *Opening forecast swap* at *$${price.toFixed(2)}* (Size: *$${amount} USDT*)`);
 
                 await updatePerpsLeverage('BTC-USD', leverage, 2);
 
@@ -1522,6 +1541,10 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
 
                         addTerminalLog('PREDICTOR', 'TRADE', `Forecast cycle complete. Closed swap at $${priceAfter.toFixed(2)}. PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT.`);
 
+                        sendTelegramNotification(`🏁 *Predictor Cycle Settled:*
+• Closed swap forecast at *$${priceAfter.toFixed(2)}*
+• PnL: *${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT*`);
+
                         useBotPnlStore.getState().recordTrade('predictor', {
                           pnlUsdt: pnl,
                           ts: Date.now(),
@@ -1535,6 +1558,7 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
                 }
               } catch (err: any) {
                 addTerminalLog('PREDICTOR', 'ERROR', `Predictor order failed: ${getErrorMessage(err)}`);
+                sendTelegramNotification(`⚠️ *[PREDICTOR] ERROR:* Predictor order failed: ${getErrorMessage(err)}`);
               }
             }
           }
