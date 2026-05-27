@@ -188,7 +188,7 @@ export const StrategyMarketplace: React.FC = () => {
   };
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col gap-6 overflow-y-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full flex flex-col gap-6 overflow-y-auto">
       {/* Header title */}
       <div className="shrink-0 flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">

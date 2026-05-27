@@ -110,7 +110,7 @@ export const MacroCalendar: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full overflow-y-auto flex flex-col gap-6 max-w-screen-xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -124,7 +124,7 @@ export const MacroCalendar: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           <Button variant="outline" size="sm" icon={<ChevronLeft size={14} />} onClick={() => stepMonth(-1)}>Prev</Button>
           <span className="px-3 py-1.5 rounded-lg bg-surface border border-border text-sm font-mono font-semibold text-text-primary min-w-[150px] text-center">
             {monthName}
@@ -160,8 +160,42 @@ export const MacroCalendar: React.FC = () => {
         </span>
       </div>
 
-      {/* Calendar grid */}
-      <Card className="p-0 overflow-hidden">
+      {/* Mobile Calendar Feed */}
+      <Card className="block md:hidden p-0 overflow-hidden">
+        <div className="px-5 py-3 border-b border-border">
+          <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Events for {monthName}</span>
+        </div>
+        <div className="divide-y divide-white/5">
+          {monthCells
+            .filter(c => eventsByDate.has(c.iso) && c.date.getMonth() === anchor.month)
+            .map(c => {
+              const cellEvent = eventsByDate.get(c.iso)!;
+              return (
+                <div key={c.iso} className="p-4 flex flex-col gap-2">
+                  <div className="text-xs font-mono font-bold text-primary">
+                    {new Date(c.iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', weekday: 'short' })}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {cellEvent.events.map((ev, idx) => {
+                      const impact = cellEvent.impacts?.[idx] ?? classifyMacroImpact(ev);
+                      return (
+                        <div key={idx} className={cn("text-xs px-2.5 py-1.5 rounded-lg border font-semibold", IMPACT_STYLES[impact].badge)}>
+                          {ev} <span className="opacity-70 font-normal">({impact} Impact)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          {monthCells.filter(c => eventsByDate.has(c.iso) && c.date.getMonth() === anchor.month).length === 0 && (
+            <div className="p-8 text-center text-text-muted text-sm">No events this month</div>
+          )}
+        </div>
+      </Card>
+
+      {/* Calendar grid - Desktop */}
+      <Card className="hidden md:block p-0 overflow-hidden">
         <div className="grid grid-cols-7 border-b border-white/5">
           {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d) => (
             <div key={d} className="px-3 py-2 text-[10px] uppercase tracking-wider text-text-muted text-center font-bold">

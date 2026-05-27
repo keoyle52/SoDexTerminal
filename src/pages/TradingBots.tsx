@@ -74,7 +74,7 @@ export const TradingBots: React.FC = () => {
   const ActiveComponent = activeBot.component;
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
       {/* Header Banner */}
       <div className="shrink-0 flex items-center justify-between flex-wrap gap-4 border border-border bg-surface/50 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md">
         <div className={cn(

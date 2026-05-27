@@ -594,9 +594,9 @@ export const NewsBot: React.FC = () => {
   const removeRule = (idx: number) => setRules((prev) => prev.filter((_, i) => i !== idx));
 
   return (
-    <div className="flex h-full overflow-hidden gap-4 p-5">
+    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-4 p-3 sm:p-5 md:p-6">
       {/* Config panel */}
-      <div className="w-80 shrink-0 space-y-4 overflow-y-auto">
+      <div className="w-full lg:w-80 shrink-0 space-y-4 lg:overflow-y-auto lg:h-full">
         {/* Live PnL strip — shows live aggregate of every News Bot close */}
         <BotPnlStrip botKey="news" compact />
         {/* Status */}
@@ -914,7 +914,7 @@ export const NewsBot: React.FC = () => {
       </div>
 
       {/* Activity Log */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-[300px] lg:min-h-0">
         <Card className="flex-1 flex flex-col p-0 overflow-hidden">
           <div className="px-5 py-3 border-b border-border flex items-center justify-between shrink-0">
             <span className="text-xs font-semibold uppercase tracking-wider">Activity Log</span>

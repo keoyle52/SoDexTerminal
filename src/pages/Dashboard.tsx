@@ -191,7 +191,7 @@ export const Dashboard: React.FC = () => {
   }, [btcTicker, predictorSignals, aiVerdict]);
 
   return (
-    <div className="p-4 md:p-6 flex flex-col gap-4 md:gap-5 h-full overflow-y-auto">
+    <div className="p-3 sm:p-5 md:p-6 flex flex-col gap-4 md:gap-5 h-full overflow-y-auto">
       {/* Demo Mode Banner */}
       {isDemoMode && (
         <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-medium">

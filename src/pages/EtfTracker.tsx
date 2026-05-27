@@ -108,7 +108,7 @@ export const EtfTracker: React.FC = () => {
   const label = etfType === 'us-btc-spot' ? 'BTC' : 'ETH';
 
   return (
-    <div className="p-6 h-full overflow-y-auto space-y-5">
+    <div className="p-3 sm:p-5 md:p-6 h-full overflow-y-auto space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

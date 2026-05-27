@@ -129,7 +129,7 @@ export const MarketIntel: React.FC = () => {
   };
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-primary flex items-center justify-center shadow-lg">

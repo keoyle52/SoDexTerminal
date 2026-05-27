@@ -69,6 +69,14 @@ export const SectorSpotlight: React.FC = () => {
 
   // Sort sectors by absolute move so the biggest movers are scanned
   // first; the heat-map layout still respects dominance via tileSpan.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const sortedSectors = useMemo(
     () => (snap?.sectors ?? []).slice().sort((a, b) => Math.abs(b.change24hPct) - Math.abs(a.change24hPct)),
     [snap?.sectors],
@@ -85,7 +93,7 @@ export const SectorSpotlight: React.FC = () => {
   const topLoser  = sortedSectors.slice().sort((a, b) => a.change24hPct - b.change24hPct)[0];
 
   return (
-    <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full overflow-y-auto flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-danger/10 flex items-center justify-center">
@@ -110,7 +118,7 @@ export const SectorSpotlight: React.FC = () => {
       )}
 
       {/* Top metric strip */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-[10px] uppercase tracking-wider text-text-muted">Sectors tracked</div>
           <div className="text-2xl font-black font-mono text-text-primary mt-1">
@@ -157,7 +165,7 @@ export const SectorSpotlight: React.FC = () => {
         <div
           className="p-3 grid gap-2"
           style={{
-            gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
+            gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(12, minmax(0, 1fr))',
             gridAutoRows: 'minmax(60px, auto)',
           }}
         >
@@ -169,8 +177,8 @@ export const SectorSpotlight: React.FC = () => {
                 key={s.name}
                 className="rounded-lg border border-white/5 p-3 flex flex-col justify-between transition-transform hover:-translate-y-0.5"
                 style={{
-                  gridColumn: `span ${span.col} / span ${span.col}`,
-                  gridRow: `span ${span.row} / span ${span.row}`,
+                  gridColumn: isMobile ? 'span 1' : `span ${span.col} / span ${span.col}`,
+                  gridRow: isMobile ? 'span 1' : `span ${span.row} / span ${span.row}`,
                   background: palette.bg,
                 }}
                 title={`${s.name} · dominance ${(s.marketcapDom * 100).toFixed(2)}%`}

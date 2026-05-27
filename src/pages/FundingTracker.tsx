@@ -163,7 +163,7 @@ export const FundingTracker: React.FC = () => {
   const totalEstimated = personalRows.reduce((sum, r) => sum + r.estimatedPayment, 0);
 
   return (
-    <div className="p-6 flex flex-col gap-5 h-full overflow-hidden">
+    <div className="p-3 sm:p-5 md:p-6 flex flex-col gap-5 h-full overflow-y-auto lg:overflow-hidden">
       {/* Top Info Bar */}
       <div className="flex items-center gap-4 shrink-0">
         <div className="stat-card flex-1 !p-3">
@@ -212,7 +212,7 @@ export const FundingTracker: React.FC = () => {
       </div>
 
       {/* Global Funding Rates Table */}
-      <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
+      <div className="flex-1 glass-card flex flex-col min-h-[350px] lg:min-h-0 lg:overflow-hidden p-0">
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Global Funding Rates</span>
           <span className="badge badge-primary">{rows.length} pairs</span>
@@ -275,7 +275,7 @@ export const FundingTracker: React.FC = () => {
       </div>
 
       {/* Personal Funding */}
-      <div className="h-1/3 min-h-[250px] glass-card flex flex-col overflow-hidden p-0">
+      <div className="h-auto lg:h-1/3 min-h-[250px] lg:overflow-hidden glass-card flex flex-col p-0">
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Personal Funding</span>
           {hasKeys && personalRows.length > 0 && (

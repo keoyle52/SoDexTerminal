@@ -86,7 +86,7 @@ export const CryptoStocks: React.FC = () => {
   }, [sorted]);
 
   return (
-    <div className="flex flex-col gap-6 max-w-screen-xl mx-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full overflow-y-auto flex flex-col gap-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">

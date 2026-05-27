@@ -495,7 +495,8 @@ export const BtcPredictor: React.FC = () => {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 max-w-[1600px] mx-auto pb-8">
+    <div className="p-3 sm:p-5 md:p-6 h-full overflow-y-auto">
+      <div className="space-y-5 max-w-[1600px] mx-auto pb-8">
       {/* ─── Pre-flight warning ─────────────────────────────────────── */}
       {noTradeReason && (
         <div className="glass-card p-3 border-amber-500/30 bg-amber-500/5 flex items-start gap-3">
@@ -1182,7 +1183,7 @@ export const BtcPredictor: React.FC = () => {
         {/* Market / timeframe selector — tile grid like trading bots */}
         <div className="mb-4">
           <div className="text-[10px] font-bold uppercase tracking-widest text-text-secondary mb-2">Timeframe</div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {DURATION_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -1291,6 +1292,7 @@ export const BtcPredictor: React.FC = () => {
         </Card>
       </div>
       )}
+      </div>
     </div>
   );
 };

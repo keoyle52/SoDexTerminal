@@ -311,7 +311,7 @@ export const CopyTrader: React.FC = () => {
   const isRunning = status === 'RUNNING';
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
       <ConfirmModal
         isOpen={showConfirm}
         title="Start Copy Trader"
@@ -320,8 +320,7 @@ export const CopyTrader: React.FC = () => {
         onCancel={() => setShowConfirm(false)}
       />
 
-      {/* Settings Panel */}
-      <div className="w-80 border-r border-border bg-surface/30 backdrop-blur-sm p-5 flex flex-col gap-5 overflow-y-auto">
+      <div className="w-full lg:w-80 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm p-5 flex flex-col gap-5 shrink-0 lg:h-full lg:overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-sm">Settings</h2>
           <StatusBadge status={status} />
@@ -388,9 +387,9 @@ export const CopyTrader: React.FC = () => {
       </div>
 
       {/* Split Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-[600px] lg:min-h-0 lg:h-full">
         {/* Left - Target Wallet */}
-        <div className="w-1/2 border-r border-border p-6 flex flex-col gap-4 overflow-hidden">
+        <div className="w-full md:w-1/2 border-b md:border-b-0 md:border-r border-border p-4 md:p-6 flex flex-col gap-4 overflow-hidden min-h-[300px] md:min-h-0">
           <div className="flex items-center gap-2">
             <Eye size={16} className="text-primary" />
             <h3 className="text-sm font-semibold">Target Wallet Analysis</h3>
@@ -458,7 +457,7 @@ export const CopyTrader: React.FC = () => {
         </div>
 
         {/* Right - My Copies */}
-        <div className="w-1/2 p-6 flex flex-col gap-4 overflow-hidden">
+        <div className="w-full md:w-1/2 p-4 md:p-6 flex flex-col gap-4 overflow-hidden min-h-[300px] md:min-h-0">
           <div className="flex items-center gap-2">
             <Users size={16} className="text-primary" />
             <h3 className="text-sm font-semibold">Copied Trades</h3>

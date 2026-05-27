@@ -124,7 +124,7 @@ function App() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Topbar />
-        <main id="app-main" className="flex-1 overflow-x-hidden overflow-y-auto p-5 md:p-6">
+        <main id="app-main" className="flex-1 min-w-0 overflow-hidden flex flex-col">
           <PageTransition>
             <Routes>
               <Route path="/settings" element={<Settings />} />

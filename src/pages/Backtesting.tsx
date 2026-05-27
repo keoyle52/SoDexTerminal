@@ -1386,7 +1386,7 @@ export const Backtesting: React.FC = () => {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 shrink-0 flex-wrap">
         <div className="flex items-center gap-3">
@@ -2118,7 +2118,7 @@ const CompareBotsModal: React.FC<CompareBotsModalProps> = ({
                 <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Combined Strategy Equity Curves</h4>
                 <div className="bg-surface/30 p-4 border border-border/50 rounded-xl flex flex-col items-center">
                   {hasValidCurve ? (
-                    <svg width={svgWidth} height={svgHeight} className="overflow-visible max-w-full">
+                    <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="overflow-visible max-w-full">
                       {/* Zero baseline */}
                       <line
                         x1="20"

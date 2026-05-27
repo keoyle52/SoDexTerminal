@@ -55,7 +55,7 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative z-10 w-96 max-h-[calc(100vh-72px)] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl animate-fade-in">
+      <div className="relative z-10 w-[calc(100vw-32px)] sm:w-96 max-h-[calc(100vh-72px)] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl animate-fade-in">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2.5">
@@ -268,7 +268,7 @@ export const Topbar: React.FC = () => {
   const [showWalletModal, setShowWalletModal] = useState(false);
 
   return (
-    <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-5 shrink-0 z-40">
+    <header className="h-14 border-b border-border bg-surface flex items-center justify-between pl-16 pr-5 md:px-5 shrink-0 z-40">
       {/* Page title */}
       <h1 className="text-sm font-semibold text-text-primary tracking-tight">
         {title}
@@ -316,7 +316,7 @@ export const Topbar: React.FC = () => {
         </button>
 
         {/* Network badge */}
-        <div className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
+        <div className="hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
           <span
             className={cn(
               'w-1.5 h-1.5 rounded-full shrink-0',
@@ -329,7 +329,7 @@ export const Topbar: React.FC = () => {
         </div>
 
         {/* Connection status */}
-        <div className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
+        <div className="hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
           {isConnected ? (
             <>
               <Wifi size={12} className="text-success shrink-0" />

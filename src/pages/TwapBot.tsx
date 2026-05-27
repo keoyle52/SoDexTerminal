@@ -452,7 +452,7 @@ export const TwapBot: React.FC = () => {
   const twapRiskSummary = buildTwapRiskRows();
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
       <RiskSummaryModal
         isOpen={showConfirm}
         title="TWAP Bot Summary"
@@ -471,13 +471,13 @@ export const TwapBot: React.FC = () => {
       />
 
       {/* ─────────────── Settings Panel ─────────────── */}
-      <div className="w-96 border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col overflow-hidden">
+      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col shrink-0 lg:h-full lg:overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold text-sm">TWAP Bot</h2>
           <StatusBadge status={status} />
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+        <div className="flex-1 lg:overflow-y-auto px-4 sm:px-5 py-4 flex flex-col gap-5">
           {/* ── AI Auto-Configure ── one-click smart defaults from current
                market context. We only apply slices / interval / order type
                here — total quantity is left to the user since it depends on
@@ -655,7 +655,7 @@ export const TwapBot: React.FC = () => {
       </div>
 
       {/* ─────────────── Live status ─────────────── */}
-      <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 flex flex-col gap-5 lg:overflow-y-auto min-h-[300px] lg:min-h-0">
         <BotPnlStrip botKey="twap" />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

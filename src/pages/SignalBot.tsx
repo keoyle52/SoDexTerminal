@@ -741,9 +741,9 @@ export const SignalBot: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
       {/* ─────────────── Settings Panel ─────────────── */}
-      <div className="w-96 border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col overflow-hidden shrink-0">
+      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col shrink-0 lg:h-full lg:overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Radio size={16} className="text-primary" />
@@ -752,7 +752,7 @@ export const SignalBot: React.FC = () => {
           <StatusBadge status={state.status} />
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-6">
+        <div className="flex-1 lg:overflow-y-auto px-4 sm:px-5 py-4 flex flex-col gap-6">
           {/* ── AI Auto-Configure ── one-click smart defaults for beginners.
                Analyzes current market (ATR, trend, volatility) and picks the
                best signal strategy, parameters, TP/SL, and timing. */}
@@ -969,7 +969,7 @@ export const SignalBot: React.FC = () => {
         </div>
 
         {/* Status Area */}
-        <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-5">
+        <div className="flex-1 p-4 sm:p-5 flex flex-col gap-5 lg:overflow-y-auto min-h-[300px] lg:min-h-0">
           <BotPnlStrip botKey="signal" />
 
           {/* Demo Quick-Test panel — only in demo mode + while bot is running.
@@ -1044,7 +1044,7 @@ export const SignalBot: React.FC = () => {
                           </div>
                           <button onClick={() => closePosition(pos.id)} className="text-[10px] px-2 py-1 bg-danger/10 text-danger hover:bg-danger/20 rounded">Close</button>
                         </div>
-                        <div className="grid grid-cols-4 gap-2 text-[10px] mt-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mt-2">
                           <div><div className="text-text-muted mb-0.5">Entry</div><div className="font-mono">{pos.entryPrice.toFixed(2)}</div></div>
                           <div><div className="text-text-muted mb-0.5">Size</div><div className="font-mono">{pos.quantity.toFixed(4)}</div></div>
                           <div><div className="text-text-muted mb-0.5">TP/SL</div><div className="font-mono">{pos.tpPrice ? pos.tpPrice.toFixed(1) : '-'} / {pos.slPrice ? pos.slPrice.toFixed(1) : '-'}</div></div>

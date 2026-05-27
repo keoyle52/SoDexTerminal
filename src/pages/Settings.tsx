@@ -72,7 +72,7 @@ export const Settings: React.FC = () => {
   };
 
   return (
-    <div className="p-6 h-full overflow-y-auto">
+    <div className="p-3 sm:p-5 md:p-6 h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto flex flex-col gap-6">
         {/* Tabs */}
         <div className="flex gap-1 p-1 bg-surface/50 border border-border rounded-xl w-fit">
