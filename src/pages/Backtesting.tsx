@@ -223,7 +223,7 @@ function runSignalBacktest(
           quantity,
         });
         position = null;
-      } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
+      } else if (curRsi >= params.rsiOverbought || (prevRsi >= 50 && curRsi < 50)) {
         const pnl = (closes[i] - entryPrice) * quantity;
         trades.push({
           entryTime,
@@ -268,7 +268,7 @@ function runSignalBacktest(
           quantity,
         });
         position = null;
-      } else if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold) {
+      } else if (curRsi <= params.rsiOversold || (prevRsi <= 50 && curRsi > 50)) {
         const pnl = (entryPrice - closes[i]) * quantity;
         trades.push({
           entryTime,
@@ -2180,9 +2180,9 @@ const CompareBotsModal: React.FC<CompareBotsModalProps> = ({
               <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-start gap-3">
                 <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <h5 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Simülasyon Açıklamaları & Risk Uyarısı</h5>
+                  <h5 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Simulation Notes & Risk Disclaimer</h5>
                   <p className="text-[11px] text-text-muted leading-relaxed">
-                    Tüm bot simülasyonları varsayılan <strong>1000 USDT</strong> başlangıç bakiyesi üzerinden gerçekleştirilmiştir. Grid ve DCA botları envanter ve fiyat taşıma riski barındırır. Trend yönündeki ardışık zararları engellemek amacıyla Signal Bot için <strong>8 bar</strong>, Market Maker için <strong>10 bar</strong> duraklama (cooldown) koruması aktif edilmiştir.
+                    All bot simulations are calculated using a default baseline balance of <strong>1000 USDT</strong>. Grid and DCA bots carry inherent inventory and price-drawdown risk. To mitigate consecutive trend-following losses, risk protection cooldowns are active: <strong>8 bars</strong> for the Signal Bot and <strong>10 bars</strong> for the Market Maker bot.
                   </p>
                 </div>
               </div>
