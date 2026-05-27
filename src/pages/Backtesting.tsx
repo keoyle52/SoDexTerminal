@@ -2,7 +2,8 @@ import React, { useState, useCallback } from 'react';
 import {
   FlaskConical, Play, BarChart3, TrendingUp, TrendingDown,
   Target, AlertTriangle, Zap, Layers,
-  CheckCircle2, Award, TrendingUp as TrendingUpIcon, Download
+  CheckCircle2, Award, TrendingUp as TrendingUpIcon, Download,
+  X, Sparkles
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { Card, StatCard } from '../components/common/Card';
@@ -12,6 +13,8 @@ import { Button } from '../components/common/Button';
 import { fetchKlines } from '../api/services';
 import { getErrorMessage, cn } from '../lib/utils';
 import toast from 'react-hot-toast';
+import { fetchSosoNews, extractCoinFromNews } from '../api/sosoServices';
+
 
 // ─── Types & Interfaces ───────────────────────────────────────────────────
 
@@ -723,6 +726,267 @@ export const Backtesting: React.FC = () => {
     }));
   };
 
+  const [comparing, setComparing] = useState(false);
+  const [compareResults, setCompareResults] = useState<Record<string, any> | null>(null);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+
+  const [analyzingNews, setAnalyzingNews] = useState(false);
+  const [newsCorrelationResults, setNewsCorrelationResults] = useState<any[] | null>(null);
+  const [newsStats, setNewsStats] = useState<any | null>(null);
+  const [newsModalOpen, setNewsModalOpen] = useState(false);
+
+  const runComparison = useCallback(async () => {
+    setComparing(true);
+    setCompareResults(null);
+    setCompareModalOpen(true);
+    try {
+      const rawKlines = await fetchKlines(symbol, timeframe, parseInt(candleCount) || 720, 'perps');
+      const klines = Array.isArray(rawKlines) ? rawKlines : [];
+
+      if (klines.length < 100) {
+        toast.error('Not enough data. Minimum 100 candles required.');
+        setCompareModalOpen(false);
+        return;
+      }
+
+      // Parse klines
+      const klineVal = (k: Record<string, unknown>, field: string, arrIdx: number): number =>
+        parseFloat(String(k[field] ?? (Array.isArray(k) ? (k as unknown as unknown[])[arrIdx] : 0)));
+
+      const closes: number[] = klines.map((k) => klineVal(k, 'close', 4));
+      const highs: number[] = klines.map((k) => klineVal(k, 'high', 2));
+      const lows: number[] = klines.map((k) => klineVal(k, 'low', 3));
+      const times: string[] = klines.map((k) => {
+        const t = k.time ?? k.openTime ?? (Array.isArray(k) ? (k as unknown as unknown[])[0] : 0);
+        return typeof t === 'number' ? new Date(t).toLocaleString() : String(t);
+      });
+
+      const feeRate = parseFloat(takerFee) / 100;
+      const resultsMap: Record<string, any> = {};
+
+      const botTypes: BotType[] = ['GRID', 'DCA', 'TWAP', 'MARKET_MAKER', 'SIGNAL'];
+      
+      for (const bot of botTypes) {
+        let trades: TradeEntry[] = [];
+        const numericParams = Object.fromEntries(
+          Object.entries(params[bot]).map(([k, v]) => [k, parseFloat(v) || 0])
+        );
+
+        if (bot === 'SIGNAL') {
+          trades = runSignalBacktest(closes, highs, lows, times, numericParams as any);
+        } else if (bot === 'GRID') {
+          trades = runGridBacktest(closes, highs, lows, times, numericParams as any);
+        } else if (bot === 'DCA') {
+          trades = runDcaBacktest(closes, highs, lows, times, numericParams as any);
+        } else if (bot === 'TWAP') {
+          trades = runTwapBacktest(closes, highs, lows, times, numericParams as any);
+        } else if (bot === 'MARKET_MAKER') {
+          trades = runMarketMakerBacktest(closes, highs, lows, times, numericParams as any);
+        }
+
+        // Apply taker fees
+        const processedTrades = trades.map(t => {
+          const qty = t.quantity ?? 1;
+          const entryFee = t.entryPrice * feeRate * qty;
+          const exitFee = t.exitPrice * feeRate * qty;
+          const totalFee = entryFee + exitFee;
+          const feePercent = (totalFee / (t.entryPrice * qty)) * 100;
+          return {
+            ...t,
+            pnl: t.pnl - totalFee,
+            pnlPercent: t.pnlPercent - feePercent,
+          };
+        });
+
+        // Calculate comprehensive stats
+        const totalPnl = processedTrades.reduce((s, t) => s + t.pnl, 0);
+        const winTrades = processedTrades.filter(t => t.pnl > 0).length;
+        const lossTrades = processedTrades.filter(t => t.pnl <= 0).length;
+        const winRate = processedTrades.length > 0 ? (winTrades / processedTrades.length) * 100 : 0;
+        const grossProfit = processedTrades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+        const grossLoss = Math.abs(processedTrades.filter(t => t.pnl <= 0).reduce((s, t) => s + t.pnl, 0));
+        const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
+
+        let peak = 0;
+        let maxDD = 0;
+        let equity = 0;
+        const equityCurve: EquityPoint[] = [];
+
+        for (let i = 0; i < processedTrades.length; i++) {
+          equity += processedTrades[i].pnl;
+          if (equity > peak) peak = equity;
+          const dd = peak - equity;
+          if (dd > maxDD) maxDD = dd;
+          equityCurve.push({
+            trade: i + 1,
+            equity,
+            drawdown: dd,
+            timestamp: processedTrades[i].exitTime,
+          });
+        }
+
+        const pnlPcts = processedTrades.map(t => t.pnlPercent);
+        const avgReturn = pnlPcts.length > 0 ? pnlPcts.reduce((s, p) => s + p, 0) / pnlPcts.length : 0;
+        const stdDev = pnlPcts.length > 1
+          ? Math.sqrt(pnlPcts.reduce((s, p) => s + (p - avgReturn) ** 2, 0) / (pnlPcts.length - 1))
+          : 0;
+        const sharpeRatio = stdDev > 0 ? avgReturn / stdDev * Math.sqrt(365 * 24 / (timeframe === '1h' ? 1 : timeframe === '4h' ? 4 : 24)) : 0;
+
+        resultsMap[bot] = {
+          bot,
+          botName: BOT_CONFIGS[bot].name,
+          totalTrades: processedTrades.length,
+          winTrades,
+          lossTrades,
+          winRate,
+          totalPnl,
+          maxDrawdown: maxDD,
+          sharpeRatio,
+          profitFactor,
+          equityCurve,
+        };
+      }
+      setCompareResults(resultsMap);
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, 'Comparison error'));
+      setCompareModalOpen(false);
+    } finally {
+      setComparing(false);
+    }
+  }, [symbol, timeframe, candleCount, params, takerFee]);
+
+  const runNewsCorrelation = useCallback(async () => {
+    setAnalyzingNews(true);
+    setNewsCorrelationResults(null);
+    setNewsStats(null);
+    setNewsModalOpen(true);
+    try {
+      const rawKlines = await fetchKlines(symbol, '1h', 1000, 'perps');
+      const klines = Array.isArray(rawKlines) ? rawKlines : [];
+      if (klines.length === 0) {
+        toast.error('Could not fetch historical data for news correlation.');
+        setNewsModalOpen(false);
+        return;
+      }
+
+      const klineVal = (k: Record<string, unknown>, field: string, arrIdx: number): number =>
+        parseFloat(String(k[field] ?? (Array.isArray(k) ? (k as unknown as unknown[])[arrIdx] : 0)));
+
+      const priceHistory = klines.map((k) => {
+        const t = k.time ?? k.openTime ?? (Array.isArray(k) ? (k as unknown as unknown[])[0] : 0);
+        const timeMs = typeof t === 'number' ? t : new Date(t).getTime();
+        return {
+          time: timeMs,
+          close: klineVal(k, 'close', 4),
+        };
+      }).sort((a, b) => a.time - b.time);
+
+      const newsRes = await fetchSosoNews(1, 25);
+      const newsList = newsRes?.list ?? [];
+
+      const correlationPoints: any[] = [];
+      const positiveMoves = { '1h': 0, '4h': 0, '12h': 0, count: 0 };
+      const negativeMoves = { '1h': 0, '4h': 0, '12h': 0, count: 0 };
+      const neutralMoves = { '1h': 0, '4h': 0, '12h': 0, count: 0 };
+
+      const posWords = ['up', 'bullish', 'gain', 'inflow', 'approve', 'buy', 'rise', 'highest', 'accumulate', 'positive', 'growth', 'rally', 'breakout', 'surge', 'success', 'support', 'strength'];
+      const negWords = ['down', 'bearish', 'drop', 'outflow', 'decline', 'sell', 'fall', 'lowest', 'dump', 'negative', 'crash', 'fear', 'panic', 'fud', 'hack', 'crackdown', 'sec', 'lawsuit', 'selloff', 'weakness'];
+
+      const classifySentiment = (titleText: string): 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' => {
+        const clean = titleText.toLowerCase();
+        let posCount = 0;
+        let negCount = 0;
+        posWords.forEach(w => {
+          if (new RegExp(`\\b${w}\\b`).test(clean)) posCount++;
+        });
+        negWords.forEach(w => {
+          if (new RegExp(`\\b${w}\\b`).test(clean)) negCount++;
+        });
+        if (posCount > negCount) return 'POSITIVE';
+        if (negCount > posCount) return 'NEGATIVE';
+        return 'NEUTRAL';
+      };
+
+      for (const item of newsList) {
+        const title = item.multilanguageContent?.[0]?.title ?? item.author ?? '';
+        const coin = extractCoinFromNews(title, symbol.split(/[-_/]/)[0]);
+        const sentiment = classifySentiment(title);
+        const releaseTime = item.releaseTime;
+
+        let closestIdx = -1;
+        let minDiff = Infinity;
+        for (let i = 0; i < priceHistory.length; i++) {
+          const diff = Math.abs(priceHistory[i].time - releaseTime);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIdx = i;
+          }
+        }
+
+        if (closestIdx !== -1 && minDiff < 4 * 60 * 60 * 1000) {
+          const p0 = priceHistory[closestIdx].close;
+          
+          const getPctChange = (offset: number) => {
+            const idx = closestIdx + offset;
+            if (idx < priceHistory.length) {
+              const p = priceHistory[idx].close;
+              return ((p - p0) / p0) * 100;
+            }
+            return null;
+          };
+
+          const ch1h = getPctChange(1);
+          const ch4h = getPctChange(4);
+          const ch12h = getPctChange(12);
+
+          correlationPoints.push({
+            id: item.id,
+            title,
+            coin,
+            sentiment,
+            releaseTime,
+            priceAtRelease: p0,
+            ch1h,
+            ch4h,
+            ch12h,
+          });
+
+          const bucket = sentiment === 'POSITIVE' ? positiveMoves : sentiment === 'NEGATIVE' ? negativeMoves : neutralMoves;
+          if (ch1h !== null) { bucket['1h'] += ch1h; }
+          if (ch4h !== null) { bucket['4h'] += ch4h; }
+          if (ch12h !== null) { bucket['12h'] += ch12h; }
+          bucket.count++;
+        }
+      }
+
+      const getAvg = (bucket: typeof positiveMoves, key: '1h' | '4h' | '12h') => {
+        return bucket.count > 0 ? bucket[key] / bucket.count : 0;
+      };
+
+      setNewsCorrelationResults(correlationPoints);
+      setNewsStats({
+        posCount: positiveMoves.count,
+        negCount: negativeMoves.count,
+        neuCount: neutralMoves.count,
+        posAvg1h: getAvg(positiveMoves, '1h'),
+        posAvg4h: getAvg(positiveMoves, '4h'),
+        posAvg12h: getAvg(positiveMoves, '12h'),
+        negAvg1h: getAvg(negativeMoves, '1h'),
+        negAvg4h: getAvg(negativeMoves, '4h'),
+        negAvg12h: getAvg(negativeMoves, '12h'),
+        neuAvg1h: getAvg(neutralMoves, '1h'),
+        neuAvg4h: getAvg(neutralMoves, '4h'),
+        neuAvg12h: getAvg(neutralMoves, '12h'),
+      });
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, 'News correlation error'));
+      setNewsModalOpen(false);
+    } finally {
+      setAnalyzingNews(false);
+    }
+  }, [symbol]);
+
+
   const runBacktest = useCallback(async () => {
     setLoading(true);
     setResult(null);
@@ -1038,15 +1302,39 @@ export const Backtesting: React.FC = () => {
   return (
     <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-primary flex items-center justify-center shadow-lg">
-          <FlaskConical size={24} className="text-white" />
+      <div className="flex items-center justify-between gap-3 shrink-0 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-primary flex items-center justify-center shadow-lg">
+            <FlaskConical size={24} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-text-primary">Professional Backtesting</h2>
+            <p className="text-[11px] text-text-muted">
+              Historical strategy validation with real market data (Wave 2)
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-text-primary">Professional Backtesting</h2>
-          <p className="text-[11px] text-text-muted">
-            Historical strategy validation with real market data (Wave 2)
-          </p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
+            icon={<Sparkles size={14} />}
+            onClick={runComparison}
+            disabled={loading || comparing || analyzingNews}
+          >
+            Compare Bots
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
+            icon={<TrendingUpIcon size={14} />}
+            onClick={runNewsCorrelation}
+            disabled={loading || comparing || analyzingNews}
+          >
+            News Sentiment Analysis
+          </Button>
         </div>
       </div>
 
@@ -1519,7 +1807,506 @@ export const Backtesting: React.FC = () => {
           </div>
         </div>
       )}
+      <CompareBotsModal
+        isOpen={compareModalOpen}
+        onClose={() => setCompareModalOpen(false)}
+        results={compareResults}
+        loading={comparing}
+        symbol={symbol}
+        timeframe={timeframe}
+      />
+      <NewsSentimentCorrelationModal
+        isOpen={newsModalOpen}
+        onClose={() => setNewsModalOpen(false)}
+        results={newsCorrelationResults}
+        stats={newsStats}
+        loading={analyzingNews}
+        symbol={symbol}
+      />
     </div>
   );
 };
+
+// ─── Bot Colors for Comparison ─────────────────────────────────────────────
+const BOT_COLORS: Record<string, string> = {
+  GRID: '#10B981',         // Emerald
+  DCA: '#3B82F6',          // Blue
+  TWAP: '#F59E0B',         // Amber
+  MARKET_MAKER: '#8B5CF6',  // Violet
+  SIGNAL: '#EC4899',       // Pink
+};
+
+// ─── Bot Comparison Modal ──────────────────────────────────────────────────
+interface CompareBotsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  results: Record<string, any> | null;
+  loading: boolean;
+  symbol: string;
+  timeframe: string;
+}
+
+const CompareBotsModal: React.FC<CompareBotsModalProps> = ({
+  isOpen,
+  onClose,
+  results,
+  loading,
+  symbol,
+  timeframe,
+}) => {
+  if (!isOpen) return null;
+
+  // Find the top bot based on total PnL
+  let topBot: any = null;
+  if (results) {
+    let maxPnl = -Infinity;
+    Object.values(results).forEach((r: any) => {
+      if (r.totalPnl > maxPnl) {
+        maxPnl = r.totalPnl;
+        topBot = r;
+      }
+    });
+  }
+
+  // Pre-calculate SVG dimensions
+  const svgWidth = 800;
+  const svgHeight = 250;
+
+  // Determine global min and max equity across all bots for SVG scaling
+  let globalMin = 0;
+  let globalMax = 0;
+  let hasValidCurve = false;
+
+  if (results) {
+    Object.values(results).forEach((botRes: any) => {
+      if (botRes.equityCurve && botRes.equityCurve.length > 0) {
+        hasValidCurve = true;
+        botRes.equityCurve.forEach((p: any) => {
+          if (p.equity < globalMin) globalMin = p.equity;
+          if (p.equity > globalMax) globalMax = p.equity;
+        });
+      }
+    });
+  }
+
+  const range = globalMax - globalMin || 1;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop p-4 bg-black/60 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="glass-card w-full max-w-4xl shadow-2xl animate-fade-in flex flex-col max-h-[85vh] overflow-hidden"
+        style={{ border: '1px solid rgba(27,34,48,0.85)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Sparkles size={18} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-text-primary leading-tight">
+                Bot Performance Comparison Suite
+              </h3>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                Comparative strategy simulation for <span className="font-mono text-text-primary">{symbol}</span> on <span className="font-mono text-text-primary">{timeframe}</span> timeframe
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-text-muted hover:text-text-primary transition-colors rounded-lg p-1 hover:bg-surface-hover"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+          {loading && (
+            <div className="flex-1 flex flex-col items-center justify-center py-20 gap-4">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <div className="text-center">
+                <h4 className="text-sm font-semibold text-text-primary">Running Multi-Strategy Simulation</h4>
+                <p className="text-xs text-text-muted mt-1">Concurrently backtesting all 5 bot variants over historical klines...</p>
+              </div>
+            </div>
+          )}
+
+          {!loading && results && (
+            <>
+              {/* Winner Banner */}
+              {topBot && (
+                <div className={cn(
+                  'p-4 rounded-xl border flex items-center gap-3',
+                  topBot.totalPnl >= 0
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                    : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                )}>
+                  <Award size={20} className="shrink-0" />
+                  <div className="text-xs leading-normal">
+                    {topBot.totalPnl >= 0 ? (
+                      <span>
+                        🏆 <strong>{topBot.botName}</strong> outperforms all strategies, generating <strong>+${topBot.totalPnl.toFixed(2)}</strong> in net returns (Win Rate: <strong>{topBot.winRate.toFixed(1)}%</strong>)!
+                      </span>
+                    ) : (
+                      <span>
+                        ⚠️ All strategies suffered drawdowns in this regime. <strong>{topBot.botName}</strong> was the most defensive, losing only <strong>${Math.abs(topBot.totalPnl).toFixed(2)}</strong>.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Comparison Table */}
+              <div>
+                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Performance Metrics Matrix</h4>
+                <div className="overflow-x-auto border border-border/50 rounded-xl">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-[10px] text-text-muted uppercase bg-surface/50 border-b border-border">
+                      <tr>
+                        <th className="px-4 py-3">Strategy</th>
+                        <th className="px-4 py-3 text-right">Net Profit ($)</th>
+                        <th className="px-4 py-3 text-right">Win Rate</th>
+                        <th className="px-4 py-3 text-right">Trades</th>
+                        <th className="px-4 py-3 text-right">Profit Factor</th>
+                        <th className="px-4 py-3 text-right">Sharpe Ratio</th>
+                        <th className="px-4 py-3 text-right">Max Drawdown</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50 font-mono">
+                      {Object.values(results).map((r: any) => {
+                        const isWinner = topBot && topBot.bot === r.bot;
+                        const isPnlUp = r.totalPnl >= 0;
+                        return (
+                          <tr
+                            key={r.bot}
+                            className={cn(
+                              'hover:bg-surface-hover/30 transition-colors',
+                              isWinner && 'bg-primary/5 font-semibold'
+                            )}
+                          >
+                            <td className="px-4 py-3 font-sans font-medium text-text-primary flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: BOT_COLORS[r.bot] }}
+                              />
+                              {r.botName}
+                              {isWinner && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary font-sans font-bold">TOP</span>}
+                            </td>
+                            <td className={cn('px-4 py-3 text-right tabular-nums', isPnlUp ? 'text-success font-bold' : 'text-danger')}>
+                              {isPnlUp ? '+' : ''}${r.totalPnl.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-text-secondary">
+                              {r.winRate.toFixed(1)}%
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-text-secondary">
+                              {r.totalTrades}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-text-secondary">
+                              {r.profitFactor === Infinity ? '∞' : r.profitFactor.toFixed(2)}
+                            </td>
+                            <td className={cn(
+                              'px-4 py-3 text-right tabular-nums',
+                              r.sharpeRatio >= 1 ? 'text-emerald-400 font-bold' : r.sharpeRatio >= 0.5 ? 'text-primary' : 'text-text-secondary'
+                            )}>
+                              {r.sharpeRatio.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-danger">
+                              -${r.maxDrawdown.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Combined Equity Chart */}
+              <div>
+                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Combined Strategy Equity Curves</h4>
+                <div className="bg-surface/30 p-4 border border-border/50 rounded-xl flex flex-col items-center">
+                  {hasValidCurve ? (
+                    <svg width={svgWidth} height={svgHeight} className="overflow-visible max-w-full">
+                      {/* Zero baseline */}
+                      <line
+                        x1="20"
+                        y1={svgHeight - 20 - ((0 - globalMin) / range) * (svgHeight - 40)}
+                        x2={svgWidth - 20}
+                        y2={svgHeight - 20 - ((0 - globalMin) / range) * (svgHeight - 40)}
+                        stroke="rgba(255,255,255,0.15)"
+                        strokeWidth="1.5"
+                        strokeDasharray="2 3"
+                      />
+                      {/* Curves */}
+                      {Object.values(results).map((botRes: any) => {
+                        const N = botRes.equityCurve.length;
+                        if (N < 2) return null;
+                        const points = botRes.equityCurve.map((p: any, i: number) => {
+                          const x = (i / (N - 1)) * (svgWidth - 40) + 20;
+                          const y = svgHeight - 20 - ((p.equity - globalMin) / range) * (svgHeight - 40);
+                          return `${x},${y}`;
+                        }).join(' ');
+                        return (
+                          <polyline
+                            key={botRes.bot}
+                            points={points}
+                            fill="none"
+                            stroke={BOT_COLORS[botRes.bot]}
+                            strokeWidth="2.5"
+                            strokeLinejoin="round"
+                            className="transition-all duration-300 hover:stroke-[3.5px] cursor-pointer"
+                          />
+                        );
+                      })}
+                      {/* Border Lines */}
+                      <line x1="20" y1={svgHeight - 20} x2={svgWidth - 20} y2={svgHeight - 20} stroke="#2E374A" strokeWidth="1" />
+                      
+                      {/* Labels */}
+                      <text x="25" y="25" fontFamily="monospace" fontSize="9" fill="#9CA3AF" fontWeight="bold">Global Peak: +${globalMax.toFixed(2)}</text>
+                      <text x="25" y={svgHeight - 25} fontFamily="monospace" fontSize="9" fill="#EF4444" fontWeight="bold">Global Min: -${Math.abs(globalMin).toFixed(2)}</text>
+                    </svg>
+                  ) : (
+                    <div className="py-12 text-center text-xs text-text-muted">No historical trades triggered to map equity curve</div>
+                  )}
+
+                  {/* Chart Legend */}
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 justify-center">
+                    {Object.values(results).map((botRes: any) => (
+                      <div key={botRes.bot} className="flex items-center gap-1.5 text-xs text-text-secondary">
+                        <span
+                          className="w-3 h-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: BOT_COLORS[botRes.bot] }}
+                        />
+                        <span>{botRes.botName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-background/30">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close Matrix
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── News Sentiment Correlation Modal ──────────────────────────────────────
+interface NewsCorrelationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  results: any[] | null;
+  stats: any | null;
+  loading: boolean;
+  symbol: string;
+}
+
+const NewsSentimentCorrelationModal: React.FC<NewsCorrelationModalProps> = ({
+  isOpen,
+  onClose,
+  results,
+  stats,
+  loading,
+  symbol,
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop p-4 bg-black/60 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="glass-card w-full max-w-4xl shadow-2xl animate-fade-in flex flex-col max-h-[85vh] overflow-hidden"
+        style={{ border: '1px solid rgba(27,34,48,0.85)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <TrendingUpIcon size={18} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-text-primary leading-tight">
+                SoSoValue News Sentiment Correlation Analysis
+              </h3>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                Analyzing price reaction of <span className="font-mono text-text-primary">{symbol.split(/[-_/]/)[0]}</span> following headlines
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-text-muted hover:text-text-primary transition-colors rounded-lg p-1 hover:bg-surface-hover"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-5">
+          {loading && (
+            <div className="flex-1 flex flex-col items-center justify-center py-20 gap-4">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <div className="text-center">
+                <h4 className="text-sm font-semibold text-text-primary">Performing Correlation Analysis</h4>
+                <p className="text-xs text-text-muted mt-1">Fetching latest SoSoValue news and mapping timeline to historical klines...</p>
+              </div>
+            </div>
+          )}
+
+          {!loading && results && stats && (
+            <>
+              {/* Correlation Summary Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wide">
+                    <TrendingUpIcon size={14} />
+                    Positive Sentiment Correlation ({stats.posCount} items)
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-3 font-mono text-center">
+                    <div>
+                      <div className="text-[9px] text-text-muted uppercase">1h Avg</div>
+                      <div className={cn('text-sm font-bold mt-0.5', stats.posAvg1h >= 0 ? 'text-success' : 'text-danger')}>
+                        {stats.posAvg1h >= 0 ? '+' : ''}{stats.posAvg1h.toFixed(2)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-text-muted uppercase">4h Avg</div>
+                      <div className={cn('text-sm font-bold mt-0.5', stats.posAvg4h >= 0 ? 'text-success' : 'text-danger')}>
+                        {stats.posAvg4h >= 0 ? '+' : ''}{stats.posAvg4h.toFixed(2)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-text-muted uppercase">12h Avg</div>
+                      <div className={cn('text-sm font-bold mt-0.5', stats.posAvg12h >= 0 ? 'text-success' : 'text-danger')}>
+                        {stats.posAvg12h >= 0 ? '+' : ''}{stats.posAvg12h.toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-red-400 uppercase tracking-wide">
+                    <TrendingDown size={14} />
+                    Negative Sentiment Correlation ({stats.negCount} items)
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-3 font-mono text-center">
+                    <div>
+                      <div className="text-[9px] text-text-muted uppercase">1h Avg</div>
+                      <div className={cn('text-sm font-bold mt-0.5', stats.negAvg1h >= 0 ? 'text-success' : 'text-danger')}>
+                        {stats.negAvg1h >= 0 ? '+' : ''}{stats.negAvg1h.toFixed(2)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-text-muted uppercase">4h Avg</div>
+                      <div className={cn('text-sm font-bold mt-0.5', stats.negAvg4h >= 0 ? 'text-success' : 'text-danger')}>
+                        {stats.negAvg4h >= 0 ? '+' : ''}{stats.negAvg4h.toFixed(2)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-text-muted uppercase">12h Avg</div>
+                      <div className={cn('text-sm font-bold mt-0.5', stats.negAvg12h >= 0 ? 'text-success' : 'text-danger')}>
+                        {stats.negAvg12h >= 0 ? '+' : ''}{stats.negAvg12h.toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline Cards */}
+              <div>
+                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Headline Correlation Feed</h4>
+                <div className="flex flex-col gap-3">
+                  {results.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-text-muted border border-dashed border-border rounded-xl">
+                      No matching news headlines correlated with available historical price klines.
+                    </div>
+                  ) : (
+                    results.map((r) => {
+                      const isPositive = r.sentiment === 'POSITIVE';
+                      const isNegative = r.sentiment === 'NEGATIVE';
+                      return (
+                        <div
+                          key={r.id}
+                          className="p-4 rounded-xl bg-surface border border-border/50 flex flex-col md:flex-row justify-between gap-4"
+                        >
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
+                                {r.coin}
+                              </span>
+                              <span className={cn(
+                                'text-[9px] px-1.5 py-0.5 rounded font-bold uppercase',
+                                isPositive && 'bg-emerald-500/10 text-emerald-400',
+                                isNegative && 'bg-red-500/10 text-red-400',
+                                !isPositive && !isNegative && 'bg-white/5 text-text-muted'
+                              )}>
+                                {r.sentiment}
+                              </span>
+                              <span className="text-[10px] text-text-muted">
+                                {new Date(r.releaseTime).toLocaleString()}
+                              </span>
+                            </div>
+                            <h5 className="text-xs font-semibold text-text-primary leading-snug">
+                              {r.title}
+                            </h5>
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-4 font-mono text-xs border-t md:border-t-0 border-border/50 pt-2.5 md:pt-0">
+                            <div className="text-right">
+                              <div className="text-[8px] text-text-muted uppercase">1h React</div>
+                              <div className={cn('font-bold mt-0.5', r.ch1h === null ? 'text-text-muted' : r.ch1h >= 0 ? 'text-success' : 'text-danger')}>
+                                {r.ch1h === null ? '—' : `${r.ch1h >= 0 ? '+' : ''}${r.ch1h.toFixed(2)}%`}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[8px] text-text-muted uppercase">4h React</div>
+                              <div className={cn('font-bold mt-0.5', r.ch4h === null ? 'text-text-muted' : r.ch4h >= 0 ? 'text-success' : 'text-danger')}>
+                                {r.ch4h === null ? '—' : `${r.ch4h >= 0 ? '+' : ''}${r.ch4h.toFixed(2)}%`}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[8px] text-text-muted uppercase">12h React</div>
+                              <div className={cn('font-bold mt-0.5', r.ch12h === null ? 'text-text-muted' : r.ch12h >= 0 ? 'text-success' : 'text-danger')}>
+                                {r.ch12h === null ? '—' : `${r.ch12h >= 0 ? '+' : ''}${r.ch12h.toFixed(2)}%`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-background/30">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close Analysis
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
