@@ -122,6 +122,14 @@ export const TelegramIntegration: React.FC = () => {
   const [privateKeyInput, setPrivateKeyInput] = useState(privateKey || '');
   const [testnetInput, setTestnetInput] = useState(isTestnet);
 
+  // Keep local inputs in sync with store changes (e.g. from top-right wallet modal)
+  useEffect(() => {
+    setAddressInput(evmAddress || '');
+    setApiKeyInput(apiKeyName || '');
+    setPrivateKeyInput(privateKey || '');
+    setTestnetInput(isTestnet);
+  }, [evmAddress, apiKeyName, privateKey, isTestnet]);
+
   // Notification toggles
   const [alertEnabled, setAlertEnabled] = useState(true);
   const [orderFillsEnabled, setOrderFillsEnabled] = useState(true);
