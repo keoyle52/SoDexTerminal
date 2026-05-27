@@ -98,15 +98,15 @@ const BOT_CONFIGS: Record<BotType, BotConfig> = {
     type: 'MARKET_MAKER',
     name: 'Market Maker',
     description: 'Liquidity provisioning with bid-ask spread capture',
-    defaultParams: { spread: 0.25, inventory: 5000, rebalance: 2.5 },
+    defaultParams: { spread: 0.5, inventory: 1000, rebalance: 5.0 },
     paramLabels: { spread: 'Spread (%)', inventory: 'Inventory (USDT)', rebalance: 'Rebalance (%)' },
   },
   SIGNAL: {
     type: 'SIGNAL',
     name: 'Signal Bot',
     description: 'Technical indicator-driven automated trading',
-    defaultParams: { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30 },
-    paramLabels: { rsiPeriod: 'RSI Period', rsiOverbought: 'Overbought', rsiOversold: 'Oversold' },
+    defaultParams: { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30, investment: 1000 },
+    paramLabels: { rsiPeriod: 'RSI Period', rsiOverbought: 'Overbought', rsiOversold: 'Oversold', investment: 'Investment (USDT)' },
   },
 };
 
@@ -169,7 +169,7 @@ function runSignalBacktest(
   highs: number[],
   lows: number[],
   times: string[],
-  params: { rsiPeriod: number; rsiOverbought: number; rsiOversold: number }
+  params: { rsiPeriod: number; rsiOverbought: number; rsiOversold: number; investment?: number }
 ): TradeEntry[] {
   const trades: TradeEntry[] = [];
   let position: 'LONG' | 'SHORT' | null = null;
@@ -177,6 +177,8 @@ function runSignalBacktest(
   let entryTime = '';
   let slPrice = 0;
   let tpPrice = 0;
+  let quantity = 0;
+  let cooldown = 0;
 
   const rsi = calculateRSI(closes, params.rsiPeriod);
   const atr = calculateATR(highs, lows, closes, params.rsiPeriod);
@@ -184,11 +186,16 @@ function runSignalBacktest(
   for (let i = 1; i < closes.length; i++) {
     const prevRsi = rsi[i - 1];
     const curRsi = rsi[i];
+
+    if (cooldown > 0) {
+      cooldown--;
+    }
+
     if (prevRsi == null || curRsi == null) continue;
 
     if (position === 'LONG') {
       if (lows[i] <= slPrice) {
-        const pnl = slPrice - entryPrice;
+        const pnl = (slPrice - entryPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -196,12 +203,14 @@ function runSignalBacktest(
           entryPrice,
           exitPrice: slPrice,
           pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
+          pnlPercent: ((slPrice - entryPrice) / entryPrice) * 100,
           exitReason: 'STOP',
+          quantity,
         });
         position = null;
+        cooldown = 8; // Halt entries for 8 candles after a loss
       } else if (highs[i] >= tpPrice) {
-        const pnl = tpPrice - entryPrice;
+        const pnl = (tpPrice - entryPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -209,12 +218,13 @@ function runSignalBacktest(
           entryPrice,
           exitPrice: tpPrice,
           pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
+          pnlPercent: ((tpPrice - entryPrice) / entryPrice) * 100,
           exitReason: 'TARGET',
+          quantity,
         });
         position = null;
       } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
-        const pnl = closes[i] - entryPrice;
+        const pnl = (closes[i] - entryPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -222,14 +232,15 @@ function runSignalBacktest(
           entryPrice,
           exitPrice: closes[i],
           pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
+          pnlPercent: ((closes[i] - entryPrice) / entryPrice) * 100,
           exitReason: 'SIGNAL',
+          quantity,
         });
         position = null;
       }
     } else if (position === 'SHORT') {
       if (highs[i] >= slPrice) {
-        const pnl = entryPrice - slPrice;
+        const pnl = (entryPrice - slPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -237,12 +248,14 @@ function runSignalBacktest(
           entryPrice,
           exitPrice: slPrice,
           pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
+          pnlPercent: ((entryPrice - slPrice) / entryPrice) * 100,
           exitReason: 'STOP',
+          quantity,
         });
         position = null;
+        cooldown = 8; // Halt entries for 8 candles after a loss
       } else if (lows[i] <= tpPrice) {
-        const pnl = entryPrice - tpPrice;
+        const pnl = (entryPrice - tpPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -250,12 +263,13 @@ function runSignalBacktest(
           entryPrice,
           exitPrice: tpPrice,
           pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
+          pnlPercent: ((entryPrice - tpPrice) / entryPrice) * 100,
           exitReason: 'TARGET',
+          quantity,
         });
         position = null;
       } else if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold) {
-        const pnl = entryPrice - closes[i];
+        const pnl = (entryPrice - closes[i]) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
@@ -263,14 +277,15 @@ function runSignalBacktest(
           entryPrice,
           exitPrice: closes[i],
           pnl,
-          pnlPercent: (pnl / entryPrice) * 100,
+          pnlPercent: ((entryPrice - closes[i]) / entryPrice) * 100,
           exitReason: 'SIGNAL',
+          quantity,
         });
         position = null;
       }
     }
 
-    if (!position) {
+    if (!position && cooldown === 0) {
       if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold) {
         position = 'LONG';
         entryPrice = closes[i];
@@ -278,6 +293,7 @@ function runSignalBacktest(
         const atrVal = atr[i] || (closes[i] * 0.001);
         slPrice = entryPrice - atrVal * 2.0; // 2x ATR stop loss
         tpPrice = entryPrice + atrVal * 3.0; // 3x ATR take profit
+        quantity = (params.investment || 1000) / entryPrice;
       } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
         position = 'SHORT';
         entryPrice = closes[i];
@@ -285,13 +301,14 @@ function runSignalBacktest(
         const atrVal = atr[i] || (closes[i] * 0.001);
         slPrice = entryPrice + atrVal * 2.0; // 2x ATR stop loss
         tpPrice = entryPrice - atrVal * 3.0; // 3x ATR take profit
+        quantity = (params.investment || 1000) / entryPrice;
       }
     }
   }
 
   // Close remaining position at end
   if (position === 'LONG') {
-    const pnl = closes[closes.length - 1] - entryPrice;
+    const pnl = (closes[closes.length - 1] - entryPrice) * quantity;
     trades.push({
       entryTime,
       exitTime: times[times.length - 1],
@@ -299,11 +316,12 @@ function runSignalBacktest(
       entryPrice,
       exitPrice: closes[closes.length - 1],
       pnl,
-      pnlPercent: (pnl / entryPrice) * 100,
+      pnlPercent: ((closes[closes.length - 1] - entryPrice) / entryPrice) * 100,
       exitReason: 'END',
+      quantity,
     });
   } else if (position === 'SHORT') {
-    const pnl = entryPrice - closes[closes.length - 1];
+    const pnl = (entryPrice - closes[closes.length - 1]) * quantity;
     trades.push({
       entryTime,
       exitTime: times[times.length - 1],
@@ -311,8 +329,9 @@ function runSignalBacktest(
       entryPrice,
       exitPrice: closes[closes.length - 1],
       pnl,
-      pnlPercent: (pnl / entryPrice) * 100,
+      pnlPercent: ((entryPrice - closes[closes.length - 1]) / entryPrice) * 100,
       exitReason: 'END',
+      quantity,
     });
   }
 
@@ -644,11 +663,16 @@ function runMarketMakerBacktest(
   let entryPrice = 0;
   let entryTime = '';
   let inventory = 0;
+  let cooldown = 0;
 
   for (let i = 1; i < closes.length; i++) {
     const prevPrice = closes[i - 1];
 
-    if (!position) {
+    if (cooldown > 0) {
+      cooldown--;
+    }
+
+    if (!position && cooldown === 0) {
       const bid = prevPrice * (1 - spreadPct / 200);
       const ask = prevPrice * (1 + spreadPct / 200);
 
@@ -710,6 +734,7 @@ function runMarketMakerBacktest(
         });
         position = null;
         inventory = 0;
+        cooldown = 10; // Halt entries for 10 candles after a loss
       }
     } else if (position === 'SHORT') {
       const targetBuy = entryPrice * (1 - spreadPct / 100);
@@ -745,6 +770,7 @@ function runMarketMakerBacktest(
         });
         position = null;
         inventory = 0;
+        cooldown = 10; // Halt entries for 10 candles after a loss
       }
     }
   }
@@ -766,11 +792,11 @@ export const Backtesting: React.FC = () => {
 
   // Bot-specific parameters
   const [params, setParams] = useState<Record<BotType, Record<string, string>>>({
-    SIGNAL: { rsiPeriod: '14', rsiOverbought: '70', rsiOversold: '30' },
+    SIGNAL: { rsiPeriod: '14', rsiOverbought: '70', rsiOversold: '30', investment: '1000' },
     GRID: { gridCount: '10', gridSize: '1.5', investment: '1000' },
     DCA: { interval: '12', amount: '100', totalOrders: '10' },
     TWAP: { slices: '10', duration: '4', slippage: '0.05' },
-    MARKET_MAKER: { spread: '0.25', inventory: '5000', rebalance: '2.5' },
+    MARKET_MAKER: { spread: '0.5', inventory: '1000', rebalance: '5.0' },
   });
 
   const currentBot = BOT_CONFIGS[selectedBot];
