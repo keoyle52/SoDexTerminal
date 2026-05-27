@@ -24,8 +24,11 @@ import {
   fetchOrderbook,
   updatePerpsLeverage,
   cancelOrder,
-  batchCancelOrders
+  batchCancelOrders,
+  clearServiceCaches
 } from '../api/services';
+
+import { wsService } from '../api/websocket';
 
 import { buildContext as buildGridContext, recommendGridBot, recommendMarketMakerBot, recommendSignalBot } from '../api/aiAutoConfig';
 
@@ -604,13 +607,25 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
     setTestError('');
     try {
       // Auto-save credentials if filled in the input fields but not saved yet
-      useSettingsStore.setState({
-        evmAddress: addressInput.trim(),
-        apiKeyName: apiKeyInput.trim() || addressInput.trim(),
-        privateKey: privateKeyInput.trim(),
-        isTestnet: testnetInput,
-        isWalletConnected: true
-      });
+      const storeState = useSettingsStore.getState();
+      const networkChanged = storeState.isTestnet !== testnetInput;
+
+      storeState.setIsTestnet(testnetInput);
+      if (testnetInput) {
+        storeState.setTestnetPrivateKey(privateKeyInput.trim());
+        storeState.setTestnetEvmAddress(addressInput.trim());
+        storeState.setTestnetApiKeyName(apiKeyInput.trim() || addressInput.trim());
+      } else {
+        storeState.setMainnetPrivateKey(privateKeyInput.trim());
+        storeState.setMainnetEvmAddress(addressInput.trim());
+        storeState.setMainnetApiKeyName(apiKeyInput.trim() || addressInput.trim());
+      }
+      useSettingsStore.setState({ isWalletConnected: true });
+
+      if (networkChanged) {
+        wsService.switchNetwork(testnetInput);
+        clearServiceCaches();
+      }
 
       // Save chat ID to localStorage for quick reconnection prefill
       localStorage.setItem('sodex_last_chat_id', chatIdInput.trim());
@@ -639,13 +654,25 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
       toast.error('Address and Private Key are required.');
       return;
     }
-    useSettingsStore.setState({
-      evmAddress: addressInput.trim(),
-      apiKeyName: apiKeyInput.trim() || addressInput.trim(),
-      privateKey: privateKeyInput.trim(),
-      isTestnet: testnetInput,
-      isWalletConnected: true
-    });
+    const storeState = useSettingsStore.getState();
+    const networkChanged = storeState.isTestnet !== testnetInput;
+
+    storeState.setIsTestnet(testnetInput);
+    if (testnetInput) {
+      storeState.setTestnetPrivateKey(privateKeyInput.trim());
+      storeState.setTestnetEvmAddress(addressInput.trim());
+      storeState.setTestnetApiKeyName(apiKeyInput.trim() || addressInput.trim());
+    } else {
+      storeState.setMainnetPrivateKey(privateKeyInput.trim());
+      storeState.setMainnetEvmAddress(addressInput.trim());
+      storeState.setMainnetApiKeyName(apiKeyInput.trim() || addressInput.trim());
+    }
+    useSettingsStore.setState({ isWalletConnected: true });
+
+    if (networkChanged) {
+      wsService.switchNetwork(testnetInput);
+      clearServiceCaches();
+    }
     toast.success('SoDEX API credentials saved successfully!');
   };
 
