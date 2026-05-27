@@ -121,6 +121,18 @@ router.post('/verify', async (req: Request, res: Response) => {
         isTestnet: isTestnet ?? false,
       });
     }
+    const bot = getBot();
+    if (bot) {
+      try {
+        await bot.sendMessage(
+          numericId,
+          '✅ *SoDEX Terminal connected!*\n\nReal-time alerts are now active. Your trading notifications will arrive here.',
+          { parse_mode: 'Markdown' },
+        );
+      } catch (e) {
+        // ignore
+      }
+    }
     res.json({ ok: true, registered: true });
     return;
   }
