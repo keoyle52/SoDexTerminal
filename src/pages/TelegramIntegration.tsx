@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  MessageSquare, Send, Smartphone, ShieldCheck, Bell,
+  MessageSquare, Smartphone, ShieldCheck, Bell,
   CheckCircle2, RefreshCw, Trash2
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
@@ -15,7 +15,6 @@ import { useBotStore } from '../store/botStore';
 import { usePredictorStore } from '../store/predictorStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import {
-  fetchPositions,
   normalizeSymbol,
   placeOrder,
   cancelAllOrders,
@@ -28,13 +27,9 @@ import {
   batchCancelOrders
 } from '../api/services';
 
-import { classifyRegime, recommendBot, regimeLabel, botLabel, type RegimeInputs } from '../api/aiOrchestrator';
+import { buildContext as buildGridContext, recommendGridBot, recommendMarketMakerBot, recommendSignalBot } from '../api/aiAutoConfig';
 
-interface Message {
-  sender: 'user' | 'bot';
-  text: string;
-  timestamp: string;
-}
+
 
 interface AccountInfo { evmAddress: string; apiKeyName: string; isTestnet: boolean; }
 
@@ -134,20 +129,16 @@ export const TelegramIntegration: React.FC = () => {
   const consecutiveErrorsRef = useRef<Record<string, number>>({ GRID: 0, MM: 0, SIGNAL: 0, PREDICTOR: 0 });
   const reconcileBusyRef = useRef(false);
   const pollBusyRef = useRef(false);
+  const lastSyncedStatesRef = useRef<{
+    grid: 'RUNNING' | 'STOPPED';
+    mm: 'RUNNING' | 'STOPPED';
+    signal: 'RUNNING' | 'STOPPED';
+    predictor: 'RUNNING' | 'STOPPED';
+  } | null>(null);
 
 
 
-  // Chat Preview messages
-  const [messages, setMessages] = useState<Message[]>([
-    { sender: 'bot', text: '🤖 SoDEX PowerOps Bot\n\nConnected and ready! I will notify you about regime changes, P&L reports, and order fills.\n\nType /help to see available commands.', timestamp: '14:20' },
-  ]);
-  const [inputValue, setInputValue] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Interactive menu states
-  const [pendingAction, setPendingAction] = useState<'START_SELECT' | 'STOP_SELECT' | null>(null);
-  const [runningBotsList, setRunningBotsList] = useState<string[]>([]);
 
 
   // Terminal Console state
@@ -161,7 +152,37 @@ export const TelegramIntegration: React.FC = () => {
       { time: new Date().toLocaleTimeString(), bot, level, message },
       ...prev
     ].slice(0, 150));
-  }, []);
+
+    // Stream logs to actual Telegram bot
+    if (telegramChatId) {
+      const shouldStream = 
+        level === 'ERROR' || 
+        (level === 'SUCCESS' && !message.includes('successfully placed')) ||
+        (level === 'INFO' && (
+          message.toLowerCase().includes('crossover') || 
+          message.toLowerCase().includes('alert')
+        ));
+
+      if (shouldStream) {
+        const emojiMap = {
+          INFO: 'ℹ️',
+          TRADE: '💸',
+          SUCCESS: '🟢',
+          ERROR: '⚠️'
+        };
+        const emoji = emojiMap[level] || '📝';
+        const formattedText = `${emoji} *[${bot}] ${level}*\n${message}`;
+
+        fetch(`${API_BASE}/api/telegram/notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: telegramChatId, text: formattedText }),
+        }).catch(err => {
+          console.error('Failed to send terminal log to Telegram:', err);
+        });
+      }
+    }
+  }, [telegramChatId]);
 
   const disconnectAndStopAllBots = useCallback(async (localOnly = false) => {
     addTerminalLog('SYSTEM', 'ERROR', 'Telegram connection disconnected. Stopping all bots and cancelling open orders.');
@@ -232,17 +253,247 @@ export const TelegramIntegration: React.FC = () => {
 
 
 
-  const syncBotsToBackendStates = useCallback(async (backendStates: {
-    grid: 'RUNNING' | 'STOPPED';
-    mm: 'RUNNING' | 'STOPPED';
-    signal: 'RUNNING' | 'STOPPED';
-    predictor: 'RUNNING' | 'STOPPED';
-  }) => {
-    // Sync Grid Bot
+  const sendTelegramNotification = useCallback(async (text: string) => {
+    if (!telegramChatId) return;
+    try {
+      await fetch(`${API_BASE}/api/telegram/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: telegramChatId, text }),
+      });
+    } catch (err) {
+      console.error('Failed to send telegram notification:', err);
+    }
+  }, [telegramChatId]);
+
+  const syncBotsToBackendStates = useCallback(async (
+    backendStates: {
+      grid: 'RUNNING' | 'STOPPED';
+      mm: 'RUNNING' | 'STOPPED';
+      signal: 'RUNNING' | 'STOPPED';
+      predictor: 'RUNNING' | 'STOPPED';
+    },
+    backendConfigs?: {
+      grid?: any;
+      mm?: any;
+      signal?: any;
+      predictor?: any;
+    }
+  ) => {
     const activeGrid = useBotStore.getState().gridBot;
-    if (backendStates.grid === 'RUNNING' && activeGrid.status !== 'RUNNING') {
+    const activeMm = useBotStore.getState().marketMakerBot;
+    const activeSig = useBotStore.getState().signalBot;
+    const activePred = usePredictorStore.getState().autoTradeEnabled;
+
+    const postRiskSummary = async (botKey: string, riskSummaryText: string) => {
+      if (!telegramChatId) return;
+      try {
+        await fetch(`${API_BASE}/api/telegram/risk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId: telegramChatId,
+            botKey,
+            riskSummaryText
+          }),
+        });
+      } catch (err) {
+        console.error('Failed to post risk summary:', err);
+      }
+    };
+
+    const handlePendingConfig = async (botKey: 'grid' | 'mm' | 'signal' | 'predictor', config: any) => {
+      const symbol = config.symbol ?? (botKey === 'grid' ? 'vBTC-vUSDC' : botKey === 'mm' ? 'vBTC-vUSDC' : 'BTC-USD');
+      const isSpot = config.isSpot !== false;
+      const useAi = config.useAiConfig === true;
+      const market = isSpot ? 'spot' : 'perps';
+
+      if (botKey === 'grid') {
+        let lower = parseFloat(activeGrid.lowerPrice) || 60000;
+        let upper = parseFloat(activeGrid.upperPrice) || 70000;
+        let count = parseInt(activeGrid.gridCount) || 10;
+        let amount = parseFloat(activeGrid.amountPerGrid) || 0.01;
+        let spacing = activeGrid.spacing;
+        let mode = activeGrid.mode;
+        let leverage = activeGrid.leverage;
+        let rationaleText = '';
+
+        if (useAi) {
+          try {
+            const ctx = await buildGridContext(symbol, market);
+            const { preset, rationale } = recommendGridBot(ctx);
+            lower = parseFloat(String(preset.lowerPrice));
+            upper = parseFloat(String(preset.upperPrice));
+            count = parseInt(String(preset.gridCount));
+            amount = parseFloat(String(preset.amountPerGrid));
+            spacing = preset.spacing as any;
+            mode = preset.mode as any;
+            rationaleText = rationale;
+
+            useBotStore.getState().gridBot.setField('symbol', symbol);
+            useBotStore.getState().gridBot.setField('isSpot', isSpot);
+            useBotStore.getState().gridBot.setField('lowerPrice', String(lower));
+            useBotStore.getState().gridBot.setField('upperPrice', String(upper));
+            useBotStore.getState().gridBot.setField('gridCount', String(count));
+            useBotStore.getState().gridBot.setField('amountPerGrid', String(amount));
+            useBotStore.getState().gridBot.setField('spacing', spacing);
+            useBotStore.getState().gridBot.setField('mode', mode);
+          } catch (e) {
+            console.error('Grid AI Config failed:', e);
+            rationaleText = 'Fallback defaults applied.';
+          }
+        } else {
+          useBotStore.getState().gridBot.setField('symbol', symbol);
+          useBotStore.getState().gridBot.setField('isSpot', isSpot);
+        }
+
+        const rangePct = lower > 0 && upper > 0 ? ((upper - lower) / ((lower + upper) / 2)) * 100 : 0;
+        const buyLevelCount = mode === 'SHORT' ? 0 : Math.max(1, Math.floor(count / 2));
+        const estExposure = buyLevelCount * amount * ((lower + upper) / 2);
+        const levNum = parseInt(leverage) || 1;
+        const riskRating = (!isSpot && levNum > 10) || (mode !== 'NEUTRAL' && rangePct > 30) ? '🔴 HIGH' : (mode !== 'NEUTRAL' || rangePct > 30 || levNum > 1) ? '🟡 MEDIUM' : '🟢 LOW';
+
+        const riskSummaryText = `🛡️ *SoDEX Risk Summary (Grid Bot - ${symbol})*
+• Range: *$${lower.toLocaleString()} - $${upper.toLocaleString()}* (${rangePct.toFixed(1)}% wide)
+• Levels: *${count}* | Spacing: *${spacing}*
+• Exposure: *~$${estExposure.toLocaleString(undefined, { maximumFractionDigits: 0 })} USDT*
+• Mode: *${mode}* ${!isSpot ? `| Leverage: *${leverage}x*` : ''}
+• Risk Rating: *${riskRating}*
+
+${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Using pre-set web credentials & parameters.'}`;
+
+        await postRiskSummary('grid', riskSummaryText);
+      } else if (botKey === 'mm') {
+        let budget = parseFloat(activeMm.budgetUsdt) || 100;
+        let orderSize = parseFloat(activeMm.orderSizeUsdt) || 10;
+        let layers = parseInt(activeMm.layers) || 2;
+        let spreadBps = activeMm.spreadBps;
+        let requoteBps = activeMm.requoteBps;
+        let rationaleText = '';
+
+        if (useAi) {
+          try {
+            const ctx = await buildGridContext(symbol, 'spot');
+            const { preset, rationale } = recommendMarketMakerBot(ctx, budget);
+            layers = parseInt(String(preset.layers));
+            spreadBps = String(preset.spreadBps);
+            requoteBps = String(preset.requoteBps);
+            orderSize = parseFloat(String(preset.orderSizeUsdt));
+            rationaleText = `Auto-calibrated MM bot to run ${layers} BBO spreads at offset ${spreadBps} bps. Rationale: ${rationale}`;
+
+            useBotStore.getState().marketMakerBot.setField('symbol', symbol);
+            useBotStore.getState().marketMakerBot.setField('layers', String(layers));
+            useBotStore.getState().marketMakerBot.setField('spreadBps', spreadBps);
+            useBotStore.getState().marketMakerBot.setField('requoteBps', requoteBps);
+            useBotStore.getState().marketMakerBot.setField('orderSizeUsdt', String(orderSize));
+          } catch (e) {
+            console.error('MM AI Config failed:', e);
+            rationaleText = 'Fallback maker parameters applied.';
+          }
+        } else {
+          useBotStore.getState().marketMakerBot.setField('symbol', symbol);
+        }
+
+        const exposure = orderSize * layers * 2;
+        const riskRating = exposure > budget ? '🔴 HIGH' : '🟢 LOW';
+
+        const riskSummaryText = `🛡️ *SoDEX Risk Summary (Market Maker - ${symbol})*
+• Budget limit: *$${budget} USDT*
+• Exposure: *~$${exposure} USDT* (${layers} layers × $${orderSize} orders)
+• BBO Spread: *${spreadBps} bps* | Re-quote: *${requoteBps} bps*
+• Risk Rating: *${riskRating}*
+
+${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Using pre-set web credentials & parameters.'}`;
+
+        await postRiskSummary('mm', riskSummaryText);
+      } else if (botKey === 'signal') {
+        let amount = parseFloat(activeSig.amountUsdt) || 50;
+        let leverage = activeSig.leverage;
+        let takeProfit = activeSig.takeProfitPct;
+        let stopLoss = activeSig.stopLossPct;
+        let combineMode = activeSig.combineMode;
+        let checkInterval = activeSig.checkInterval;
+        let klineInterval = activeSig.klineInterval;
+        let rationaleText = '';
+
+        if (useAi) {
+          try {
+            const ctx = await buildGridContext(symbol, market);
+            const { preset, rationale } = recommendSignalBot(ctx);
+            leverage = String(preset.leverage);
+            amount = parseFloat(String(preset.amountUsdt));
+            takeProfit = String(preset.takeProfitPct);
+            stopLoss = String(preset.stopLossPct);
+            combineMode = preset.combineMode as any;
+            checkInterval = String(preset.checkInterval);
+            klineInterval = preset.klineInterval;
+            rationaleText = rationale || `Calibrated indicator loops for ${symbol} using ${combineMode} combination. Check interval ${checkInterval}s.`;
+
+            useBotStore.getState().signalBot.setField('symbol', symbol);
+            useBotStore.getState().signalBot.setField('isSpot', isSpot);
+            useBotStore.getState().signalBot.setField('leverage', leverage);
+            useBotStore.getState().signalBot.setField('amountUsdt', String(amount));
+            useBotStore.getState().signalBot.setField('takeProfitPct', takeProfit);
+            useBotStore.getState().signalBot.setField('stopLossPct', stopLoss);
+            useBotStore.getState().signalBot.setField('combineMode', combineMode);
+            useBotStore.getState().signalBot.setField('checkInterval', checkInterval);
+            useBotStore.getState().signalBot.setField('klineInterval', klineInterval);
+            if (preset.signalsJson) {
+              const parsed = JSON.parse(String(preset.signalsJson));
+              if (Array.isArray(parsed)) useBotStore.getState().signalBot.setField('signals', parsed);
+            }
+          } catch (e) {
+            console.error('Signal AI Config failed:', e);
+            rationaleText = 'Fallback indicator configurations.';
+          }
+        } else {
+          useBotStore.getState().signalBot.setField('symbol', symbol);
+          useBotStore.getState().signalBot.setField('isSpot', isSpot);
+        }
+
+        const levNum = parseInt(leverage) || 1;
+        const exposure = amount * levNum;
+        const riskRating = (!isSpot && levNum > 10) ? '🔴 HIGH' : (levNum > 2) ? '🟡 MEDIUM' : '🟢 LOW';
+
+        const riskSummaryText = `🛡️ *SoDEX Risk Summary (Signal Bot - ${symbol})*
+• Entry Size: *$${amount} USDT*
+• Leverage: *${leverage}x* | Max Exposure: *~$${exposure} USDT*
+• TP Bounds: *${takeProfit}%* | SL Bounds: *${stopLoss}%*
+• Risk Rating: *${riskRating}*
+
+${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Using pre-set web credentials & parameters.'}`;
+
+        await postRiskSummary('signal', riskSummaryText);
+      } else if (botKey === 'predictor') {
+        const tradeAmount = usePredictorStore.getState().tradeAmountUsdt;
+        const leverage = usePredictorStore.getState().tradeLeverage;
+        const exposure = parseFloat(tradeAmount) * leverage;
+        const riskRating = leverage > 10 ? '🔴 HIGH' : leverage > 2 ? '🟡 MEDIUM' : '🟢 LOW';
+
+        const riskSummaryText = `🛡️ *SoDEX Risk Summary (BTC Predictor)*
+• Cycle Verdict Swap size: *$${tradeAmount} USDT*
+• Leverage: *${leverage}x* | Max Exposure: *~$${exposure} USDT*
+• Direction: AI Verdict (consensual overlay news sentiment + ETF flows)
+• Risk Rating: *${riskRating}*
+
+💡 *Configuration:* Swaps execute dynamically based on Gemini indicators consensus.`;
+
+        await postRiskSummary('predictor', riskSummaryText);
+      }
+    };
+
+    // Sync Grid Bot
+    const gridCfg = backendConfigs?.grid;
+    if (gridCfg && gridCfg.pendingApproval && !gridCfg.riskSummarySent) {
+      await handlePendingConfig('grid', gridCfg);
+    } else if (backendStates.grid === 'RUNNING' && activeGrid.status !== 'RUNNING') {
+      if (gridCfg && gridCfg.symbol) {
+        useBotStore.getState().gridBot.setField('symbol', gridCfg.symbol);
+        useBotStore.getState().gridBot.setField('isSpot', gridCfg.isSpot !== false);
+      }
       useBotStore.getState().gridBot.setField('status', 'RUNNING');
       addTerminalLog('GRID', 'INFO', 'Grid Bot started via Telegram command.');
+      sendTelegramNotification(`🟢 *Grid Bot* starting on ${gridCfg?.symbol ?? activeGrid.symbol}...`);
     } else if (backendStates.grid === 'STOPPED' && activeGrid.status === 'RUNNING') {
       useBotStore.getState().gridBot.setField('status', 'STOPPED');
       if (!isDemoMode) {
@@ -251,14 +502,21 @@ export const TelegramIntegration: React.FC = () => {
       }
       gridLevelsRef.current = [];
       addTerminalLog('GRID', 'INFO', 'Grid Bot stopped via Telegram command.');
+      sendTelegramNotification(`🔴 *Grid Bot* stopped.`);
     }
 
     // Sync Market Maker Bot
-    const activeMm = useBotStore.getState().marketMakerBot;
-    if (backendStates.mm === 'RUNNING' && activeMm.status !== 'RUNNING') {
+    const mmCfg = backendConfigs?.mm;
+    if (mmCfg && mmCfg.pendingApproval && !mmCfg.riskSummarySent) {
+      await handlePendingConfig('mm', mmCfg);
+    } else if (backendStates.mm === 'RUNNING' && activeMm.status !== 'RUNNING') {
+      if (mmCfg && mmCfg.symbol) {
+        useBotStore.getState().marketMakerBot.setField('symbol', mmCfg.symbol);
+      }
       useBotStore.getState().marketMakerBot.setField('status', 'RUNNING');
       useBotStore.getState().marketMakerBot.setField('sessionStartedAt', Date.now());
       addTerminalLog('MM', 'INFO', 'Market Maker Bot started via Telegram command.');
+      sendTelegramNotification(`🟢 *Market Maker Bot* starting on ${mmCfg?.symbol ?? activeMm.symbol}...`);
     } else if (backendStates.mm === 'STOPPED' && activeMm.status === 'RUNNING') {
       useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
       useBotStore.getState().marketMakerBot.setField('sessionStartedAt', null);
@@ -268,13 +526,21 @@ export const TelegramIntegration: React.FC = () => {
       mmOrdersRef.current.clear();
       sessionIdRef.current = '';
       addTerminalLog('MM', 'INFO', 'Market Maker Bot stopped via Telegram command.');
+      sendTelegramNotification(`🔴 *Market Maker Bot* stopped.`);
     }
 
     // Sync Signal Bot
-    const activeSig = useBotStore.getState().signalBot;
-    if (backendStates.signal === 'RUNNING' && activeSig.status !== 'RUNNING') {
+    const sigCfg = backendConfigs?.signal;
+    if (sigCfg && sigCfg.pendingApproval && !sigCfg.riskSummarySent) {
+      await handlePendingConfig('signal', sigCfg);
+    } else if (backendStates.signal === 'RUNNING' && activeSig.status !== 'RUNNING') {
+      if (sigCfg && sigCfg.symbol) {
+        useBotStore.getState().signalBot.setField('symbol', sigCfg.symbol);
+        useBotStore.getState().signalBot.setField('isSpot', sigCfg.isSpot !== false);
+      }
       useBotStore.getState().signalBot.setField('status', 'RUNNING');
       addTerminalLog('SIGNAL', 'INFO', 'Signal Bot started via Telegram command.');
+      sendTelegramNotification(`🟢 *Signal Bot* starting on ${sigCfg?.symbol ?? activeSig.symbol}...`);
     } else if (backendStates.signal === 'STOPPED' && activeSig.status === 'RUNNING') {
       useBotStore.getState().signalBot.setField('status', 'STOPPED');
       if (!isDemoMode && activeSig.activePositions.length > 0) {
@@ -289,27 +555,38 @@ export const TelegramIntegration: React.FC = () => {
         }
       }
       addTerminalLog('SIGNAL', 'INFO', 'Signal Bot stopped via Telegram command.');
+      sendTelegramNotification(`🔴 *Signal Bot* stopped.`);
     }
 
     // Sync Predictor
-    const activePred = usePredictorStore.getState().autoTradeEnabled;
-    if (backendStates.predictor === 'RUNNING' && !activePred) {
+    const predCfg = backendConfigs?.predictor;
+    if (predCfg && predCfg.pendingApproval && !predCfg.riskSummarySent) {
+      await handlePendingConfig('predictor', predCfg);
+    } else if (backendStates.predictor === 'RUNNING' && !activePred) {
       usePredictorStore.getState().setAutoTradeEnabled(true);
       addTerminalLog('PREDICTOR', 'INFO', 'BTC Predictor auto-trade enabled via Telegram command.');
+      sendTelegramNotification(`🟢 *BTC Predictor* auto-trade enabled.`);
     } else if (backendStates.predictor === 'STOPPED' && activePred) {
       usePredictorStore.getState().setAutoTradeEnabled(false);
       addTerminalLog('PREDICTOR', 'INFO', 'BTC Predictor auto-trade disabled via Telegram command.');
+      sendTelegramNotification(`🔴 *BTC Predictor* auto-trade disabled.`);
     }
-  }, [isDemoMode, addTerminalLog]);
+
+    lastSyncedStatesRef.current = {
+      grid: backendStates.grid,
+      mm: backendStates.mm,
+      signal: backendStates.signal,
+      predictor: backendStates.predictor
+    };
+
+  }, [isDemoMode, addTerminalLog, telegramChatId, sendTelegramNotification]);
 
   // Auto scroll console
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [terminalLogs]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+
 
   const isConfigured = !!telegramChatId;
 
@@ -384,7 +661,7 @@ export const TelegramIntegration: React.FC = () => {
                 return;
               }
               if (data.ok && data.botStates) {
-                await syncBotsToBackendStates(data.botStates);
+                await syncBotsToBackendStates(data.botStates, (data as any).botConfigs);
               }
             }
           } catch {
@@ -433,12 +710,8 @@ export const TelegramIntegration: React.FC = () => {
               });
 
               if (orderFillsEnabled) {
-                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                setMessages(prev => [...prev, {
-                  sender: 'bot',
-                  text: `🤖 *[DEMO] Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${side}\n• Price: $${price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`,
-                  timestamp: timeStr
-                }]);
+                const txt = `🤖 *[DEMO] Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${side}\n• Price: $${price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`;
+                sendTelegramNotification(txt);
               }
             }
           }
@@ -568,12 +841,8 @@ export const TelegramIntegration: React.FC = () => {
                       });
 
                       if (orderFillsEnabled) {
-                        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        setMessages(prev => [...prev, {
-                          sender: 'bot',
-                          text: `🤖 *Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${level.side}\n• Price: $${level.price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`,
-                          timestamp: timeStr
-                        }]);
+                        const txt = `🤖 *Grid Bot Fill Update* (${activeGrid.symbol})\n• Side: ${level.side}\n• Price: $${level.price.toFixed(2)}\n• PnL: +$${pnl.toFixed(2)} USDT`;
+                        sendTelegramNotification(txt);
                       }
 
                       // Place replenishment
@@ -668,12 +937,8 @@ export const TelegramIntegration: React.FC = () => {
               useBotStore.getState().marketMakerBot.bumpField('feesUsdt', fee);
 
               if (orderFillsEnabled && Math.random() > 0.7) {
-                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                setMessages(prev => [...prev, {
-                  sender: 'bot',
-                  text: `🤖 *[DEMO] MM Bot Order Fill*\n• Pair: ${activeMm.symbol}\n• Side: ${side}\n• Size: $${volume} USDT\n• Total Volume: $${useBotStore.getState().marketMakerBot.volumeUsdt.toFixed(2)} USDT`,
-                  timestamp: timeStr
-                }]);
+                const txt = `🤖 *[DEMO] MM Bot Order Fill*\n• Pair: ${activeMm.symbol}\n• Side: ${side}\n• Size: $${volume} USDT\n• Total Volume: $${useBotStore.getState().marketMakerBot.volumeUsdt.toFixed(2)} USDT`;
+                sendTelegramNotification(txt);
               }
             }
           }
@@ -745,12 +1010,8 @@ export const TelegramIntegration: React.FC = () => {
                     addTerminalLog('MM', 'TRADE', `✓ Maker ${mo.side} filled @ $${realPrice.toFixed(2)}. Vol +$${realNotional.toFixed(2)}, Fee: $${realFee.toFixed(4)}`);
 
                     if (orderFillsEnabled) {
-                      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      setMessages(prev => [...prev, {
-                        sender: 'bot',
-                        text: `🤖 *MM Bot Order Fill*\n• Side: ${mo.side}\n• Price: $${realPrice.toFixed(2)}\n• Size: $${realNotional.toFixed(2)} USDT\n• Inventory: ${useBotStore.getState().marketMakerBot.inventoryBase.toFixed(4)}`,
-                        timestamp: timeStr
-                      }]);
+                      const txt = `🤖 *MM Bot Order Fill*\n• Side: ${mo.side}\n• Price: $${realPrice.toFixed(2)}\n• Size: $${realNotional.toFixed(2)} USDT\n• Inventory: ${useBotStore.getState().marketMakerBot.inventoryBase.toFixed(4)}`;
+                      sendTelegramNotification(txt);
                     }
                   } else {
                     useBotStore.getState().marketMakerBot.bumpField('ordersCancelled', 1);
@@ -1062,12 +1323,8 @@ export const TelegramIntegration: React.FC = () => {
                 sigStepRef.current = 1;
 
                 if (orderFillsEnabled) {
-                  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  setMessages(prev => [...prev, {
-                    sender: 'bot',
-                    text: `🤖 *[DEMO] Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Side: ${currentPos.side}\n• Outcome: ${win ? 'Take Profit' : 'Stop Loss'}\n• Realized PnL: +$${finalPnl.toFixed(2)} USDT`,
-                    timestamp: timeStr
-                  }]);
+                  const txt = `🤖 *[DEMO] Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Side: ${currentPos.side}\n• Outcome: ${win ? 'Take Profit' : 'Stop Loss'}\n• Realized PnL: +$${finalPnl.toFixed(2)} USDT`;
+                  sendTelegramNotification(txt);
                 }
               }
             } else {
@@ -1121,12 +1378,8 @@ export const TelegramIntegration: React.FC = () => {
                     sigStepRef.current = 1;
 
                     if (orderFillsEnabled) {
-                      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      setMessages(prev => [...prev, {
-                        sender: 'bot',
-                        text: `🤖 *Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Outcome: ${win ? 'Take Profit' : 'Stop Loss'}\n• PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT`,
-                        timestamp: timeStr
-                      }]);
+                      const txt = `🤖 *Signal Position Closed*\n• Symbol: ${activeSig.symbol}\n• Outcome: ${win ? 'Take Profit' : 'Stop Loss'}\n• PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} USDT`;
+                      sendTelegramNotification(txt);
                     }
                   }
                 }
@@ -1240,182 +1493,45 @@ export const TelegramIntegration: React.FC = () => {
     return () => clearInterval(interval);
   }, [evmAddress, privateKey, orderFillsEnabled, addTerminalLog, isDemoMode, telegramChatId, disconnectAndStopAllBots, syncBotsToBackendStates]);
 
+  useEffect(() => {
+    if (!telegramChatId) return;
 
+    const currentStates = {
+      grid: (grid.status === 'RUNNING' ? 'RUNNING' : 'STOPPED') as 'RUNNING' | 'STOPPED',
+      mm: (mm.status === 'RUNNING' ? 'RUNNING' : 'STOPPED') as 'RUNNING' | 'STOPPED',
+      signal: (sig.status === 'RUNNING' ? 'RUNNING' : 'STOPPED') as 'RUNNING' | 'STOPPED',
+      predictor: (pred ? 'RUNNING' : 'STOPPED') as 'RUNNING' | 'STOPPED',
+    };
 
-  const handleSend = async () => {
-    if (!inputValue.trim()) return;
-    const userText = inputValue.trim();
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setMessages(prev => [...prev, { sender: 'user', text: userText, timestamp: time }]);
-    setInputValue('');
-    setIsTyping(true);
-
-    try {
-      const cmd = userText.toLowerCase().trim();
-      let botText = '';
-
-      if (cmd.startsWith('/help')) {
-        botText = `🤖 SoDEX PowerOps Bot
-
-Available commands:
-• /status — Active bots overview
-• /positions — Live open positions on SoDEX
-• /risk — Portfolio health & stress test
-• /pnl — 24h P&L and win rate summary
-• /regime — Current AI market regime
-• /startbot — Interactively select a bot to start
-• /stopbot — Interactively select a bot to stop
-• /disconnect — Disconnect account & stop all bots
-
-Configure credentials in the panel below to activate live states.`;
-      } else if (cmd === '/startbot') {
-        setPendingAction('START_SELECT');
-        botText = `🤖 *Select a bot to START:*
-1. Grid Bot
-2. Market Maker
-3. Signal Bot
-4. BTC Predictor
-
-*Reply with the number (1-4) or bot name.*`;
-      } else if (cmd === '/stopbot') {
-        const runningBots: string[] = [];
-        if (grid.status === 'RUNNING') runningBots.push('Grid Bot');
-        if (mm.status === 'RUNNING') runningBots.push('Market Maker');
-        if (sig.status === 'RUNNING') runningBots.push('Signal Bot');
-        if (pred) runningBots.push('BTC Predictor');
-
-        if (runningBots.length === 0) {
-          botText = `ℹ️ No trading bots are currently running.`;
-        } else {
-          setPendingAction('STOP_SELECT');
-          setRunningBotsList(runningBots);
-          botText = `🤖 *Select a bot to STOP:*
-` + runningBots.map((b, i) => `${i + 1}. ${b}`).join('\n') + `
-
-*Reply with the number.*`;
-        }
-      } else if (pendingAction === 'START_SELECT') {
-        let selected = '';
-        if (userText === '1' || userText.toLowerCase().includes('grid')) selected = 'grid';
-        else if (userText === '2' || userText.toLowerCase().includes('mm') || userText.toLowerCase().includes('market')) selected = 'mm';
-        else if (userText === '3' || userText.toLowerCase().includes('signal')) selected = 'signal';
-        else if (userText === '4' || userText.toLowerCase().includes('pred') || userText.toLowerCase().includes('btc')) selected = 'predictor';
-
-        if (selected) {
-          if (!evmAddress || !privateKey) {
-            botText = `❌ *Startup Failed:* SoDEX API credentials missing. Please enter them in the setup panel below.`;
-          } else {
-            if (selected === 'grid') {
-              useBotStore.getState().gridBot.setField('status', 'RUNNING');
-              botText = `🟢 *Grid Bot* has been STARTED. Initial orders are being placed. Check the Live Terminal below.`;
-            } else if (selected === 'mm') {
-              useBotStore.getState().marketMakerBot.setField('status', 'RUNNING');
-              useBotStore.getState().marketMakerBot.setField('sessionStartedAt', Date.now());
-              botText = `🟢 *Market Maker Bot* has been STARTED. Limit spreads posted on book.`;
-            } else if (selected === 'signal') {
-              useBotStore.getState().signalBot.setField('status', 'RUNNING');
-              botText = `🟢 *Signal Bot* has been STARTED. Scanning crossovers.`;
-            } else if (selected === 'predictor') {
-              usePredictorStore.getState().setAutoTradeEnabled(true);
-              botText = `🟢 *BTC Predictor* has been ENABLED. Auto-trades will execute on indicators shift.`;
-            }
-          }
-          setPendingAction(null);
-        } else {
-          botText = `❌ Choice not recognized. Select 1-4 or bot name. Or type /help to abort.`;
-        }
-      } else if (pendingAction === 'STOP_SELECT') {
-        const idx = parseInt(userText) - 1;
-        if (!isNaN(idx) && idx >= 0 && idx < runningBotsList.length) {
-          const selectedBotName = runningBotsList[idx];
-          if (selectedBotName === 'Grid Bot') {
-            useBotStore.getState().gridBot.setField('status', 'STOPPED');
-            botText = `🔴 *Grid Bot* has been stopped and open grid layers cancelled.`;
-          } else if (selectedBotName === 'Market Maker') {
-            useBotStore.getState().marketMakerBot.setField('status', 'STOPPED');
-            useBotStore.getState().marketMakerBot.setField('sessionStartedAt', null);
-            botText = `🔴 *Market Maker Bot* stopped. Open limits cancelled.`;
-          } else if (selectedBotName === 'Signal Bot') {
-            useBotStore.getState().signalBot.setField('status', 'STOPPED');
-            botText = `🔴 *Signal Bot* stopped.`;
-          } else if (selectedBotName === 'BTC Predictor') {
-            usePredictorStore.getState().setAutoTradeEnabled(false);
-            botText = `🔴 *BTC Predictor* auto-trade disabled.`;
-          }
-          setPendingAction(null);
-        } else {
-          botText = `❌ Choice not recognized. Enter a valid list index.`;
-        }
-      } else if (cmd.startsWith('/status')) {
-        botText = `🤖 Bot Status Overview:
-
-${pred ? '🟢' : '🔴'} BTC Predictor: ${pred ? 'RUNNING (Auto-Trade)' : 'STOPPED'}
-• Forecast: ${usePredictorStore.getState().currentPrediction}
-
-${grid.status === 'RUNNING' ? '🟢' : '🔴'} Grid Bot: ${grid.status}
-• Active Orders: ${grid.activeOrders} | Completed Grids: ${grid.completedGrids}
-• Realized PnL: +$${grid.realizedPnl.toFixed(2)} USDT
-
-${mm.status === 'RUNNING' ? '🟢' : '🔴'} Market Maker: ${mm.status}
-• Volume: $${mm.volumeUsdt.toFixed(2)} USDT | Fills: ${mm.ordersFilled}
-
-${sig.status === 'RUNNING' ? '🟢' : '🔴'} Signal Bot: ${sig.status}
-• Realized PnL: +$${sig.realizedPnl.toFixed(2)} USDT`;
-      } else if (cmd.startsWith('/positions')) {
-        const rawPositions = await fetchPositions();
-        const positionsArr = Array.isArray(rawPositions) ? rawPositions : [];
-        if (positionsArr.length === 0) {
-          botText = `📊 Open Positions:\nNo active open positions on SoDEX.`;
-        } else {
-          botText = `📊 Open Positions (${positionsArr.length}):\n\n`;
-          positionsArr.forEach((pos: any, idx: number) => {
-            const rawSize = parseFloat(String(pos.size ?? pos.quantity ?? 0));
-            const entryPrice = parseFloat(String(pos.avgEntryPrice ?? pos.entryPrice ?? 0));
-            const side = (pos.side === 'LONG' || rawSize >= 0) ? 'LONG' : 'SHORT';
-            botText += `${idx + 1}. ${pos.symbol} (${side})\n• Size: ${Math.abs(rawSize).toFixed(4)}\n• Entry: $${entryPrice.toLocaleString()}\n\n`;
-          });
-        }
-      } else if (cmd.startsWith('/risk')) {
-        const rawPositions = await fetchPositions();
-        const positionsArr = Array.isArray(rawPositions) ? rawPositions : [];
-        botText = `🛡️ Risk Metrics Summary:
-• Active Positions: ${positionsArr.length}
-• Collateral Health: ${evmAddress ? '🟢 Stable' : '🔴 Key Missing'}`;
-      } else if (cmd.startsWith('/pnl')) {
-        botText = `📈 24h P&L Summary:
-• Grid Realized: +$${grid.realizedPnl.toFixed(2)} USDT
-• Signal Realized: +$${sig.realizedPnl.toFixed(2)} USDT
-• Combined: +$${(grid.realizedPnl + sig.realizedPnl).toFixed(2)} USDT`;
-      } else if (cmd.startsWith('/regime')) {
-        const predictorSignals = usePredictorStore.getState().currentSignals;
-        const inputs: RegimeInputs = {
-          atrPct: predictorSignals?.atrPct ?? 0.10,
-          change24hPct: 0.5,
-          fundingRate: predictorSignals?.fundingRate ?? 0,
-          emaSignal: predictorSignals?.emaSignal ?? 0,
-          macdSignal: predictorSignals?.macdSignal ?? 0,
-          newsSentiment: predictorSignals?.newsSentiment ?? 0,
-          aiConfidence: 85,
-        };
-        const rec = recommendBot(inputs, 64000);
-        const regime = classifyRegime(inputs);
-        botText = `🧠 Market Regime: ${regimeLabel(regime)}\n• Recommendation: ${botLabel(rec.bot)}\n• Rationale: "${rec.rationale}"`;
-      } else if (cmd.startsWith('/disconnect')) {
-        await disconnectAndStopAllBots(false);
-        botText = `🔌 *SoDEX account disconnected!*
-
-Your account has been unlinked from this Telegram chat. All active terminal bots will be automatically stopped and open orders cancelled.`;
-      } else {
-        botText = `❓ Unknown command: "${userText}"\nType /help to see command options.`;
-      }
-
-      setMessages(prev => [...prev, { sender: 'bot', text: botText, timestamp: time }]);
-    } catch (err) {
-      setMessages(prev => [...prev, { sender: 'bot', text: `❌ Error: ${getErrorMessage(err)}`, timestamp: time }]);
-    } finally {
-      setIsTyping(false);
+    if (lastSyncedStatesRef.current === null) {
+      lastSyncedStatesRef.current = currentStates;
+      return;
     }
-  };
+
+    const hasChanged = 
+      currentStates.grid !== lastSyncedStatesRef.current.grid ||
+      currentStates.mm !== lastSyncedStatesRef.current.mm ||
+      currentStates.signal !== lastSyncedStatesRef.current.signal ||
+      currentStates.predictor !== lastSyncedStatesRef.current.predictor;
+
+    if (hasChanged) {
+      lastSyncedStatesRef.current = currentStates;
+      fetch(`${API_BASE}/api/telegram/states`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: telegramChatId,
+          botStates: currentStates
+        })
+      }).catch(err => {
+        console.error('Failed to sync states to backend:', err);
+      });
+    }
+  }, [grid.status, mm.status, sig.status, pred, telegramChatId]);
+
+
+
+
 
 
   return (
@@ -1446,196 +1562,125 @@ Your account has been unlinked from this Telegram chat. All active terminal bots
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 shrink-0">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 shrink-0">
         
-        {/* Left Column - Credentials Setup and Alerts */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          
-          {/* API Connection Setup Form */}
-          <Card className="p-4 border-l-4 border-l-primary bg-surface/50">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
-              <ShieldCheck size={14} className="text-primary" />
-              <span className="text-xs font-bold text-text-primary uppercase tracking-wider">SoDEX API Connection</span>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">EVM Address</label>
-                <input
-                  type="text"
-                  value={addressInput}
-                  onChange={(e) => setAddressInput(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full mt-1 bg-background/60 border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/50 font-mono"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">API Key Name</label>
-                  <input
-                    type="text"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="MyKeyName"
-                    className="w-full mt-1 bg-background/60 border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/50"
-                  />
-                </div>
-                <div className="flex flex-col justify-end pb-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-text-secondary select-none">
-                    <input
-                      type="checkbox"
-                      checked={testnetInput}
-                      onChange={(e) => setTestnetInput(e.target.checked)}
-                      className="rounded border-border text-primary focus:ring-0"
-                    />
-                    Is Testnet
-                  </label>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Private Key</label>
-                <input
-                  type="password"
-                  value={privateKeyInput}
-                  onChange={(e) => setPrivateKeyInput(e.target.value)}
-                  placeholder="Enter private key (local sign)"
-                  className="w-full mt-1 bg-background/60 border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/50 font-mono"
-                />
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                fullWidth
-                onClick={handleSaveCredentials}
-              >
-                Save API Connection
-              </Button>
-            </div>
-          </Card>
-
-          {/* Connection ID config */}
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
-              <RefreshCw size={14} className="text-primary" />
-              <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Telegram Chat Linking</span>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Telegram Chat ID</label>
-                <input
-                  type="text"
-                  value={chatIdInput}
-                  onChange={(e) => setChatIdInput(e.target.value)}
-                  placeholder="e.g. 123456789"
-                  className="w-full mt-1.5 bg-background/60 border border-border rounded-lg px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-primary/50"
-                />
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                fullWidth
-                onClick={handleVerify}
-                loading={testStatus === 'testing'}
-              >
-                Verify & Connect Chat
-              </Button>
-            </div>
-          </Card>
-
-          {/* Notification toggles */}
-          <Card className="p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2 pb-2.5 border-b border-border/50">
-              <Bell size={14} className="text-primary" />
-              <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Fills & Regime Alerts</span>
-            </div>
-            <Toggle
-              label="Demo Mode (Simulate Trades)"
-              checked={isDemoMode}
-              onChange={setIsDemoMode}
-            />
-            <Toggle
-              label="Regime Change Alerts"
-              checked={alertEnabled}
-              onChange={setAlertEnabled}
-            />
-            <Toggle
-              label="Order Fill Confirmations"
-              checked={orderFillsEnabled}
-              onChange={setOrderFillsEnabled}
-            />
-          </Card>
-
-        </div>
-
-        {/* Center Column - Phone Chat Preview */}
-        <div className="lg:col-span-3 flex flex-col items-center">
-          <div className="w-full flex items-center justify-between mb-2 px-1">
-            <span className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">Interactive Chat Preview</span>
-            <span className={cn(
-              "text-[10px] px-2 py-0.5 rounded-full border",
-              isDemoMode 
-                ? "text-amber-400 border-amber-500/20 bg-amber-500/10" 
-                : "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
-            )}>
-              {isDemoMode ? 'Demo Chat Mode' : 'Live Trading Mode'}
-            </span>
+        {/* Card 1: API Connection Setup Form */}
+        <Card className="p-4 border-l-4 border-l-primary bg-surface/50">
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
+            <ShieldCheck size={14} className="text-primary" />
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">SoDEX API Connection</span>
           </div>
-          <div className="w-full max-w-[360px] h-[550px] bg-[#121214] border-[6px] border-[#2A2A2E] rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col">
-            {/* Notch */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-[#2A2A2E] rounded-b-2xl z-20 flex items-center justify-center">
-              <div className="w-12 h-1 bg-black rounded-full mb-1" />
-            </div>
-            {/* Status bar */}
-            <div className="h-10 bg-[#1e1e24] shrink-0 border-b border-border flex items-end justify-between px-6 pb-2 text-[10px] text-text-muted select-none font-semibold">
-              <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              <div className="flex items-center gap-1.5">
-                <Smartphone size={10} />
-                <span>@SoDexPowerOpsBot</span>
-              </div>
-            </div>
-            {/* Chat list */}
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-[#0C0C0E]">
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'flex flex-col max-w-[80%] rounded-2xl p-2.5 text-xs leading-relaxed',
-                    m.sender === 'user'
-                      ? 'bg-primary text-white self-end rounded-br-sm'
-                      : 'bg-[#18181D] border border-border text-text-secondary self-start rounded-bl-sm',
-                  )}
-                >
-                  <div className="whitespace-pre-line">{m.text}</div>
-                  <span className="text-[8px] opacity-50 mt-1 self-end">{m.timestamp}</span>
-                </div>
-              ))}
-              {isTyping && (
-                <div className="bg-[#18181D] border border-border self-start rounded-2xl rounded-bl-sm p-3 flex items-center gap-1">
-                  {[0, 150, 300].map(d => (
-                    <div key={d} className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                  ))}
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            {/* Chat Input */}
-            <div className="p-3 bg-[#16161A] border-t border-border flex items-center gap-2 shrink-0">
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">EVM Address</label>
               <input
                 type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="/help  /status  /startbot  /stopbot"
-                className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-primary transition-colors"
+                value={addressInput}
+                onChange={(e) => setAddressInput(e.target.value)}
+                placeholder="0x..."
+                className="w-full mt-1 bg-background/60 border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/50 font-mono"
               />
-              <button
-                onClick={handleSend}
-                className="w-8 h-8 rounded-xl bg-primary hover:opacity-90 transition-opacity flex items-center justify-center text-white shrink-0"
-              >
-                <Send size={12} />
-              </button>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">API Key Name</label>
+                <input
+                  type="text"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="MyKeyName"
+                  className="w-full mt-1 bg-background/60 border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div className="flex flex-col justify-end pb-1">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-text-secondary select-none">
+                  <input
+                    type="checkbox"
+                    checked={testnetInput}
+                    onChange={(e) => setTestnetInput(e.target.checked)}
+                    className="rounded border-border text-primary focus:ring-0"
+                  />
+                  Is Testnet
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Private Key</label>
+              <input
+                type="password"
+                value={privateKeyInput}
+                onChange={(e) => setPrivateKeyInput(e.target.value)}
+                placeholder="Enter private key (local sign)"
+                className="w-full mt-1 bg-background/60 border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/50 font-mono"
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              fullWidth
+              onClick={handleSaveCredentials}
+            >
+              Save API Connection
+            </Button>
           </div>
-        </div>
+        </Card>
+
+        {/* Card 2: Connection ID config */}
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
+            <RefreshCw size={14} className="text-primary" />
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Telegram Chat Linking</span>
+          </div>
+          <div className="space-y-3">
+            <div className="text-xs text-text-secondary leading-relaxed bg-background/30 p-2.5 rounded-lg border border-border/30">
+              <span className="block mb-1 font-semibold text-text-primary">Setup Instructions:</span>
+              1. Open our Telegram bot: <a href="https://t.me/PowerOpsBot" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold inline-flex items-center gap-0.5">@PowerOpsBot <Smartphone size={11} /></a> and click <strong>Start</strong>.
+              <span className="block mt-1">2. Copy the Chat ID provided by the bot and paste it below:</span>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Telegram Chat ID</label>
+              <input
+                type="text"
+                value={chatIdInput}
+                onChange={(e) => setChatIdInput(e.target.value)}
+                placeholder="e.g. 123456789"
+                className="w-full mt-1.5 bg-background/60 border border-border rounded-lg px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              fullWidth
+              onClick={handleVerify}
+              loading={testStatus === 'testing'}
+            >
+              Verify & Connect Chat
+            </Button>
+          </div>
+        </Card>
+
+        {/* Card 3: Notification toggles */}
+        <Card className="p-4 flex flex-col gap-3">
+          <div className="flex items-center gap-2 pb-2.5 border-b border-border/50">
+            <Bell size={14} className="text-primary" />
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Fills & Regime Alerts</span>
+          </div>
+          <Toggle
+            label="Demo Mode (Simulate Trades)"
+            checked={isDemoMode}
+            onChange={setIsDemoMode}
+          />
+          <Toggle
+            label="Regime Change Alerts"
+            checked={alertEnabled}
+            onChange={setAlertEnabled}
+          />
+          <Toggle
+            label="Order Fill Confirmations"
+            checked={orderFillsEnabled}
+            onChange={setOrderFillsEnabled}
+          />
+        </Card>
 
       </div>
 

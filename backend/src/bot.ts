@@ -21,6 +21,46 @@ export interface BotStates {
 
 const userBotStates = new Map<number, BotStates>();
 
+export interface BotConfig {
+  symbol?: string;
+  isSpot?: boolean;
+  useAiConfig?: boolean;
+  pendingApproval?: boolean;
+  riskApproved?: boolean;
+  riskSummarySent?: boolean;
+  lastRiskSummary?: string;
+}
+
+export interface UserBotConfigs {
+  grid?: BotConfig;
+  mm?: BotConfig;
+  signal?: BotConfig;
+  predictor?: BotConfig;
+}
+
+const userBotConfigs = new Map<number, UserBotConfigs>();
+
+export function getOrInitBotConfigs(chatId: number): UserBotConfigs {
+  if (!userBotConfigs.has(chatId)) {
+    userBotConfigs.set(chatId, {
+      grid: {},
+      mm: {},
+      signal: {},
+      predictor: {},
+    });
+  }
+  return userBotConfigs.get(chatId)!;
+}
+
+export function getBotConfigs(chatId: number): UserBotConfigs {
+  return getOrInitBotConfigs(chatId);
+}
+
+export function updateBotConfig(chatId: number, botKey: 'grid' | 'mm' | 'signal' | 'predictor', config: BotConfig): void {
+  const configs = getOrInitBotConfigs(chatId);
+  configs[botKey] = { ...configs[botKey], ...config };
+}
+
 function getOrInitBotStates(chatId: number): BotStates {
   if (!userBotStates.has(chatId)) {
     userBotStates.set(chatId, {
@@ -566,23 +606,86 @@ export function startBot(): void {
     }
   });
 
+  function sendSymbolSelector(chatId: number, botKey: 'grid' | 'mm' | 'signal') {
+    let keyboard: any[] = [];
+    if (botKey === 'grid') {
+      keyboard = [
+        [
+          { text: 'vBTC-vUSDC (Spot)', callback_data: 'sym_grid_vBTC-vUSDC_spot' },
+          { text: 'vETH-vUSDC (Spot)', callback_data: 'sym_grid_vETH-vUSDC_spot' }
+        ],
+        [
+          { text: 'vSOL-vUSDC (Spot)', callback_data: 'sym_grid_vSOL-vUSDC_spot' },
+          { text: 'vSOSO-vUSDC (Spot)', callback_data: 'sym_grid_vSOSO-vUSDC_spot' }
+        ],
+        [
+          { text: 'BTC-USD (Perps)', callback_data: 'sym_grid_BTC-USD_perps' },
+          { text: 'ETH-USD (Perps)', callback_data: 'sym_grid_ETH-USD_perps' },
+          { text: 'SOL-USD (Perps)', callback_data: 'sym_grid_SOL-USD_perps' }
+        ]
+      ];
+    } else if (botKey === 'mm') {
+      keyboard = [
+        [
+          { text: 'vBTC-vUSDC (Spot)', callback_data: 'sym_mm_vBTC-vUSDC_spot' },
+          { text: 'vETH-vUSDC (Spot)', callback_data: 'sym_mm_vETH-vUSDC_spot' }
+        ],
+        [
+          { text: 'vSOL-vUSDC (Spot)', callback_data: 'sym_mm_vSOL-vUSDC_spot' },
+          { text: 'vSOSO-vUSDC (Spot)', callback_data: 'sym_mm_vSOSO-vUSDC_spot' }
+        ]
+      ];
+    } else if (botKey === 'signal') {
+      keyboard = [
+        [
+          { text: 'vBTC-vUSDC (Spot)', callback_data: 'sym_signal_vBTC-vUSDC_spot' },
+          { text: 'vETH-vUSDC (Spot)', callback_data: 'sym_signal_vETH-vUSDC_spot' }
+        ],
+        [
+          { text: 'BTC-USD (Perps)', callback_data: 'sym_signal_BTC-USD_perps' },
+          { text: 'ETH-USD (Perps)', callback_data: 'sym_signal_ETH-USD_perps' }
+        ]
+      ];
+    }
+
+    bot!.sendMessage(chatId, `🤖 *Starting ${botKey.toUpperCase()} Bot*\nSelect the symbol/parity to trade:`, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard }
+    });
+  }
+
+  function sendPredictorSelector(chatId: number) {
+    updateBotConfig(chatId, 'predictor', { symbol: 'BTC-USD', isSpot: false, pendingApproval: true, riskApproved: false, riskSummarySent: false });
+    bot!.sendMessage(chatId, '🤖 *Starting BTC Predictor*\nChoose configuration mode:', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🤖 Enable Auto-Trade', callback_data: 'cfg_predictor_ai' },
+            { text: '⚙️ Use Current Web Settings', callback_data: 'cfg_predictor_web' }
+          ]
+        ]
+      }
+    });
+  }
+
   bot.onText(/\/startbot\s+(.+)/, (msg, match) => {
     const chatId = msg.chat.id;
     const botKey = match ? match[1].toLowerCase().trim() : '';
-    const bStates = getOrInitBotStates(chatId);
+    const acct = chatAccounts.get(chatId);
+    if (!acct) {
+      bot!.sendMessage(chatId, '⚠️ No SoDEX account linked. Verify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
+      return;
+    }
 
     if (botKey === 'grid') {
-      bStates.grid = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *Grid Bot* has been STARTED. Initializing grid parameters and placing orders.');
+      sendSymbolSelector(chatId, 'grid');
     } else if (botKey === 'mm' || botKey === 'marketmaker') {
-      bStates.mm = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *Market Maker Bot* has been STARTED. Quoting limit orders on BBO.');
+      sendSymbolSelector(chatId, 'mm');
     } else if (botKey === 'signal') {
-      bStates.signal = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *Signal Bot* has been STARTED. Scanning combined technical signals.');
+      sendSymbolSelector(chatId, 'signal');
     } else if (botKey === 'predictor' || botKey === 'btc') {
-      bStates.predictor = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *BTC Predictor* auto-trade has been ENABLED.');
+      sendPredictorSelector(chatId);
     } else {
       bot!.sendMessage(chatId, `❌ Bot key "${botKey}" not recognized.\nUse: \`grid\`, \`mm\`, \`signal\`, \`predictor\``, { parse_mode: 'Markdown' });
     }
@@ -676,17 +779,62 @@ export function startBot(): void {
     }
 
     if (data === 'start_grid') {
-      bStates.grid = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *Grid Bot* has been STARTED. Initializing grid parameters and placing orders.');
+      sendSymbolSelector(chatId, 'grid');
     } else if (data === 'start_mm') {
-      bStates.mm = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *Market Maker Bot* has been STARTED. Quoting limit orders on BBO.');
+      sendSymbolSelector(chatId, 'mm');
     } else if (data === 'start_signal') {
-      bStates.signal = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *Signal Bot* has been STARTED. Scanning combined technical signals.');
+      sendSymbolSelector(chatId, 'signal');
     } else if (data === 'start_predictor') {
-      bStates.predictor = 'RUNNING';
-      bot!.sendMessage(chatId, '🟢 *BTC Predictor* auto-trade has been ENABLED.');
+      sendPredictorSelector(chatId);
+    } else if (data.startsWith('sym_')) {
+      const parts = data.split('_'); // sym_[botKey]_[symbol]_[isSpot]
+      const botKey = parts[1] as 'grid' | 'mm' | 'signal';
+      const symbol = parts[2];
+      const isSpot = parts[3] === 'spot';
+      
+      updateBotConfig(chatId, botKey, { symbol, isSpot, pendingApproval: true, riskApproved: false, riskSummarySent: false });
+      
+      bot!.sendMessage(chatId, `🤖 Selected symbol: *${symbol}* (${isSpot ? 'Spot' : 'Perps'})\nHow would you like to configure parameters?`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🤖 AI Auto-Configure', callback_data: `cfg_${botKey}_ai` },
+              { text: '⚙️ Use Web Configuration', callback_data: `cfg_${botKey}_web` }
+            ]
+          ]
+        }
+      });
+    } else if (data.startsWith('cfg_')) {
+      const parts = data.split('_'); // cfg_[botKey]_[mode]
+      const botKey = parts[1] as 'grid' | 'mm' | 'signal' | 'predictor';
+      const useAi = parts[2] === 'ai';
+      
+      updateBotConfig(chatId, botKey, { useAiConfig: useAi, pendingApproval: true, riskApproved: false, riskSummarySent: false });
+      bot!.sendMessage(chatId, `⏳ *Calculating parameters and verifying risk limits... Please wait.*`);
+    } else if (data.startsWith('confirm_')) {
+      const parts = data.split('_'); // confirm_[botKey]_[action]
+      const botKey = parts[1] as 'grid' | 'mm' | 'signal' | 'predictor';
+      const isStart = parts[2] === 'start';
+      
+      const bConfigs = getOrInitBotConfigs(chatId);
+      
+      if (isStart) {
+        bStates[botKey] = 'RUNNING';
+        if (bConfigs[botKey]) {
+          bConfigs[botKey]!.pendingApproval = false;
+          bConfigs[botKey]!.riskApproved = true;
+        }
+        bot!.sendMessage(chatId, `🟢 *${botKey.toUpperCase()} Bot* confirmed. Starting order loop...`);
+      } else {
+        bStates[botKey] = 'STOPPED';
+        if (bConfigs[botKey]) {
+          bConfigs[botKey]!.pendingApproval = false;
+          bConfigs[botKey]!.riskApproved = false;
+          bConfigs[botKey]!.riskSummarySent = false;
+        }
+        bot!.sendMessage(chatId, `❌ Startup cancelled.`);
+      }
     } else if (data === 'stop_grid') {
       bStates.grid = 'STOPPED';
       bot!.sendMessage(chatId, '🔴 *Grid Bot* has been STOPPED. Cancelled pending orders.');

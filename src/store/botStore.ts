@@ -205,7 +205,7 @@ interface BotStoreState {
 
 export const useBotStore = create<BotStoreState>((set) => ({
   gridBot: {
-    symbol: 'BTC_USDC',
+    symbol: 'vBTC-vUSDC',
     lowerPrice: '60000',
     upperPrice: '70000',
     gridCount: '10',
@@ -253,7 +253,7 @@ export const useBotStore = create<BotStoreState>((set) => ({
   // bot will turn over the budget many times per hour at fee cost
   // well under 0.1% of farmed volume.
   marketMakerBot: {
-    symbol: 'BTC_USDC',
+    symbol: 'vBTC-vUSDC',
     budgetUsdt: '100',
     orderSizeUsdt: '10',
     layers: '2',

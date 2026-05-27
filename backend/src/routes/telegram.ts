@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getBot, isRegistered, registerChat, linkAccount, getBotStates, updateBotState } from '../bot';
+import { getBot, isRegistered, registerChat, linkAccount, getBotStates, updateBotState, getBotConfigs, updateBotConfig } from '../bot';
 
 const router = Router();
 
@@ -33,6 +33,60 @@ router.post('/notify', async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[telegram/notify]', msg);
+    res.status(502).json({ error: msg });
+  }
+});
+
+// POST /api/telegram/risk
+// Body: { chatId: string|number, botKey: string, riskSummaryText: string }
+// Posts the risk summary to the user with Confirm & Start / Cancel inline buttons.
+router.post('/risk', async (req: Request, res: Response) => {
+  const { chatId, botKey, riskSummaryText } = req.body as {
+    chatId?: string | number;
+    botKey?: 'grid' | 'mm' | 'signal' | 'predictor';
+    riskSummaryText?: string;
+  };
+
+  if (!chatId || !botKey || !riskSummaryText) {
+    res.status(400).json({ error: 'chatId, botKey, and riskSummaryText are required' });
+    return;
+  }
+
+  const numericId = Number(chatId);
+  if (!Number.isFinite(numericId)) {
+    res.status(400).json({ error: 'chatId must be a numeric value' });
+    return;
+  }
+
+  const bot = getBot();
+  if (!bot) {
+    res.status(503).json({ error: 'Telegram bot is not running' });
+    return;
+  }
+
+  try {
+    // Save to userBotConfigs in bot.ts
+    const { updateBotConfig } = require('../bot');
+    updateBotConfig(numericId, botKey, {
+      riskSummarySent: true,
+      lastRiskSummary: riskSummaryText
+    });
+
+    await bot.sendMessage(numericId, riskSummaryText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Confirm & Start Bot', callback_data: `confirm_${botKey}_start` },
+            { text: '❌ Cancel', callback_data: `confirm_${botKey}_cancel` }
+          ]
+        ]
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: msg });
   }
 });
@@ -98,7 +152,7 @@ router.post('/verify', async (req: Request, res: Response) => {
 
 // GET /api/telegram/status
 // Query: ?chatId=...
-// Returns registration link status and bot running states.
+// Returns registration link status, bot states, and configurations.
 router.get('/status', (req: Request, res: Response) => {
   const { chatId } = req.query;
 
@@ -116,7 +170,8 @@ router.get('/status', (req: Request, res: Response) => {
   res.json({
     ok: true,
     registered: isRegistered(numericId),
-    botStates: getBotStates(numericId)
+    botStates: getBotStates(numericId),
+    botConfigs: getBotConfigs(numericId)
   });
 });
 
@@ -145,10 +200,30 @@ router.post('/states', (req: Request, res: Response) => {
     return;
   }
 
-  if (botStates.grid) updateBotState(numericId, 'grid', botStates.grid);
-  if (botStates.mm) updateBotState(numericId, 'mm', botStates.mm);
-  if (botStates.signal) updateBotState(numericId, 'signal', botStates.signal);
-  if (botStates.predictor) updateBotState(numericId, 'predictor', botStates.predictor);
+  if (botStates.grid) {
+    updateBotState(numericId, 'grid', botStates.grid);
+    if (botStates.grid === 'STOPPED') {
+      updateBotConfig(numericId, 'grid', { pendingApproval: false, riskApproved: false, riskSummarySent: false });
+    }
+  }
+  if (botStates.mm) {
+    updateBotState(numericId, 'mm', botStates.mm);
+    if (botStates.mm === 'STOPPED') {
+      updateBotConfig(numericId, 'mm', { pendingApproval: false, riskApproved: false, riskSummarySent: false });
+    }
+  }
+  if (botStates.signal) {
+    updateBotState(numericId, 'signal', botStates.signal);
+    if (botStates.signal === 'STOPPED') {
+      updateBotConfig(numericId, 'signal', { pendingApproval: false, riskApproved: false, riskSummarySent: false });
+    }
+  }
+  if (botStates.predictor) {
+    updateBotState(numericId, 'predictor', botStates.predictor);
+    if (botStates.predictor === 'STOPPED') {
+      updateBotConfig(numericId, 'predictor', { pendingApproval: false, riskApproved: false, riskSummarySent: false });
+    }
+  }
 
   res.json({ ok: true });
 });
