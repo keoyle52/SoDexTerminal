@@ -105,8 +105,8 @@ const BOT_CONFIGS: Record<BotType, BotConfig> = {
     type: 'SIGNAL',
     name: 'Signal Bot',
     description: 'Technical indicator-driven automated trading',
-    defaultParams: { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30, investment: 1000 },
-    paramLabels: { rsiPeriod: 'RSI Period', rsiOverbought: 'Overbought', rsiOversold: 'Oversold', investment: 'Investment (USDT)' },
+    defaultParams: { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30, tpPct: 3.0, slPct: 1.5, investment: 1000 },
+    paramLabels: { rsiPeriod: 'RSI Period', rsiOverbought: 'Overbought', rsiOversold: 'Oversold', tpPct: 'Take Profit (%)', slPct: 'Stop Loss (%)', investment: 'Investment (USDT)' },
   },
 };
 
@@ -169,7 +169,7 @@ function runSignalBacktest(
   highs: number[],
   lows: number[],
   times: string[],
-  params: { rsiPeriod: number; rsiOverbought: number; rsiOversold: number; investment?: number }
+  params: { rsiPeriod: number; rsiOverbought: number; rsiOversold: number; tpPct: number; slPct: number; investment?: number }
 ): TradeEntry[] {
   const trades: TradeEntry[] = [];
   let position: 'LONG' | 'SHORT' | null = null;
@@ -181,7 +181,7 @@ function runSignalBacktest(
   let cooldown = 0;
 
   const rsi = calculateRSI(closes, params.rsiPeriod);
-  const atr = calculateATR(highs, lows, closes, params.rsiPeriod);
+  const slippage = 0.0005; // 0.05% market order slippage
 
   for (let i = 1; i < closes.length; i++) {
     const prevRsi = rsi[i - 1];
@@ -195,44 +195,47 @@ function runSignalBacktest(
 
     if (position === 'LONG') {
       if (lows[i] <= slPrice) {
-        const pnl = (slPrice - entryPrice) * quantity;
+        const exitPrice = slPrice * (1 - slippage);
+        const pnl = (exitPrice - entryPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'LONG',
           entryPrice,
-          exitPrice: slPrice,
+          exitPrice,
           pnl,
-          pnlPercent: ((slPrice - entryPrice) / entryPrice) * 100,
+          pnlPercent: ((exitPrice - entryPrice) / entryPrice) * 100,
           exitReason: 'STOP',
           quantity,
         });
         position = null;
         cooldown = 8; // Halt entries for 8 candles after a loss
       } else if (highs[i] >= tpPrice) {
-        const pnl = (tpPrice - entryPrice) * quantity;
+        const exitPrice = tpPrice * (1 - slippage);
+        const pnl = (exitPrice - entryPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'LONG',
           entryPrice,
-          exitPrice: tpPrice,
+          exitPrice,
           pnl,
-          pnlPercent: ((tpPrice - entryPrice) / entryPrice) * 100,
+          pnlPercent: ((exitPrice - entryPrice) / entryPrice) * 100,
           exitReason: 'TARGET',
           quantity,
         });
         position = null;
       } else if (curRsi >= params.rsiOverbought || (prevRsi >= 50 && curRsi < 50)) {
-        const pnl = (closes[i] - entryPrice) * quantity;
+        const exitPrice = closes[i] * (1 - slippage);
+        const pnl = (exitPrice - entryPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'LONG',
           entryPrice,
-          exitPrice: closes[i],
+          exitPrice,
           pnl,
-          pnlPercent: ((closes[i] - entryPrice) / entryPrice) * 100,
+          pnlPercent: ((exitPrice - entryPrice) / entryPrice) * 100,
           exitReason: 'SIGNAL',
           quantity,
         });
@@ -240,44 +243,47 @@ function runSignalBacktest(
       }
     } else if (position === 'SHORT') {
       if (highs[i] >= slPrice) {
-        const pnl = (entryPrice - slPrice) * quantity;
+        const exitPrice = slPrice * (1 + slippage);
+        const pnl = (entryPrice - exitPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'SHORT',
           entryPrice,
-          exitPrice: slPrice,
+          exitPrice,
           pnl,
-          pnlPercent: ((entryPrice - slPrice) / entryPrice) * 100,
+          pnlPercent: ((entryPrice - exitPrice) / entryPrice) * 100,
           exitReason: 'STOP',
           quantity,
         });
         position = null;
         cooldown = 8; // Halt entries for 8 candles after a loss
       } else if (lows[i] <= tpPrice) {
-        const pnl = (entryPrice - tpPrice) * quantity;
+        const exitPrice = tpPrice * (1 + slippage);
+        const pnl = (entryPrice - exitPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'SHORT',
           entryPrice,
-          exitPrice: tpPrice,
+          exitPrice,
           pnl,
-          pnlPercent: ((entryPrice - tpPrice) / entryPrice) * 100,
+          pnlPercent: ((entryPrice - exitPrice) / entryPrice) * 100,
           exitReason: 'TARGET',
           quantity,
         });
         position = null;
       } else if (curRsi <= params.rsiOversold || (prevRsi <= 50 && curRsi > 50)) {
-        const pnl = (entryPrice - closes[i]) * quantity;
+        const exitPrice = closes[i] * (1 + slippage);
+        const pnl = (entryPrice - exitPrice) * quantity;
         trades.push({
           entryTime,
           exitTime: times[i],
           side: 'SHORT',
           entryPrice,
-          exitPrice: closes[i],
+          exitPrice,
           pnl,
-          pnlPercent: ((entryPrice - closes[i]) / entryPrice) * 100,
+          pnlPercent: ((entryPrice - exitPrice) / entryPrice) * 100,
           exitReason: 'SIGNAL',
           quantity,
         });
@@ -288,19 +294,17 @@ function runSignalBacktest(
     if (!position && cooldown === 0) {
       if (prevRsi <= params.rsiOversold && curRsi > params.rsiOversold) {
         position = 'LONG';
-        entryPrice = closes[i];
+        entryPrice = closes[i] * (1 + slippage);
         entryTime = times[i];
-        const atrVal = atr[i] || (closes[i] * 0.001);
-        slPrice = entryPrice - atrVal * 2.0; // 2x ATR stop loss
-        tpPrice = entryPrice + atrVal * 3.0; // 3x ATR take profit
+        slPrice = entryPrice * (1 - (params.slPct || 1.5) / 100);
+        tpPrice = entryPrice * (1 + (params.tpPct || 3.0) / 100);
         quantity = (params.investment || 1000) / entryPrice;
       } else if (prevRsi >= params.rsiOverbought && curRsi < params.rsiOverbought) {
         position = 'SHORT';
-        entryPrice = closes[i];
+        entryPrice = closes[i] * (1 - slippage);
         entryTime = times[i];
-        const atrVal = atr[i] || (closes[i] * 0.001);
-        slPrice = entryPrice + atrVal * 2.0; // 2x ATR stop loss
-        tpPrice = entryPrice - atrVal * 3.0; // 3x ATR take profit
+        slPrice = entryPrice * (1 + (params.slPct || 1.5) / 100);
+        tpPrice = entryPrice * (1 - (params.tpPct || 3.0) / 100);
         quantity = (params.investment || 1000) / entryPrice;
       }
     }
@@ -308,28 +312,30 @@ function runSignalBacktest(
 
   // Close remaining position at end
   if (position === 'LONG') {
-    const pnl = (closes[closes.length - 1] - entryPrice) * quantity;
+    const exitPrice = closes[closes.length - 1] * (1 - slippage);
+    const pnl = (exitPrice - entryPrice) * quantity;
     trades.push({
       entryTime,
       exitTime: times[times.length - 1],
       side: 'LONG',
       entryPrice,
-      exitPrice: closes[closes.length - 1],
+      exitPrice,
       pnl,
-      pnlPercent: ((closes[closes.length - 1] - entryPrice) / entryPrice) * 100,
+      pnlPercent: ((exitPrice - entryPrice) / entryPrice) * 100,
       exitReason: 'END',
       quantity,
     });
   } else if (position === 'SHORT') {
-    const pnl = (entryPrice - closes[closes.length - 1]) * quantity;
+    const exitPrice = closes[closes.length - 1] * (1 + slippage);
+    const pnl = (entryPrice - exitPrice) * quantity;
     trades.push({
       entryTime,
       exitTime: times[times.length - 1],
       side: 'SHORT',
       entryPrice,
-      exitPrice: closes[closes.length - 1],
+      exitPrice,
       pnl,
-      pnlPercent: ((entryPrice - closes[closes.length - 1]) / entryPrice) * 100,
+      pnlPercent: ((entryPrice - exitPrice) / entryPrice) * 100,
       exitReason: 'END',
       quantity,
     });
@@ -492,7 +498,7 @@ function runDcaBacktest(
         entryTime = times[i];
         activeDca = true;
       }
-      const price = closes[i];
+      const price = closes[i] * 1.0005; // Add 0.05% slippage on entry
       const qty = buyAmount / price;
       totalCost += buyAmount;
       totalQty += qty;
@@ -501,7 +507,7 @@ function runDcaBacktest(
 
     if (activeDca) {
       const avgPrice = totalCost / totalQty;
-      const currentPrice = closes[i];
+      const currentPrice = closes[i] * 0.9995; // 0.05% slippage on exit
       const move = (currentPrice - avgPrice) / avgPrice;
 
       if (move >= 0.05) {
@@ -544,7 +550,7 @@ function runDcaBacktest(
 
   if (activeDca && totalQty > 0) {
     const avgPrice = totalCost / totalQty;
-    const exitPrice = closes[closes.length - 1];
+    const exitPrice = closes[closes.length - 1] * 0.9995; // 0.05% slippage on exit
     const pnl = (exitPrice - avgPrice) * totalQty;
     trades.push({
       entryTime,
@@ -615,12 +621,12 @@ function runTwapBacktest(
         const price = closes[j];
         const move = (price - avgEntryPrice) / avgEntryPrice;
         if (move >= 0.035) {
-          exitPrice = price;
+          exitPrice = price * (1 - (params.slippage || 0.05) / 100);
           exitIdx = j;
           exitReason = 'TARGET';
           break;
         } else if (move <= -0.02) {
-          exitPrice = price;
+          exitPrice = price * (1 - (params.slippage || 0.05) / 100);
           exitIdx = j;
           exitReason = 'STOP';
           break;
@@ -1134,7 +1140,7 @@ export const Backtesting: React.FC = () => {
           trades = runMarketMakerBacktest(closes, highs, lows, times, numericParams as any);
           break;
         default:
-          trades = runSignalBacktest(closes, highs, lows, times, { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30 });
+          trades = runSignalBacktest(closes, highs, lows, times, { rsiPeriod: 14, rsiOverbought: 70, rsiOversold: 30, tpPct: 3.0, slPct: 1.5 });
       }
 
       // Apply taker fees
