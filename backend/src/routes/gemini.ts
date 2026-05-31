@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
+import https from 'https';
 
 const router = Router();
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -38,7 +39,10 @@ Headline: "${title}"`;
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.1, topK: 1, topP: 1, maxOutputTokens: 10 },
       },
-      { timeout: 8000 },
+      {
+        timeout: 8000,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      },
     );
     const text: string =
       (response.data?.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined)
@@ -82,7 +86,10 @@ router.post('/strategist', async (req: Request, res: Response) => {
           responseMimeType: 'application/json',
         },
       },
-      { timeout: 10000 },
+      {
+        timeout: 10000,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      },
     );
     const text: string =
       (response.data?.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined) ?? '';

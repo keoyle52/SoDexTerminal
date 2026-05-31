@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
+import https from 'https';
 
 const router = Router();
 
@@ -32,6 +33,7 @@ router.all('*', async (req: Request, res: Response) => {
         : undefined,
       headers,
       timeout: 15000,
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     });
     res.json(response.data);
   } catch (err: unknown) {
