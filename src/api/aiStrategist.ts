@@ -237,10 +237,16 @@ function synthesizeVerdict(s: SignalSnapshot, price: number, source: StrategistV
 
 /** Strict JSON parse with full schema check. Returns null on any deviation. */
 function parseLlmReply(raw: string): Pick<StrategistVerdict, 'decision' | 'confidence' | 'rationale' | 'sizeMultiplier'> | null {
-  // Gemini sometimes wraps the JSON in ```json fences despite explicit instructions.
-  const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+  if (!raw) return null;
+  // Gemini sometimes wraps the JSON in ```json fences or prepends conversational prose.
+  // We extract the substring between the first '{' and the last '}' to isolate the JSON payload.
+  const startIdx = raw.indexOf('{');
+  const endIdx = raw.lastIndexOf('}');
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) return null;
+  const jsonString = raw.slice(startIdx, endIdx + 1);
+
   let obj: unknown;
-  try { obj = JSON.parse(cleaned); } catch { return null; }
+  try { obj = JSON.parse(jsonString); } catch { return null; }
   if (!obj || typeof obj !== 'object') return null;
   const o = obj as Record<string, unknown>;
   const decision = String(o.decision ?? '').toUpperCase();
