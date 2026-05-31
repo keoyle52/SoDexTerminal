@@ -108,6 +108,92 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
 }
 
 /**
+ * Batch version of sentiment analysis. Checks local cache for each title,
+ * and passes the uncached ones in a single batch request to the backend.
+ * Synthesizes verdicts in demo mode or on fallback error.
+ */
+export async function analyzeSentimentBatch(titles: string[]): Promise<SentimentDetail[]> {
+  const results = new Map<string, SentimentDetail>();
+  const uncachedTitles: string[] = [];
+
+  const { isDemoMode } = useSettingsStore.getState();
+
+  // 1. Resolve cached items and identify uncached ones
+  for (const title of titles) {
+    const key = cacheKey(title);
+    const cached = _sentimentCache.get(key);
+    if (cached && Date.now() - cached.ts < SENTIMENT_CACHE_TTL) {
+      results.set(title, {
+        sentiment: cached.sentiment,
+        confidence: cached.confidence ?? 70,
+        source: cached.source ?? 'gemini',
+        cached: true,
+      });
+    } else {
+      uncachedTitles.push(title);
+    }
+  }
+
+  // If everything is cached, return immediately
+  if (uncachedTitles.length === 0) {
+    return titles.map((t) => results.get(t)!);
+  }
+
+  // 2. If in demo mode, synthesize for all uncached titles
+  if (isDemoMode) {
+    for (const title of uncachedTitles) {
+      const key = cacheKey(title);
+      const fake = fakeSentimentForHeadline(title);
+      evictOldestIfFull();
+      _sentimentCache.set(key, {
+        sentiment: fake.sentiment,
+        confidence: fake.confidence,
+        source: 'demo',
+        ts: Date.now(),
+      });
+      results.set(title, {
+        sentiment: fake.sentiment,
+        confidence: fake.confidence,
+        source: 'demo',
+        cached: false,
+      });
+    }
+    return titles.map((t) => results.get(t)!);
+  }
+
+  // 3. Live mode: Call batch backend endpoint
+  try {
+    const res = await axios.post(`${BACKEND_GEMINI}/sentiment`, { titles: uncachedTitles });
+    const sentiments: Sentiment[] = Array.isArray(res.data?.sentiments)
+      ? res.data.sentiments
+      : uncachedTitles.map(() => 'NEUTRAL');
+
+    for (let i = 0; i < uncachedTitles.length; i++) {
+      const title = uncachedTitles[i];
+      const sentiment = sentiments[i] || 'NEUTRAL';
+      const confidence = sentiment === 'NEUTRAL' ? 55 : 75;
+      const key = cacheKey(title);
+
+      evictOldestIfFull();
+      _sentimentCache.set(key, { sentiment, ts: Date.now(), confidence, source: 'gemini' });
+      results.set(title, { sentiment, confidence, source: 'gemini', cached: false });
+    }
+  } catch (err) {
+    console.warn('[geminiClient] Batch sentiment call failed, falling back to synth:', err);
+    // Fallback to synth for uncached
+    for (const title of uncachedTitles) {
+      const key = cacheKey(title);
+      const fake = fakeSentimentForHeadline(title);
+      evictOldestIfFull();
+      _sentimentCache.set(key, { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo', ts: Date.now() });
+      results.set(title, { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo', cached: false });
+    }
+  }
+
+  return titles.map((t) => results.get(t)!);
+}
+
+/**
  * Backwards-compatible wrapper — older call sites only need the verdict.
  * Internally delegates to {@link analyzeSentimentDetailed} so the demo /
  * caching behaviour is identical.

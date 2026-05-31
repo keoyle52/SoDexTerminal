@@ -58,7 +58,7 @@ import {
   aggregateInstitutionalBtcFlow,
   type BtcPurchaseRow,
 } from './sosoExtraServices';
-import { analyzeSentimentDetailed } from './geminiClient';
+import { analyzeSentimentBatch } from './geminiClient';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -380,27 +380,18 @@ export async function gatherSignals(ctx: GatherContext): Promise<{
         .then(async (list) => {
           const items = list?.list ?? [];
           if (items.length === 0) return { score: 0, fallback: true, ts: Date.now() };
-          // Score each headline. analyzeSentimentDetailed has a built-in
-          // demo-mode synth so missing Gemini keys are non-fatal.
-          const scored: number[] = [];
-          for (const n of items.slice(0, 8)) {
-            try {
-              const verdict = await analyzeSentimentDetailed(getNewsTitle(n));
-              if (verdict.sentiment === 'BULLISH') {
-                scored.push(1);
-              } else if (verdict.sentiment === 'BEARISH') {
-                scored.push(-1);
-              } else {
-                scored.push(0);
-              }
-
-              // Pace requests to respect the 15 RPM rate limit of the Gemini API
-              if (!verdict.cached && verdict.source === 'gemini') {
-                await new Promise((resolve) => setTimeout(resolve, 800));
-              }
-            } catch {
-              scored.push(0);
-            }
+          // Score headlines in a single batch request!
+          const headlines = items.slice(0, 8).map(getNewsTitle);
+          let scored: number[] = [];
+          try {
+            const verdicts = await analyzeSentimentBatch(headlines);
+            scored = verdicts.map((v) => {
+              if (v.sentiment === 'BULLISH') return 1;
+              if (v.sentiment === 'BEARISH') return -1;
+              return 0;
+            });
+          } catch {
+            scored = headlines.map(() => 0);
           }
           const sum = scored.reduce((a, b) => a + b, 0);
           const norm = scored.length > 0 ? sum / scored.length : 0;
