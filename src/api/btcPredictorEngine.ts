@@ -382,16 +382,26 @@ export async function gatherSignals(ctx: GatherContext): Promise<{
           if (items.length === 0) return { score: 0, fallback: true, ts: Date.now() };
           // Score each headline. analyzeSentimentDetailed has a built-in
           // demo-mode synth so missing Gemini keys are non-fatal.
-          const scored: number[] = await Promise.all(
-            items.slice(0, 8).map(async (n): Promise<number> => {
-              try {
-                const verdict = await analyzeSentimentDetailed(getNewsTitle(n));
-                if (verdict.sentiment === 'BULLISH') return 1;
-                if (verdict.sentiment === 'BEARISH') return -1;
-                return 0;
-              } catch { return 0; }
-            }),
-          );
+          const scored: number[] = [];
+          for (const n of items.slice(0, 8)) {
+            try {
+              const verdict = await analyzeSentimentDetailed(getNewsTitle(n));
+              if (verdict.sentiment === 'BULLISH') {
+                scored.push(1);
+              } else if (verdict.sentiment === 'BEARISH') {
+                scored.push(-1);
+              } else {
+                scored.push(0);
+              }
+
+              // Pace requests to respect the 15 RPM rate limit of the Gemini API
+              if (!verdict.cached && verdict.source === 'gemini') {
+                await new Promise((resolve) => setTimeout(resolve, 800));
+              }
+            } catch {
+              scored.push(0);
+            }
+          }
           const sum = scored.reduce((a, b) => a + b, 0);
           const norm = scored.length > 0 ? sum / scored.length : 0;
           return { score: Math.max(-1, Math.min(1, norm)), fallback: false, ts: Date.now() };

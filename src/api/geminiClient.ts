@@ -15,6 +15,8 @@ export interface SentimentDetail {
   confidence: number;
   /** Source of the verdict, useful for the demo "AI" badge. */
   source: 'gemini' | 'demo';
+  /** True if the response was served from cache. */
+  cached?: boolean;
 }
 
 // In-memory sentiment cache. The classification of a fixed headline does
@@ -65,6 +67,7 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
       sentiment: cached.sentiment,
       confidence: cached.confidence ?? 70,
       source: cached.source ?? 'gemini',
+      cached: true,
     };
   }
 
@@ -80,7 +83,7 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
       source: 'demo',
       ts: Date.now(),
     });
-    return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo' };
+    return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo', cached: false };
   }
 
   // Live path — proxy through our backend which holds the Gemini API key.
@@ -94,13 +97,13 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
 
     evictOldestIfFull();
     _sentimentCache.set(key, { sentiment, ts: Date.now(), confidence, source: 'gemini' });
-    return { sentiment, confidence, source: 'gemini' };
+    return { sentiment, confidence, source: 'gemini', cached: false };
   } catch (err: unknown) {
     console.warn('[geminiClient] Backend sentiment call failed, falling back to synth:', err instanceof Error ? err.message : err);
     const fake = fakeSentimentForHeadline(title);
     evictOldestIfFull();
     _sentimentCache.set(key, { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo', ts: Date.now() });
-    return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo' };
+    return { sentiment: fake.sentiment, confidence: fake.confidence, source: 'demo', cached: false };
   }
 }
 
