@@ -70,9 +70,16 @@ ${titles.map((t, idx) => `${idx + 1}. "${t}"`).join('\n')}`;
 
       res.json({ sentiments, source: 'gemini' });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[gemini/sentiment batch]', msg);
-      res.status(502).json({ error: msg });
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status ?? 502;
+        const data = err.response?.data || { error: err.message };
+        console.error('[gemini/sentiment batch]', err.message, JSON.stringify(data));
+        res.status(status).json(data);
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[gemini/sentiment batch]', msg);
+        res.status(502).json({ error: msg });
+      }
     }
     return;
   }
@@ -103,9 +110,16 @@ Headline: "${title}"`;
     const sentiment = text.includes('BULLISH') ? 'BULLISH' : text.includes('BEARISH') ? 'BEARISH' : 'NEUTRAL';
     res.json({ sentiment, source: 'gemini' });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[gemini/sentiment]', msg);
-    res.status(502).json({ error: msg });
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status ?? 502;
+      const data = err.response?.data || { error: err.message };
+      console.error('[gemini/sentiment]', err.message, JSON.stringify(data));
+      res.status(status).json(data);
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[gemini/sentiment]', msg);
+      res.status(502).json({ error: msg });
+    }
   }
 });
 
@@ -147,9 +161,16 @@ router.post('/strategist', async (req: Request, res: Response) => {
       (response.data?.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined) ?? '';
     res.json({ text });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[gemini/strategist]', msg);
-    res.status(502).json({ error: msg });
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status ?? 502;
+      const data = err.response?.data || { error: err.message };
+      console.error('[gemini/strategist]', err.message, JSON.stringify(data));
+      res.status(status).json(data);
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[gemini/strategist]', msg);
+      res.status(502).json({ error: msg });
+    }
   }
 });
 
