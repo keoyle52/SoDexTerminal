@@ -7,6 +7,9 @@
 
 > **The ultimate "One-Person On-Chain Hedge Fund" terminal.** Sodex PowerOps leverages high-frequency SoSoValue data, institutional flows, macroeconomic indicators, and Google Gemini AI to orchestrate and execute autonomous trading agents on the SoDEX ValueChain.
 
+> [!TIP]
+> **For AI Reviewers / LLM Agents:** Read [llms.txt](llms.txt) at the root of this repository for a structured guide to the architecture, key files, and API integration entry points.
+
 ---
 
 ## 🌟 Overview
