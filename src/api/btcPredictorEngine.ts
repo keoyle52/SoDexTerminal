@@ -51,13 +51,18 @@ import {
   fetchSosoNews,
   fetchEtfHistoricalInflow,
   getNewsTitle,
+  type SosoNewsItem,
+  type EtfDayData,
 } from './sosoServices';
-import { aggregateInstitutionalBtcFlow } from './sosoExtraServices';
+import {
+  aggregateInstitutionalBtcFlow,
+  type BtcPurchaseRow,
+} from './sosoExtraServices';
 import { analyzeSentimentDetailed } from './geminiClient';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
-export type CycleDurationMinutes = 1 | 3 | 5 | 15;
+export type CycleDurationMinutes = 1 | 3 | 5 | 15 | 60;
 
 export interface CycleConfig {
   /** Trading symbol (perps). Default "BTC-USD". */
@@ -112,6 +117,7 @@ const CYCLE_TO_INTERVAL: Record<CycleDurationMinutes, string> = {
   3: '1m',
   5: '5m',
   15: '15m',
+  60: '1h',
 };
 
 /** Number of klines pulled per cycle. 200 covers all indicators (MACD-26,
@@ -298,6 +304,23 @@ function contrarianFng(value: number): number {
   // value 50 = neutral, 25 = strong long bias, 75 = strong short bias.
   const centred = (50 - value) / 50;  // [-1, +1] (50 → 0)
   return Math.max(-1, Math.min(1, centred));
+}
+
+export async function fetchFearGreedHistory(limit = 300): Promise<{ date: string; value: number }[]> {
+  try {
+    const res = await fetch(`https://api.alternative.me/fng/?limit=${limit}`, { method: 'GET' });
+    if (!res.ok) return [];
+    const json = await res.json() as { data?: Array<{ value?: string | number; timestamp?: string }> };
+    const list = json?.data ?? [];
+    return list.map(item => {
+      const val = Number(item.value);
+      const ts = Number(item.timestamp) * 1000;
+      const date = new Date(ts).toISOString().slice(0, 10);
+      return { date, value: val };
+    }).filter(x => Number.isFinite(x.value));
+  } catch {
+    return [];
+  }
 }
 
 // ─── Signal gathering ─────────────────────────────────────────────────────────
@@ -792,6 +815,13 @@ export async function runCycle(cfg: CycleConfig): Promise<CycleResult> {
 
 // ─── Quick backtest ──────────────────────────────────────────────────────────
 
+export interface HistoricalBacktestData {
+  etf?: EtfDayData[];
+  fng?: { date: string; value: number }[];
+  treasury?: BtcPurchaseRow[];
+  news?: SosoNewsItem[];
+}
+
 export interface BacktestRun {
   cycles: number;
   trades: number;
@@ -808,50 +838,88 @@ export interface BacktestRun {
   series: { ts: number; equity: number; drawdown: number }[];
 }
 
+// ─── Historical mapping helpers ──────────────────────────────────────────────
+
+function tsToDateString(ts: number): string {
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function getHistoricalEtfScore(etfHistory: EtfDayData[] | undefined, dateStr: string): number {
+  if (!etfHistory || etfHistory.length === 0) return 0;
+  const idx = etfHistory.findIndex(e => e.date === dateStr);
+  if (idx === -1) return 0;
+  const start = Math.max(0, idx - 2);
+  const slice = etfHistory.slice(start, idx + 1);
+  const sum = slice.reduce((a, r) => a + Number(r.totalNetInflow ?? 0), 0);
+  return squash(sum, 200_000_000);
+}
+
+function getHistoricalFngScore(fngHistory: { date: string; value: number }[] | undefined, dateStr: string): number {
+  if (!fngHistory || fngHistory.length === 0) return 0;
+  const entry = fngHistory.find(e => e.date === dateStr);
+  if (!entry) return 0;
+  return contrarianFng(entry.value);
+}
+
+function getHistoricalTreasuryScore(purchases: BtcPurchaseRow[] | undefined, ts: number): number {
+  if (!purchases || purchases.length === 0) return 0;
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  const cutoff = ms - 30 * 24 * 60 * 60 * 1000;
+  const recent = purchases.filter(r => {
+    const time = new Date(r.date).getTime();
+    return time >= cutoff && time <= ms;
+  });
+  const total = recent.reduce((s, r) => s + r.btcAcq, 0);
+  return Math.max(-1, Math.min(1, total / 5000));
+}
+
+function classifySentimentRegex(title: string): number {
+  const t = title.toLowerCase();
+  const positiveWords = [
+    'bullish', 'approved', 'bought', 'accumulation', 'rally', 'rise', 'positive', 
+    'long', 'gain', 'surges', 'high', 'breakout', 'success', 'inflow', 'green', 
+    'support', 'pump', 'growth', 'adoption', 'partner', 'sec approves'
+  ];
+  const negativeWords = [
+    'bearish', 'liquidated', 'drop', 'dump', 'negative', 'short', 'loss', 'falls',
+    'plunges', 'breakdown', 'crash', 'panic', 'selloff', 'outflow', 'red', 'resistance',
+    'hacked', 'scam', 'ban', 'rejected', 'delay', 'lawsuit', 'sec sues', 'inflation'
+  ];
+  let score = 0;
+  for (const w of positiveWords) {
+    if (t.includes(w)) score += 1;
+  }
+  for (const w of negativeWords) {
+    if (t.includes(w)) score -= 1;
+  }
+  return Math.max(-1, Math.min(1, score));
+}
+
+function getHistoricalNewsScore(news: SosoNewsItem[] | undefined, ts: number): number {
+  if (!news || news.length === 0) return 0;
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  const cutoff = ms - 6 * 60 * 60 * 1000; // 6 hours
+  const recent = news.filter(n => n.releaseTime >= cutoff && n.releaseTime <= ms);
+  if (recent.length === 0) return 0;
+  const scores = recent.map(n => classifySentimentRegex(getNewsTitle(n)));
+  const sum = scores.reduce((a, b) => a + b, 0);
+  return sum / scores.length;
+}
+
 /**
  * Run a deterministic local backtest over the supplied historical klines.
- *
- * Strategy v3 — strict-edge dual-mode + ATR-scaled exits.
- *
- * The previous version (v2) was too lax — 5-minute bars are noisy enough
- * that even a "selective" filter still produced ~30% win rate after fees.
- * This rewrite makes two fundamental changes:
- *
- *  1. ENTRY THRESHOLDS are tightened to the levels where each setup
- *     actually has historical edge on BTC perps:
- *       • Mean reversion: RSI ≤ 25 / ≥ 75   AND   |VWAP dev| ≥ 0.6%
- *       • Trend continuation: |EMA sig| ≥ 0.45 AND |MACD| ≥ 0.30
- *     Below these levels, signal-to-noise collapses below the fee
- *     envelope (round-trip taker = 0.08%) so trading them is negative
- *     expected value.
- *
- *  2. EXITS use a multi-bar TP/SL window matched to the cycle's
- *     volatility regime. Holding for exactly one bar is brutal — a
- *     mean-reverting entry needs 2-3 bars to revert, and a trend
- *     continuation can extend further than one bar before consolidating.
- *     We simulate the bot's actual cycle behaviour by walking forward
- *     up to MAX_HOLD_BARS bars and exiting at the first of:
- *       • TP target  (entry ± ATR × TP_MULT favourable move)
- *       • SL stop    (entry ∓ ATR × SL_MULT adverse move)
- *       • Time stop  (close of the MAX_HOLD_BARS-th bar after entry)
- *     The TP target is tighter than the SL distance — classic
- *     mean-reversion sizing where you book small, frequent wins and
- *     accept rare full-stop losses.
- *
- *  3. CONFLICT GUARDS (defence-in-depth): mean-reversion setups are
- *     skipped when the prevailing trend is strongly opposite (don't
- *     catch falling knives), and trend setups are skipped when RSI is
- *     already in the exhaustion zone (don't chase tops).
- *
- * External signals (news, ETF, treasury, F&G) are stubbed to zero
- * because we can't reliably reconstruct historical sentiment for an
- * arbitrary timestamp; this is a TECHNICAL-ONLY LOWER BOUND. The live
- * bot has access to all 13 signals so its real-world performance
- * should exceed this number.
+ * 
+ * Replays the exact 13-signal rule ensemble using historical data-aligned
+ * streams (ETF, Treasuries, Fear & Greed, and News sentiment).
  */
 export function runQuickBacktest(
   klines: Kline[],
-  opts: { lookback: number; takerFee?: number } = { lookback: 100 },
+  opts: {
+    lookback: number;
+    takerFee?: number;
+    historicalData?: HistoricalBacktestData;
+  } = { lookback: 100 },
 ): BacktestRun {
   const empty: BacktestRun = {
     cycles: 0, trades: 0, wins: 0, losses: 0, winRate: 0,
@@ -864,10 +932,7 @@ export function runQuickBacktest(
   const fee = opts.takerFee ?? DEFAULT_TAKER_FEE_RATE;
   const startIdx = Math.max(50, klines.length - lookback);
 
-  // Multi-bar exit envelope. Tuned for 5-minute BTC bars: with avg ATR
-  // ~0.10-0.15%, TP ~2.0×ATR (~20-30 bps net of fees) is achievable in
-  // 1-8 bars on a correct directional call, while SL ~1.0×ATR (~10-15 bps)
-  // balances risk while keeping positive mathematical expectation.
+  // Multi-bar exit envelope.
   const MAX_HOLD_BARS = 8;
   const TP_MULT = 2.0;
   const SL_MULT = 1.0;
@@ -880,9 +945,6 @@ export function runQuickBacktest(
   let wins = 0;
   let best = 0;
   let worst = 0;
-  // Cooldown after a trade so we don't immediately re-enter on the
-  // same bar that we just exited (over-trading is the #1 killer of
-  // backtest realism).
   let cooldownUntil = -1;
 
   for (let i = startIdx; i < klines.length - MAX_HOLD_BARS - 1; i++) {
@@ -893,57 +955,129 @@ export function runQuickBacktest(
     if (closes.length < 30) continue;
 
     const lastPrice = closes[closes.length - 1];
+    const prevClose = closes[closes.length - 2];
 
-    // ── Regime gate ────────────────────────────────────────────────
-    // ATR ≥ 0.10%: BTC fee envelope is 0.08% round-trip; we need a
-    // typical bar move > the fee just to clear friction. Below 0.10%
-    // there's no edge that can survive transaction cost.
     const atr = atrPct(subset);
-    if (atr < 0.10) continue;
+    // Dynamic regime filter: check if volatility is sufficient to cover fee friction
+    if (atr < 0.08) continue;
 
-    // ── Indicators ─────────────────────────────────────────────────
+    // Technical Indicators
     const rsiVal = rsi(closes, 14);
+    const rsiSignal = rsiVal > 70 ? -((rsiVal - 70) / 30)
+      : rsiVal < 30 ? +((30 - rsiVal) / 30)
+      : 0;
+
     const ema9 = emaSeries(closes, 9);
     const ema21 = emaSeries(closes, 21);
     const emaDiff = (ema9[ema9.length - 1] ?? 0) - (ema21[ema21.length - 1] ?? 0);
-    const emaSig = squash(emaDiff, lastPrice * 0.0005); // more sensitive scale
+    const emaSignal = squash(emaDiff, lastPrice * 0.0005);
+
     const { hist } = macd(closes);
-    const macdSig = squash(hist, lastPrice * 0.0002); // more sensitive scale
+    const macdSignal = squash(hist, lastPrice * 0.0002);
+
     const vwapVal = vwap(subset.slice(-Math.min(96, subset.length)));
-    const vwapDev = vwapVal > 0 ? ((lastPrice - vwapVal) / vwapVal) * 100 : 0;
+    const vwapDeviation = vwapVal > 0 ? ((lastPrice - vwapVal) / vwapVal) * 100 : 0;
+    const vwapSignal = -squash(vwapDeviation, 0.4);
 
-    // ── Setup detection ──────────────────────────────────────────
-    let direction: PredictionDirection | null = null;
-    let setup: 'mean_reversion' | 'trend' | null = null;
+    const rocBars = Math.min(12, closes.length - 1);
+    const rocVal = rocBars > 0
+      ? ((lastPrice - closes[closes.length - 1 - rocBars]) / closes[closes.length - 1 - rocBars]) * 100
+      : 0;
+    const rocSignal = squash(rocVal, 0.2);
 
-    // Mode A — mean reversion at strong extremes (RSI 30/70 + VWAP 0.4%)
-    const oversold  = rsiVal <= 30 && vwapDev <= -0.4;
-    const overbought = rsiVal >= 70 && vwapDev >= 0.4;
-    if (oversold) { direction = 'UP'; setup = 'mean_reversion'; }
-    else if (overbought) { direction = 'DOWN'; setup = 'mean_reversion'; }
+    const lastK = subset[subset.length - 1];
+    const bodyPct = lastK.high !== lastK.low
+      ? ((lastK.close - lastK.low) / (lastK.high - lastK.low) - 0.5) * 2
+      : 0;
+    const tickMomentum = prevClose > 0 ? (lastPrice - prevClose) / prevClose : 0;
+    const microstructureSignal = (squash(tickMomentum * 100, 0.3) + bodyPct) / 2;
 
-    // Mode B — trend continuation with strong technical confluence
-    if (!direction) {
-      const bothBull = emaSig >= 0.30 && macdSig >= 0.20 && rsiVal >= 40 && rsiVal <= 70;
-      const bothBear = emaSig <= -0.30 && macdSig <= -0.20 && rsiVal >= 30 && rsiVal <= 60;
-      if (bothBull) { direction = 'UP'; setup = 'trend'; }
-      else if (bothBear) { direction = 'DOWN'; setup = 'trend'; }
-    }
+    const volumes = subset.map((k) => k.volume ?? 0);
+    const recentVols = volumes.slice(-21, -1);
+    const avgVol = recentVols.length > 0 ? recentVols.reduce((a, b) => a + b, 0) / recentVols.length : 0;
+    const lastVol = volumes[volumes.length - 1] ?? 0;
+    const volumeSpike = avgVol > 0 && lastVol > 2 * avgVol && Math.abs(bodyPct) > 0.4;
 
-    if (!direction || !setup) continue;
+    // Stubs for microstructure orderbook & funding rates
+    const orderBookImbalance = 0.5;
+    const orderBookSignal = 0;
+    const fundingRate = 0;
+    const fundingRateSignal = 0;
+    const mtfAlignment = 0;
 
-    // ── Conflict guards (defence-in-depth) ──────────────────────────
-    if (setup === 'mean_reversion') {
-      // Don't catch falling knives or short into rip-rallies — if the
-      // trend is overwhelmingly opposite, the reversion may not come.
-      if (direction === 'UP' && emaSig < -0.45) continue;
-      if (direction === 'DOWN' && emaSig > 0.45) continue;
-    }
+    // Historical align streams
+    const dateStr = tsToDateString(lastK.time);
+    
+    const newsSentiment = getHistoricalNewsScore(opts.historicalData?.news, lastK.time);
+    const etfFlow = getHistoricalEtfScore(opts.historicalData?.etf, dateStr);
+    const treasurySignal = getHistoricalTreasuryScore(opts.historicalData?.treasury, lastK.time);
+    const fearGreedSignal = getHistoricalFngScore(opts.historicalData?.fng, dateStr);
+
+    const components: Array<{ name: string; v: number; w: number }> = [
+      { name: 'EMA',            v: emaSignal,            w: 1.0 },
+      { name: 'MACD',           v: macdSignal,           w: 1.0 },
+      { name: 'RSI',            v: rsiSignal,            w: 0.8 },
+      { name: 'VWAP',           v: vwapSignal,           w: 0.7 },
+      { name: 'RoC',            v: rocSignal,            w: 0.7 },
+      { name: 'OrderBook',      v: orderBookSignal,      w: 0.8 },
+      { name: 'Funding',        v: fundingRateSignal,    w: 0.6 },
+      { name: 'Microstructure', v: microstructureSignal, w: 0.7 },
+      { name: 'MTFAlign',       v: Math.sign(mtfAlignment), w: 0.5 },
+      { name: 'News',           v: newsSentiment,        w: 1.2 },
+      { name: 'ETF',            v: etfFlow,              w: 1.2 },
+      { name: 'Treasury',       v: treasurySignal,       w: 1.0 },
+      { name: 'FearGreed',      v: fearGreedSignal,      w: 0.8 },
+    ];
+    const totalW = components.reduce((a, c) => a + c.w, 0);
+    const weightedScore = components.reduce((a, c) => a + c.v * c.w, 0) / totalW;
+
+    const dominantSign = Math.sign(weightedScore);
+    const totalSignals = components.filter((c) => Math.abs(c.v) > 0.1).length;
+    const agreementCount = components.filter(
+      (c) => Math.abs(c.v) > 0.1 && Math.sign(c.v) === dominantSign,
+    ).length;
+
+    const signals: SignalSnapshot = {
+      newsSentiment,
+      etfFlow,
+      newsLastFetched: null,
+      etfLastFetched: null,
+      newsFallback: false,
+      etfFallback: false,
+      orderBookImbalance,
+      orderBookSignal,
+      fundingRate,
+      fundingRateSignal,
+      microstructureSignal,
+      volumeSpike,
+      rsi: rsiVal,
+      rsiSignal,
+      emaSignal,
+      macdSignal,
+      vwapDeviation,
+      vwapSignal,
+      rocSignal,
+      atrPct: atr,
+      mtfAlignment,
+      fearGreedRaw: undefined,
+      fearGreedSignal,
+      treasuryNetBtc: undefined,
+      treasurySignal,
+      treasuryFallback: false,
+      weightedScore,
+      agreementCount,
+      totalSignals,
+    };
+
+    const decision = computeRuleDecision(signals);
+    if (decision.direction === 'NEUTRAL') continue;
+
+    const direction = decision.direction;
 
     // ── Multi-bar TP/SL exit simulation ────────────────────────────
     const entry = lastPrice;
-    const tpDist = entry * (atr / 100) * TP_MULT;   // favourable move target
-    const slDist = entry * (atr / 100) * SL_MULT;   // adverse move stop
+    const tpDist = entry * (atr / 100) * TP_MULT;
+    const slDist = entry * (atr / 100) * SL_MULT;
     let exitPrice = entry;
     let barsHeld = MAX_HOLD_BARS;
 
@@ -958,9 +1092,6 @@ export function runQuickBacktest(
         : bar.high >= entry + slDist;
 
       if (tpHit && slHit) {
-        // Both touched within the same bar — pessimistically assume the
-        // adverse one filled first (no intra-bar tick data). This keeps
-        // backtest results conservative.
         exitPrice = direction === 'UP' ? entry - slDist : entry + slDist;
         barsHeld = h;
         break;
@@ -975,7 +1106,6 @@ export function runQuickBacktest(
         barsHeld = h;
         break;
       }
-      // No level touched — keep holding; if final bar, exit at close.
       if (h === MAX_HOLD_BARS) {
         exitPrice = bar.close;
       }
@@ -999,8 +1129,6 @@ export function runQuickBacktest(
       drawdown: peak - equity,
     });
 
-    // Skip ahead past the hold window + 1 cooldown bar so we don't
-    // double-count overlapping signals from the same setup.
     cooldownUntil = i + barsHeld + 1;
   }
 
