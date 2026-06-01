@@ -6,7 +6,11 @@ const router = Router();
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MODEL = 'gemini-2.0-flash';
 
-function apiKey(): string | undefined {
+function apiKey(req: Request): string | undefined {
+  const headerKey = req.headers['x-gemini-api-key'];
+  if (typeof headerKey === 'string' && headerKey.trim()) {
+    return headerKey.trim();
+  }
   return process.env.GEMINI_API_KEY;
 }
 
@@ -20,7 +24,7 @@ router.post('/sentiment', async (req: Request, res: Response) => {
     return;
   }
 
-  const key = apiKey();
+  const key = apiKey(req);
   if (!key) {
     res.status(503).json({ error: 'Gemini API key not configured on server' });
     return;
@@ -133,7 +137,7 @@ router.post('/strategist', async (req: Request, res: Response) => {
     return;
   }
 
-  const key = apiKey();
+  const key = apiKey(req);
   if (!key) {
     res.status(503).json({ error: 'Gemini API key not configured on server' });
     return;
