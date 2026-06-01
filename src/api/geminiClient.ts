@@ -71,7 +71,7 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
     };
   }
 
-  const { isDemoMode, geminiApiKey } = useSettingsStore.getState();
+  const { isDemoMode } = useSettingsStore.getState();
 
   // Demo fast path — synthesize a deterministic verdict without any network call.
   if (isDemoMode) {
@@ -88,9 +88,7 @@ export async function analyzeSentimentDetailed(title: string): Promise<Sentiment
 
   // Live path — proxy through our backend which holds the Gemini API key.
   try {
-    const headers: Record<string, string> = {};
-    if (geminiApiKey) headers['x-gemini-api-key'] = geminiApiKey;
-    const res = await axios.post(`${BACKEND_GEMINI}/sentiment`, { title }, { headers });
+    const res = await axios.post(`${BACKEND_GEMINI}/sentiment`, { title });
     const sentiment: Sentiment =
       res.data?.sentiment === 'BULLISH' ? 'BULLISH' :
       res.data?.sentiment === 'BEARISH' ? 'BEARISH' :
@@ -118,7 +116,7 @@ export async function analyzeSentimentBatch(titles: string[]): Promise<Sentiment
   const results = new Map<string, SentimentDetail>();
   const uncachedTitles: string[] = [];
 
-  const { isDemoMode, geminiApiKey } = useSettingsStore.getState();
+  const { isDemoMode } = useSettingsStore.getState();
 
   // 1. Resolve cached items and identify uncached ones
   for (const title of titles) {
@@ -165,9 +163,7 @@ export async function analyzeSentimentBatch(titles: string[]): Promise<Sentiment
 
   // 3. Live mode: Call batch backend endpoint
   try {
-    const headers: Record<string, string> = {};
-    if (geminiApiKey) headers['x-gemini-api-key'] = geminiApiKey;
-    const res = await axios.post(`${BACKEND_GEMINI}/sentiment`, { titles: uncachedTitles }, { headers });
+    const res = await axios.post(`${BACKEND_GEMINI}/sentiment`, { titles: uncachedTitles });
     const sentiments: Sentiment[] = Array.isArray(res.data?.sentiments)
       ? res.data.sentiments
       : uncachedTitles.map(() => 'NEUTRAL');

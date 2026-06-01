@@ -278,7 +278,7 @@ export async function callAiStrategist(
     return _lastCache.verdict;
   }
 
-  const { isDemoMode, geminiApiKey } = useSettingsStore.getState();
+  const { isDemoMode } = useSettingsStore.getState();
 
   // Demo fast path — no network, no quota.
   if (isDemoMode) {
@@ -294,12 +294,10 @@ export async function callAiStrategist(
   const prompt = buildPrompt(signals, price, atrSummary);
 
   try {
-    const headers: Record<string, string> = {};
-    if (geminiApiKey) headers['x-gemini-api-key'] = geminiApiKey;
     const res = await axios.post(
       `${BACKEND_GEMINI}/strategist`,
       { prompt },
-      { timeout: 10000, headers },
+      { timeout: 10000 },
     );
     const text: string = res.data?.text ?? '';
     const parsed = parseLlmReply(text);

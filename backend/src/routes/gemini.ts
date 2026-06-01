@@ -6,12 +6,25 @@ const router = Router();
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MODEL = 'gemini-2.0-flash';
 
-function apiKey(req: Request): string | undefined {
-  const headerKey = req.headers['x-gemini-api-key'];
-  if (typeof headerKey === 'string' && headerKey.trim()) {
-    return headerKey.trim();
-  }
+function apiKey(): string | undefined {
   return process.env.GEMINI_API_KEY;
+}
+
+const sentimentCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 1000;
+
+function getCachedSentiment(title: string): string | undefined {
+  return sentimentCache.get(title.trim().toLowerCase());
+}
+
+function setCachedSentiment(title: string, sentiment: string) {
+  if (sentimentCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = sentimentCache.keys().next().value;
+    if (firstKey !== undefined) {
+      sentimentCache.delete(firstKey);
+    }
+  }
+  sentimentCache.set(title.trim().toLowerCase(), sentiment);
 }
 
 // POST /api/gemini/sentiment
@@ -24,7 +37,7 @@ router.post('/sentiment', async (req: Request, res: Response) => {
     return;
   }
 
-  const key = apiKey(req);
+  const key = apiKey();
   if (!key) {
     res.status(503).json({ error: 'Gemini API key not configured on server' });
     return;
@@ -32,12 +45,31 @@ router.post('/sentiment', async (req: Request, res: Response) => {
 
   // Batch headlines request path
   if (titles && Array.isArray(titles) && titles.length > 0) {
+    const results: string[] = [];
+    const uncachedTitles: string[] = [];
+    const uncachedIndices: number[] = [];
+
+    titles.forEach((t, idx) => {
+      const cached = getCachedSentiment(t);
+      if (cached) {
+        results[idx] = cached;
+      } else {
+        uncachedTitles.push(t);
+        uncachedIndices.push(idx);
+      }
+    });
+
+    if (uncachedTitles.length === 0) {
+      res.json({ sentiments: results, source: 'gemini' });
+      return;
+    }
+
     const prompt = `Analyze the crypto market sentiment for each of the following news headlines.
 Return a JSON array of strings containing ONLY 'BULLISH', 'BEARISH', or 'NEUTRAL' for each headline in the exact same order.
 Do not provide any explanation or markdown formatting. Just return the JSON array.
 
 Headlines:
-${titles.map((t, idx) => `${idx + 1}. "${t}"`).join('\n')}`;
+${uncachedTitles.map((t, idx) => `${idx + 1}. "${t}"`).join('\n')}`;
 
     try {
       const response = await axios.post(
@@ -72,7 +104,13 @@ ${titles.map((t, idx) => `${idx + 1}. "${t}"`).join('\n')}`;
         return t.includes('BULLISH') ? 'BULLISH' : t.includes('BEARISH') ? 'BEARISH' : 'NEUTRAL';
       });
 
-      res.json({ sentiments, source: 'gemini' });
+      sentiments.forEach((s, i) => {
+        const originalIndex = uncachedIndices[i];
+        results[originalIndex] = s;
+        setCachedSentiment(uncachedTitles[i], s);
+      });
+
+      res.json({ sentiments: results, source: 'gemini' });
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         const status = err.response?.status ?? 502;
@@ -89,6 +127,14 @@ ${titles.map((t, idx) => `${idx + 1}. "${t}"`).join('\n')}`;
   }
 
   // Single headline request path
+  if (title) {
+    const cached = getCachedSentiment(title);
+    if (cached) {
+      res.json({ sentiment: cached, source: 'gemini' });
+      return;
+    }
+  }
+
   const prompt = `Analyze the potential crypto market sentiment for this news headline.
 Return ONLY one of these three words: BULLISH, BEARISH, or NEUTRAL.
 Do not provide any explanation or other text.
@@ -112,6 +158,9 @@ Headline: "${title}"`;
         ?.trim()
         ?.toUpperCase() ?? '';
     const sentiment = text.includes('BULLISH') ? 'BULLISH' : text.includes('BEARISH') ? 'BEARISH' : 'NEUTRAL';
+    if (title) {
+      setCachedSentiment(title, sentiment);
+    }
     res.json({ sentiment, source: 'gemini' });
   } catch (err: unknown) {
     if (axios.isAxiosError(err)) {
@@ -137,7 +186,7 @@ router.post('/strategist', async (req: Request, res: Response) => {
     return;
   }
 
-  const key = apiKey(req);
+  const key = apiKey();
   if (!key) {
     res.status(503).json({ error: 'Gemini API key not configured on server' });
     return;
