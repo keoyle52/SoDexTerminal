@@ -54,7 +54,7 @@ export function clearSentimentCache(): void {
  *    via {@link fakeSentimentForHeadline} so the UI can show "AI sentiment"
  *    without burning API credits. Confidence is constrained to 60–80% so
  *    the band reads like a real softmax output.
- *  - Live mode: calls Gemini 1.5 Flash and parses the single-word reply.
+ *  - Live mode: calls Gemini 2.0 Flash and parses the single-word reply.
  *    A confidence score is approximated from the response (Gemini does not
  *    expose logits) — we use 75% on a confident BULLISH/BEARISH reply and
  *    55% on NEUTRAL replies as a sane default.
