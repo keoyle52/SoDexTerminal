@@ -10,7 +10,7 @@
  *   1. Pulls a multi-source signal vector (technical + microstructure +
  *      flow + sentiment + macro).
  *   2. Computes a deterministic rule-based ensemble score.
- *   3. Hands the signal vector to Gemini 2.5-flash via `aiStrategist`
+ *   3. Hands the signal vector to Gemini 1.5-flash via `aiStrategist`
  *      so the LLM can act as a consensus-overlay second opinion.
  *   4. Combines the two into a final decision (direction, confidence,
  *      sizing).

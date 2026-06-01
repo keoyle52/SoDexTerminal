@@ -7,7 +7,7 @@
  * The Predictor itself is a deterministic 12-signal weighted ensemble.
  * Workshop briefings (SoSoValue Buildathon kickoff, Apr-29) called for
  * "LLMs as the BRAIN of the system" — not just sentiment classification.
- * This module wraps a Gemini 2.5-flash call that ingests every signal
+ * This module wraps a Gemini 1.5-flash call that ingests every signal
  * the Predictor already computed (technicals + order book + funding +
  * news sentiment + ETF flows + treasury flows + macro context) and
  * returns a holistic verdict the UI surfaces alongside the rule-based

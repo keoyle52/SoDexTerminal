@@ -764,7 +764,7 @@ export const BtcPredictor: React.FC = () => {
             <div className="flex-1">
               <div className="text-xs font-semibold text-text-primary">AI Strategist</div>
               <div className="text-[9px] uppercase tracking-widest text-text-muted">
-                {predictor.aiVerdict?.source ?? 'Gemini 2.5 Flash'}
+                {predictor.aiVerdict?.source ?? 'Gemini 1.5 Flash'}
               </div>
             </div>
           </div>
@@ -1318,7 +1318,7 @@ export const BtcPredictor: React.FC = () => {
                 (news, ETF flows, treasury accumulation), and one <span className="text-amber-300 font-semibold">external</span>{' '}
                 feed (Fear &amp; Greed Index). Thirteen signals are normalised onto a [-1, +1] axis,
                 weighted, and gated through a confluence filter. The result is then sent to{' '}
-                <span className="text-primary font-semibold">Gemini 2.5 Flash</span> as an independent
+                <span className="text-primary font-semibold">Gemini 1.5 Flash</span> as an independent
                 consensus check before any order is placed.
               </p>
             </div>

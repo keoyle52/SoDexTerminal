@@ -5,7 +5,7 @@
  * └─────────────────────────────────────────────────────────────────────┘
  *
  * This module is the "brain" half of the AI Console feature. It packages
- * a chat history + a registry of safe tools into a single Gemini-2.5
+ * a chat history + a registry of safe tools into a single Gemini-1.5
  * call and either:
  *   1. Returns a plain-text answer to render in the chat bubble, or
  *   2. Returns a `tool` instruction the UI must execute (and, for
@@ -282,7 +282,7 @@ export async function consoleTurn(
   const systemPrompt = buildSystemPrompt(tools);
   const contents = buildContents(systemPrompt, history);
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
   const payload = {
     contents,
     generationConfig: {

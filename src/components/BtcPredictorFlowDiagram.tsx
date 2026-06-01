@@ -90,7 +90,7 @@ const ENSEMBLE_STEPS: { num: number; label: string; detail: string }[] = [
 
 const AI_STEPS: { num: number; label: string; detail: string }[] = [
   { num: 1, label: 'Build prompt',    detail: 'All 13 signals serialised as plain text' },
-  { num: 2, label: 'Gemini 2.5-flash',detail: 'Strict JSON schema, 8s timeout' },
+  { num: 2, label: 'Gemini 1.5-flash',detail: 'Strict JSON schema, 8s timeout' },
   { num: 3, label: 'Parse verdict',   detail: 'LONG / SHORT / HOLD + confidence + sizeMul' },
   { num: 4, label: 'Risk overrides',  detail: 'Skip on disagree, attenuate on weak conviction' },
 ];
@@ -269,7 +269,7 @@ export const BtcPredictorFlowDiagram: React.FC = () => {
         <PipelineCard
           step={4}
           title="AI Brain"
-          subtitle="Gemini 2.5-flash overlay"
+          subtitle="Gemini 1.5-flash overlay"
           icon={Brain}
           iconClass="bg-primary/10 text-primary border border-primary/30"
           borderClass="border-primary/20"

@@ -4,7 +4,7 @@ import https from 'https';
 
 const router = Router();
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-1.5-flash';
 
 function apiKey(): string | undefined {
   return process.env.GEMINI_API_KEY;
@@ -148,7 +148,7 @@ router.post('/strategist', async (req: Request, res: Response) => {
           temperature: 0.2,
           topK: 1,
           topP: 0.9,
-          maxOutputTokens: 250,
+          maxOutputTokens: 1000,
           responseMimeType: 'application/json',
         },
       },
