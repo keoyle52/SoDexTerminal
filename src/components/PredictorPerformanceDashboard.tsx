@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Card, StatCard } from './common/Card';
 import { NumberDisplay } from './common/NumberDisplay';
-import { computePerformanceMetrics, type PredictionEntry } from '../store/predictorStore';
+import { usePredictorStore, computePerformanceMetrics, type PredictionEntry } from '../store/predictorStore';
 import { cn } from '../lib/utils';
 
 interface PredictorPerformanceDashboardProps {
@@ -18,6 +18,7 @@ export const PredictorPerformanceDashboard: React.FC<PredictorPerformanceDashboa
   history,
   className,
 }) => {
+  const resetStats = usePredictorStore((s) => s.resetStats);
   const metrics = useMemo(() => computePerformanceMetrics(history), [history]);
 
   // Determine performance grade
@@ -68,8 +69,21 @@ export const PredictorPerformanceDashboard: React.FC<PredictorPerformanceDashboa
             </p>
           </div>
         </div>
-        <div className={cn("px-3 py-1.5 rounded-lg border", performanceGrade.bg, "border-current", performanceGrade.color)}>
-          <span className={cn("text-lg font-bold", performanceGrade.color)}>{performanceGrade.grade}</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (window.confirm("Are you sure you want to clear all predictor history and reset statistics? This cannot be undone.")) {
+                resetStats();
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Activity size={12} />
+            Reset Stats
+          </button>
+          <div className={cn("px-3 py-1.5 rounded-lg border", performanceGrade.bg, "border-current", performanceGrade.color)}>
+            <span className={cn("text-lg font-bold", performanceGrade.color)}>{performanceGrade.grade}</span>
+          </div>
         </div>
       </div>
 
