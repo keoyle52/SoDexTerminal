@@ -48,6 +48,7 @@ export const Dashboard: React.FC = () => {
   // When the Predictor hasn't run yet (currentSignals === null) we
   // fall back to a "Run Predictor first" recommendation card.
   const predictorSignals      = usePredictorStore((s) => s.currentSignals);
+  const currentPrediction     = usePredictorStore((s) => s.currentPrediction);
   const aiVerdict              = usePredictorStore((s) => s.aiVerdict);
   const predictorHistory       = usePredictorStore((s) => s.history);
   const setCurrentPrediction   = usePredictorStore((s) => s.setCurrentPrediction);
@@ -353,15 +354,15 @@ export const Dashboard: React.FC = () => {
                 <>
                   <span className={cn(
                     "w-2 h-2 rounded-full animate-ping",
-                    predictorSignals.weightedScore > 0.1 ? "bg-emerald-400" : 
-                    predictorSignals.weightedScore < -0.1 ? "bg-red-400" : "bg-amber-400"
+                    currentPrediction === "UP" ? "bg-emerald-400" : 
+                    currentPrediction === "DOWN" ? "bg-red-400" : "bg-amber-400"
                   )} />
                   <span className={cn(
-                    predictorSignals.weightedScore > 0.1 ? "text-emerald-400" : 
-                    predictorSignals.weightedScore < -0.1 ? "text-red-400" : "text-amber-400"
+                    currentPrediction === "UP" ? "text-emerald-400" : 
+                    currentPrediction === "DOWN" ? "text-red-400" : "text-amber-400"
                   )}>
-                    {predictorSignals.weightedScore > 0.1 ? "BULLISH (UP)" : 
-                     predictorSignals.weightedScore < -0.1 ? "BEARISH (DOWN)" : "NEUTRAL"}
+                    {currentPrediction === "UP" ? "BULLISH (UP)" : 
+                     currentPrediction === "DOWN" ? "BEARISH (DOWN)" : "NEUTRAL"}
                   </span>
                 </>
               ) : (
@@ -374,14 +375,31 @@ export const Dashboard: React.FC = () => {
           <div>
             <div className="text-[10px] text-text-muted uppercase tracking-wider">AI Confidence</div>
             <div className="text-sm font-bold font-mono mt-1 text-text-primary">
-              {aiVerdict ? `${(aiVerdict.confidence * 100).toFixed(1)}%` : predictorSignals ? `${(Math.abs(predictorSignals.weightedScore) * 100).toFixed(1)}%` : snapshotLoading ? <span className="animate-pulse text-text-muted">…</span> : "—"}
+              {aiVerdict ? (
+                `${aiVerdict.confidence.toFixed(1)}%`
+              ) : predictorSignals ? (
+                `${(Math.abs(predictorSignals.weightedScore) * 100).toFixed(1)}%`
+              ) : snapshotLoading ? (
+                <span className="animate-pulse text-text-muted">…</span>
+              ) : (
+                "—"
+              )}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-text-muted uppercase tracking-wider">Live Performance</div>
-            <div className="text-sm font-bold font-mono mt-1 text-emerald-400">
+            <div className={cn(
+              "text-sm font-bold font-mono mt-1",
+              predictorMetrics.tradesCount > 0
+                ? predictorMetrics.winRate >= 0.5
+                  ? "text-emerald-400"
+                  : predictorMetrics.winRate > 0
+                  ? "text-amber-400"
+                  : "text-red-400"
+                : "text-text-muted"
+            )}>
               {predictorMetrics.tradesCount > 0 ? (
-                <>{predictorMetrics.winRate > 0 ? (predictorMetrics.winRate * 100).toFixed(1) : 0}% Win Rate</>
+                <>{(predictorMetrics.winRate * 100).toFixed(1)}% Win Rate</>
               ) : (
                 "No trades yet"
               )}
@@ -389,14 +407,14 @@ export const Dashboard: React.FC = () => {
           </div>
           <div>
             <div className="text-[10px] text-text-muted uppercase tracking-wider">Risk Metrics</div>
-            <div className="text-xs font-bold mt-1 text-primary-light flex items-center gap-1.5">
-              {predictorMetrics.tradesCount >= 10 ? (
+            <div className="text-xs font-bold mt-1 text-primary flex items-center gap-1.5">
+              {predictorMetrics.tradesCount >= 2 ? (
                 <>
                   <span className="badge badge-primary shrink-0">Sharpe: {predictorMetrics.sharpeRatio.toFixed(2)}</span>
                   <span className="text-[10px] text-text-muted font-mono">DD: {predictorMetrics.maxDrawdownPct.toFixed(2)}%</span>
                 </>
               ) : (
-                <span className="text-[10px] text-text-muted">Need 10+ trades for metrics</span>
+                <span className="text-[10px] text-text-muted">Need 2+ trades for metrics</span>
               )}
             </div>
           </div>
