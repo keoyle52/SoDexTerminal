@@ -46,13 +46,18 @@ Addressing critical feedback from the Wave 1 jury, we implemented a robust valid
 - **Timeframe Edge vs. Fee Friction:** Supports backtesting across 1m, 3m, 5m, 15m, and 60m timeframes, visually demonstrating the math of fee friction (unprofitable low timeframes due to Sodex's 0.08% round-trip fee) versus the positive expectancy of macro timeframes.
 - **Strategy Report Card:** Side-by-side comparison of bot configurations and correlation analysis with news sentiment.
 
-### 4. 💬 Telegram Bot Integration
+### 4. 🛡️ Positions & Risk Centre (Capital Preservation)
+Addresses jury criticisms regarding failure-case management and safety:
+- **Value-at-Risk (VaR):** Computes real-time portfolio margin, leverage, and 95% confidence parametric VaR to warn users of capital exposure.
+- **Failure-Case Mitigation Panel:** Outlines automated system defenses (dynamic score filters, stop-loss triggers, and websocket latency guards) against sideways desyncs, flash crashes, and API disconnects.
+
+### 5. 💬 Telegram Bot Integration
 Bridges the terminal to the user's mobile device for secure, remote monitoring:
 - Link the terminal to a private Telegram chat using simple verification.
 - Recieve real-time alerts on AI market regime changes and BTC Predictor signals.
 - Streams live bot executions, PnL settlements, and daily performance reports directly to chat.
 
-### 5. 🤝 Strategy Marketplace & Leaderboard
+### 6. 🤝 Strategy Marketplace & Leaderboard
 A collaborative hub where users can publish, view, and clone successful bot configurations:
 - Creator profiles represented by truncated EVM addresses (linked securely).
 - Public leaderboard showing performance metrics.
@@ -84,8 +89,10 @@ A collaborative hub where users can publish, view, and clone successful bot conf
 - [x] **BTC Predictor Headline Feature:** Unified 13-signal consensus rules + Gemini AI validation.
 - [x] **Data-Aligned Backtesting:** Historical backtests incorporating real SoSoValue flow data.
 - [x] **Timeframe Optimization:** Timeframe selections (1m - 60m) to analyze profitability vs. fee drag.
+- [x] **Positions & Risk Centre:** Real-time 95% VaR calculations and Failure-Case Mitigation Panel.
 - [x] **Telegram Bot Integration:** Setup credentials, log streaming, and live alert webhooks.
 - [x] **Strategy Marketplace:** Interactive community strategy leaderboard and configuration sharing.
+- [x] **UI/UX & Branding Redesign:** Complete dark-mode Glassmorphism layout and custom gradient assets.
 - [x] **Mobile Responsiveness:** Redesigned responsive glassmorphic layouts for all viewports.
 
 ### Wave 3 (Planned)
