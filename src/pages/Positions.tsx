@@ -44,6 +44,15 @@ interface HistoricalFill {
   tradeID: number;
 }
 
+function getCollateralWeight(coin: string): number {
+  const upper = coin.toUpperCase().replace(/^V/, '');
+  if (['USD', 'USDT', 'USDC'].includes(upper)) return 1.0;
+  if (['BTC'].includes(upper)) return 0.90;
+  if (['ETH'].includes(upper)) return 0.90;
+  if (['SOSO'].includes(upper)) return 0.50;
+  return 0.80;
+}
+
 export const Positions: React.FC = () => {
   const store = useSettingsStore();
   const { confirmOrders } = store;
@@ -75,13 +84,27 @@ export const Positions: React.FC = () => {
         priceMap[p.symbol] = parseFloat(p.markPrice ?? p.price ?? 0);
       }
 
-      // Parse balance
+      // Parse balance with weighted collateral calculation (USDT 100%, BTC/ETH 90%, SOSO 50%)
       const balancesArr = Array.isArray(rawBalances) ? rawBalances : [];
-      let totalBalance = 0;
+      let totalWeightedCollateral = 0;
       for (const b of balancesArr) {
-        totalBalance += parseFloat(b.total ?? b.balance ?? b.available ?? b.totalBalance ?? 0);
+        const amt = parseFloat(b.total ?? b.balance ?? b.available ?? b.totalBalance ?? 0);
+        const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? 'USDT').toUpperCase();
+        const baseCoin = coin.replace(/^V/, '');
+        
+        let price = parseFloat(b.price ?? 0);
+        if (price <= 0) {
+          if (['USD', 'USDT', 'USDC'].includes(baseCoin)) {
+            price = 1.0;
+          } else {
+            price = priceMap[`${baseCoin}-USD`] ?? priceMap[`${baseCoin}USDT`] ?? priceMap[baseCoin] ?? (baseCoin === 'SOSO' ? 0.28 : 1.0);
+          }
+        }
+
+        const weight = getCollateralWeight(coin);
+        totalWeightedCollateral += amt * price * weight;
       }
-      setMarginBalance(totalBalance);
+      setMarginBalance(totalWeightedCollateral);
 
       // Parse history/fills
       let fills = Array.isArray(rawFills) ? (rawFills as any[]) : [];
