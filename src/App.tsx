@@ -31,7 +31,6 @@ const lazyFrom = (mod: LazyImport, key: string) => lazy(() => mod().then((m) => 
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
 const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
 const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
-const Positions    = lazyFrom(() => import('./pages/Positions').then(m => ({ default: m.Positions })), 'Positions');
 const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })), 'Alerts');
 const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
 const MarketIntel  = lazyFrom(() => import('./pages/MarketIntel').then(m => ({ default: m.MarketIntel })), 'MarketIntel');
@@ -39,7 +38,7 @@ const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ def
 
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
 const AiAlphaMatrix     = lazyFrom(() => import('./pages/AiAlphaMatrix').then(m => ({ default: m.AiAlphaMatrix })), 'AiAlphaMatrix');
-const RiskCentre        = lazyFrom(() => import('./pages/RiskCentre').then(m => ({ default: m.RiskCentre })), 'RiskCentre');
+const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
 import { HeaderDock } from './components/HeaderDock';
 
 /**
@@ -86,7 +85,7 @@ function preloadCommonPages(): void {
     .requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
   idle(() => {
     void import('./pages/TerminalWorkspace');
-    void import('./pages/Positions');
+    void import('./pages/AccountAndRisk');
   });
 }
 
@@ -128,8 +127,9 @@ function App() {
                   <Routes>
                     <Route path="/terminal"        element={<TerminalWorkspace />} />
                     <Route path="/dashboard"       element={<Navigate to="/terminal" replace />} />
-                    <Route path="/positions"       element={<Positions />} />
-                    <Route path="/risk"            element={<RiskCentre />} />
+                    <Route path="/account"          element={<AccountAndRisk />} />
+                    <Route path="/positions"       element={<Navigate to="/account" replace />} />
+                    <Route path="/risk"            element={<Navigate to="/account" replace />} />
                     <Route path="/alpha"           element={<AiAlphaMatrix />} />
                     <Route path="/btc-predictor"   element={<Navigate to="/alpha" replace />} />
                     <Route path="/trading-bots"    element={<TradingBots />} />
