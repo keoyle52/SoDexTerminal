@@ -20,6 +20,7 @@ import {
   getDemoAccountState,
   getDemoFeeRate,
   getDemoOrderStatus,
+  getDemoMarkPrices,
   type DemoReplaceInput,
 } from './demoEngine';
 
@@ -899,6 +900,7 @@ export async function fetchCoins(market: 'spot' | 'perps' = 'perps') {
 }
 
 export async function fetchMarkPrices() {
+  if (isDemo()) return getDemoMarkPrices();
   const res = await withRetry(() => perpsClient.get('/markets/mark-prices'));
   return res?.data ?? res ?? [];
 }

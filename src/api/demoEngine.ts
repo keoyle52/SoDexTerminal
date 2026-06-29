@@ -255,6 +255,7 @@ async function syncRealTickers() {
     
     for (const t of tickers) {
       const sym = normaliseSymbolForKey(t.symbol);
+      if (sym === 'SOSO-USD' || sym === 'SOSO') continue;
       const row = _state.tickers.get(sym);
       if (row) {
         const last = parseFloat(String(t.lastPx ?? t.lastPrice)) || row.lastPrice;
@@ -565,6 +566,15 @@ export function getDemoOrderHistory(market: Market, params: { symbol?: string; l
   }).sort((a, b) => b.updatedAt - a.updatedAt);
   const limited = params.limit ? orders.slice(0, params.limit) : orders;
   return limited.map(formatOrder);
+}
+
+export function getDemoMarkPrices() {
+  ensureInit();
+  return Array.from(_state.tickers.values()).map((t) => ({
+    symbol: t.symbol,
+    markPrice: t.markPrice,
+    price: t.markPrice,
+  }));
 }
 
 function formatOrder(o: DemoOrder) {
