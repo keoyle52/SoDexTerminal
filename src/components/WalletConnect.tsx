@@ -21,13 +21,37 @@ export const WalletConnect: React.FC<{ className?: string }> = ({ className }) =
   const [hasMetaMask, setHasMetaMask] = useState(false);
 
   useEffect(() => {
-    // Check if MetaMask or any EIP-1193 wallet is available
-    const checkWallet = () => {
+    const checkWallet = async () => {
       const win = window as any;
-      setHasMetaMask(!!win.ethereum);
+      const available = !!win.ethereum;
+      setHasMetaMask(available);
+
+      if (available && win.ethereum.request) {
+        try {
+          const accounts = await win.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts[0]) {
+            connectWallet(accounts[0]);
+          }
+        } catch {
+          // Ignore error on silent check
+        }
+
+        const handleAccountsChanged = (accs: string[]) => {
+          if (accs && accs.length > 0) {
+            connectWallet(accs[0]);
+          } else {
+            disconnectWallet();
+          }
+        };
+
+        win.ethereum.on?.('accountsChanged', handleAccountsChanged);
+        return () => {
+          win.ethereum.removeListener?.('accountsChanged', handleAccountsChanged);
+        };
+      }
     };
     checkWallet();
-  }, []);
+  }, [connectWallet, disconnectWallet]);
 
   const handleConnect = async () => {
     const win = window as any;

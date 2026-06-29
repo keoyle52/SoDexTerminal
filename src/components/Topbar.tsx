@@ -4,6 +4,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound, Wallet, X, AlertCircle, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
+import WalletConnect from './WalletConnect';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':        'Dashboard',
@@ -76,14 +77,31 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Security & Technical Notice */}
-          <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl space-y-1.5">
-            <div className="flex items-center gap-2 text-primary">
-              <KeyRound size={13} className="shrink-0" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Protocol Notice</span>
+          {/* Web3 Wallet Connect (Recommended) */}
+          <div className="p-3.5 bg-primary/10 border border-primary/30 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-primary">
+                <Wallet size={14} />
+                <span className="text-xs font-bold uppercase tracking-wider">Web3 Wallet (Non-Custodial)</span>
+              </div>
+              <span className="text-[9px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-bold uppercase">Recommended</span>
             </div>
-            <p className="text-[10px] text-text-secondary leading-relaxed">
-              Entering the private key is not our choice but a technical requirement of the SoDEX protocol for EIP-712 automated transaction signing. Your credentials are stored strictly locally in your browser memory and are never transmitted to any external server.
+            <p className="text-[11px] text-text-secondary leading-relaxed">
+              Connect your Web3 Wallet (MetaMask) for non-custodial EIP-712 transaction signing on SoDEX. No private keys stored.
+            </p>
+            <div className="pt-1">
+              <WalletConnect />
+            </div>
+          </div>
+
+          {/* Security & Technical Notice */}
+          <div className="p-3 bg-white/[0.03] border border-border rounded-xl space-y-1.5">
+            <div className="flex items-center gap-2 text-text-secondary">
+              <KeyRound size={13} className="shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Automated Bot Key (Optional)</span>
+            </div>
+            <p className="text-[10px] text-text-muted leading-relaxed">
+              If running 24/7 automated bots without browser popups, you can optionally provide an isolated bot private key below.
             </p>
           </div>
 
@@ -262,8 +280,8 @@ export const Topbar: React.FC = () => {
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname] ?? 'Terminal';
   const store = useSettingsStore();
-  const isConnected = !!store.privateKey;
-  const activeAddress = store.evmAddress || (store.privateKey ? deriveAddressFromPrivateKey(store.privateKey) : '');
+  const isConnected = store.isWalletConnected || !!store.privateKey;
+  const activeAddress = store.walletAddress || store.evmAddress || (store.privateKey ? deriveAddressFromPrivateKey(store.privateKey) : '');
   const isLight = store.theme === 'light';
   const [showWalletModal, setShowWalletModal] = useState(false);
 

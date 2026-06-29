@@ -12,6 +12,7 @@ import { Input } from '../components/common/Input';
 import { Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { cn } from '../lib/utils';
+import WalletConnect from '../components/WalletConnect';
 
 const TABS = [
   { id: 'api' as const, label: 'API Connection', icon: Key },
@@ -40,9 +41,9 @@ export const Settings: React.FC = () => {
 
   const evmAddressLooksValid = !store.evmAddress || ethers.isAddress(store.evmAddress.trim());
 
-  const credentialsMissing = store.isTestnet
+  const credentialsMissing = !store.isWalletConnected && (store.isTestnet
     ? !store.testnetPrivateKey
-    : !store.mainnetApiKeyName || !store.mainnetPrivateKey || !store.mainnetEvmAddress;
+    : !store.mainnetApiKeyName || !store.mainnetPrivateKey || !store.mainnetEvmAddress);
 
   const handleTestConnection = async () => {
     if (!effectiveAddress) {
@@ -97,11 +98,26 @@ export const Settings: React.FC = () => {
         <div className="animate-fade-in">
           {activeTab === 'api' && (
             <div className="space-y-5 max-w-xl">
+              {/* Web3 Wallet Connection Card */}
+              <Card className="border-primary/30 bg-primary/5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Wallet size={18} className="text-primary" />
+                    <h3 className="text-sm font-bold text-text-primary">Web3 Wallet Connection (Recommended)</h3>
+                  </div>
+                  <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded font-bold uppercase">Non-Custodial</span>
+                </div>
+                <p className="text-xs text-text-secondary mb-4 leading-relaxed">
+                  Connect your MetaMask or browser Web3 wallet to sign SoDEX orders directly via EIP-712. No private keys are stored or persisted.
+                </p>
+                <WalletConnect />
+              </Card>
+
               {credentialsMissing && (
                 <div className="flex items-start gap-2.5 p-3 rounded-lg bg-danger/10 border border-danger/25">
                   <FlaskConical size={14} className="text-danger shrink-0 mt-0.5" />
                   <p className="text-xs text-danger leading-snug">
-                    <strong>Required credentials missing.</strong> Fill in the fields marked <span className="text-danger font-bold">*</span> below to place orders and use bot features.
+                    <strong>Required credentials missing.</strong> Connect your Web3 wallet above or fill in the private key fields below to place orders and use bot features.
                   </p>
                 </div>
               )}

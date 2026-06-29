@@ -150,19 +150,22 @@ function resolveActive(state: {
   testnetEvmAddress: string;
   testnetApiKeyName: string;
 }): { apiKeyName: string; privateKey: string; evmAddress: string } {
+  const isWallet = state.isWalletConnected && !!state.walletAddress;
   if (state.isTestnet) {
+    const evm = isWallet ? (state.testnetEvmAddress || state.walletAddress) : state.testnetEvmAddress;
+    const keyName = isWallet ? (state.testnetApiKeyName || state.walletApiKeyName || state.walletAddress) : state.testnetApiKeyName;
     return {
-      // If user registered an API key on testnet, use it. Otherwise fall
-      // back to the derived address at request time (see signer.resolveApiKey).
-      apiKeyName: state.testnetApiKeyName,
+      apiKeyName: keyName,
       privateKey: state.testnetPrivateKey,
-      evmAddress: state.testnetEvmAddress,
+      evmAddress: evm,
     };
   }
+  const evm = isWallet ? (state.mainnetEvmAddress || state.walletAddress) : state.mainnetEvmAddress;
+  const keyName = isWallet ? (state.mainnetApiKeyName || state.walletApiKeyName || state.walletAddress) : state.mainnetApiKeyName;
   return {
-    apiKeyName: state.mainnetApiKeyName,
+    apiKeyName: keyName,
     privateKey: state.mainnetPrivateKey,
-    evmAddress: state.mainnetEvmAddress,
+    evmAddress: evm,
   };
 }
 
@@ -197,21 +200,22 @@ export const useSettingsStore = create<SettingsState>()(
       theme: 'dark',
       telegramChatId: '',
 
-      connectWallet: (_address) => {
+      connectWallet: (address) => {
         set((s) => {
-          const next = { ...s, isWalletConnected: false, walletAddress: '' };
+          const addr = (address || '').trim().toLowerCase();
+          const next = { ...s, isWalletConnected: true, walletAddress: addr };
           return { ...next, ...resolveActive(next) };
         });
       },
       disconnectWallet: () => {
         set((s) => {
-          const next = { ...s, isWalletConnected: false, walletAddress: '' };
+          const next = { ...s, isWalletConnected: false, walletAddress: '', walletApiKeyName: '' };
           return { ...next, ...resolveActive(next) };
         });
       },
-      setWalletApiKeyName: (_val) => {
+      setWalletApiKeyName: (val) => {
         set((s) => {
-          const next = { ...s, walletApiKeyName: '' };
+          const next = { ...s, walletApiKeyName: val.trim() };
           return { ...next, ...resolveActive(next) };
         });
       },
@@ -345,9 +349,6 @@ export const useSettingsStore = create<SettingsState>()(
       // credentials without needing the user to touch the UI.
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        state.isWalletConnected = false;
-        state.walletAddress = '';
-        state.walletApiKeyName = '';
         const active = resolveActive(state);
         state.apiKeyName = active.apiKeyName;
         state.privateKey = active.privateKey;

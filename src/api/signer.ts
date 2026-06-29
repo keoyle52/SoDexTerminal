@@ -230,16 +230,10 @@ export function resolveApiKey(params: {
   apiKeyName?: string;
   privateKey?: string;
   isTestnet: boolean;
+  walletAddress?: string;
 }): string {
-  const { apiKeyName, privateKey } = params;
-  // Derived address from ethers is checksummed (mixed-case). SoDEX
-  // backend matches keys in lowercase (same convention as the URL-path
-  // address used by services.ts getEvmAddress). Always lowercase to
-  // avoid "api key not found" when the registered key is lowercase.
-  const derived = deriveAddressFromPrivateKey(privateKey ?? '').toLowerCase();
-  // The user-supplied name is sent verbatim only if it looks like an
-  // EVM address; otherwise honour their casing exactly (some setups use
-  // a non-address label).
+  const { apiKeyName, privateKey, walletAddress } = params;
+  const derived = deriveAddressFromPrivateKey(privateKey ?? '').toLowerCase() || (walletAddress ?? '').toLowerCase();
   const rawName = (apiKeyName ?? '').trim();
   const name = /^0x[0-9a-fA-F]{40}$/.test(rawName) ? rawName.toLowerCase() : rawName;
   return name || derived;

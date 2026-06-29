@@ -27,12 +27,12 @@ spotClient.interceptors.request.use(async (config) => {
   const state = useSettingsStore.getState();
   config.baseURL = state.isTestnet ? BASE_URL_TESTNET : BASE_URL_MAINNET;
 
-  const { apiKeyName, privateKey, isTestnet } = state;
+  const { apiKeyName, privateKey, isTestnet, isWalletConnected, walletAddress } = state;
   const method = (config.method ?? 'GET').toUpperCase();
 
-  // Sign write (non-GET) requests if a private key is provided
-  if (method !== 'GET' && privateKey) {
-    const effectiveApiKey = resolveApiKey({ apiKeyName, privateKey, isTestnet });
+  // Sign write (non-GET) requests if private key OR connected Web3 wallet is active
+  if (method !== 'GET' && (privateKey || (isWalletConnected && walletAddress))) {
+    const effectiveApiKey = resolveApiKey({ apiKeyName, privateKey, isTestnet, walletAddress });
 
     if (!effectiveApiKey) {
       return Promise.reject(new Error('Invalid credentials: could not resolve wallet address'));
@@ -40,6 +40,7 @@ spotClient.interceptors.request.use(async (config) => {
 
     const payload = (config.data ?? {}) as Record<string, unknown>;
     const actionType = deriveActionType(method, config.url ?? '');
+    const useBrowserWallet = isWalletConnected && !!walletAddress && !privateKey;
     try {
       const { signature, nonce } = await signPayload(
         actionType,
@@ -48,16 +49,15 @@ spotClient.interceptors.request.use(async (config) => {
         'spot',
         isTestnet,
         effectiveApiKey,
-        false
+        useBrowserWallet
       );
       config.headers['X-API-Key'] = effectiveApiKey;
       config.headers['X-API-Nonce'] = nonce;
       config.headers['X-API-Sign'] = signature;
 
       if (typeof window !== 'undefined') {
-         
         console.log(
-          `[spotClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'} (PK)%c ${method} ${config.url}`
+          `[spotClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'} (${useBrowserWallet ? 'Web3Wallet' : 'PK'})%c ${method} ${config.url}`
           + `\n  X-API-Key  = ${effectiveApiKey}`
           + `\n  X-API-Nonce= ${nonce}`
           + `\n  action     = ${actionType}`,
