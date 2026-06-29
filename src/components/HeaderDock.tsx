@@ -28,7 +28,7 @@ export const HeaderDock: React.FC = () => {
   const [tickerPrices, setTickerPrices] = useState<Record<string, { price: number; change: number }>>({
     'BTC-USD': { price: 84312.5, change: 2.34 },
     'ETH-USD': { price: 3241.8, change: 1.12 },
-    'SOSO-USD': { price: 4.85, change: 5.42 },
+    'SOSO-USD': { price: 0.28, change: 5.42 },
   });
 
   // Fetch real live prices continuously
@@ -64,7 +64,7 @@ export const HeaderDock: React.FC = () => {
 
   const btc = tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 84312.5, change: 2.34 };
   const eth = tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 3241.8, change: 1.12 };
-  const soso = tickerPrices['SOSO-USD'] || tickerPrices['SOSOUSDT'] || { price: 4.85, change: 5.42 };
+  const soso = tickerPrices['SOSO-USD'] || tickerPrices['SOSOUSDT'] || { price: 0.28, change: 5.42 };
 
   return (
     <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border shadow-lg">
@@ -73,7 +73,7 @@ export const HeaderDock: React.FC = () => {
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="font-bold text-text-primary">SOSO/USD</span>
-          <span className="text-primary font-bold">${soso.price.toFixed(2)}</span>
+          <span className="text-primary font-bold">${soso.price < 1 ? soso.price.toFixed(4) : soso.price.toFixed(2)}</span>
           <span className="text-[10px] text-emerald-400 flex items-center"><TrendingUp size={10} className="mr-0.5" />+{soso.change}%</span>
         </div>
 
