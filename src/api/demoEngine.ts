@@ -255,7 +255,6 @@ async function syncRealTickers() {
     
     for (const t of tickers) {
       const sym = normaliseSymbolForKey(t.symbol);
-      if (sym === 'SOSO-USD' || sym === 'SOSO') continue;
       const row = _state.tickers.get(sym);
       if (row) {
         const last = parseFloat(String(t.lastPx ?? t.lastPrice)) || row.lastPrice;
@@ -275,19 +274,15 @@ async function syncRealTickers() {
   }
 }
 
-/**
- * One simulation step:
- *  1. Move every ticker by ~±0.2% with tiny bias toward mean-reversion.
- *  2. Update book bid/ask around the new mid.
- *  3. Update positions' markPrice / unrealizedPnl.
- *  4. Try to fill any open orders whose trigger price was crossed.
- *  5. Fire the scheduled-cancel "dead man's switch" if its timer elapsed.
- *  6. Notify subscribers (so useLiveTicker-like hooks can re-render).
- */
 function tick(): void {
   const now = Date.now();
 
   for (const t of _state.tickers.values()) {
+    // Continuous live price micro-fluctuations
+    const microDelta = t.markPrice * (Math.random() * 0.0016 - 0.0008);
+    t.markPrice = Math.max(0.0001, t.markPrice + microDelta);
+    t.lastPrice = t.markPrice;
+
     if (now >= t.nextFundingTime) {
       t.nextFundingTime = now + FUNDING_INTERVAL_MS;
       t.fundingRate = jitter(t.fundingRate, 0.5);
