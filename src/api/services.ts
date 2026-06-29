@@ -806,8 +806,9 @@ function mulberry32(seed: number): () => number {
 }
 
 function generateDemoKlinesForSymbol(symbol: string, interval: string, limit: number): Record<string, unknown>[] {
-  const cleanSymbol = symbol.replace(/_/g, '-').replace(/-USDC$/i, '-USD').toUpperCase();
-  const ticker = DEMO_TICKERS.find((t) => t.symbol === cleanSymbol) || { lastPrice: 84000 };
+  let cleanSymbol = symbol.replace(/_/g, '-').replace(/-USDC$/i, '-USD').replace(/USDT$/i, '-USD').toUpperCase();
+  if (cleanSymbol === 'SOSO' || cleanSymbol === 'SOSOUSDT') cleanSymbol = 'SOSO-USD';
+  const ticker = DEMO_TICKERS.find((t) => t.symbol === cleanSymbol) || DEMO_TICKERS.find((t) => t.symbol.startsWith(cleanSymbol.split('-')[0])) || { lastPrice: 0.28 };
   const basePrice = ticker.lastPrice;
   
   const seed = hashSeed(`${cleanSymbol}-${interval}`);

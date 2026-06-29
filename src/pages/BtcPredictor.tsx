@@ -67,9 +67,6 @@ import {
 import { fetchSosoNews, fetchEtfHistoricalInflow } from '../api/sosoServices';
 import { fetchBtcPurchaseHistory } from '../api/sosoExtraServices';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const SYMBOL = 'BTC-USD';
 const DURATION_OPTIONS: { value: CycleDurationMinutes; label: string; sub: string }[] = [
   { value: 1,  label: '1 min',  sub: 'Scalp' },
   { value: 3,  label: '3 min',  sub: 'Fast' },
@@ -191,6 +188,9 @@ export const BtcPredictor: React.FC = () => {
   const aiSkipOnDisagree = predictor.aiSkipOnDisagree;
 
   // ── Local UI state ────────────────────────────────────────────────────────
+  const [selectedAsset, setSelectedAsset] = useState<'SOSO' | 'BTC' | 'ETH' | 'SOL'>('SOSO');
+  const symbol = `${selectedAsset}-USD`;
+
   const [activeTab, setActiveTab] = useState<'live' | 'performance' | 'how'>('live');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -205,41 +205,24 @@ export const BtcPredictor: React.FC = () => {
   const [btDuration, setBtDuration] = useState<CycleDurationMinutes>(5);
   const [showEvidence, setShowEvidence] = useState(false);
 
-  // ── Live mark price ───────────────────────────────────────────────────────
-  // We layer two sources so the "Live" + "Δ since entry" overlay never falls
-  // out of sync with reality:
-  //   1. SoDEX WebSocket via useLivePrice() — sub-second tick updates when
-  //      the ws connection is up.
-  //   2. REST polling every 3s via fetchMarkPriceFor() — guaranteed updates
-  //      even if the websocket is blocked by the user's network or hasn't
-  //      reconnected yet after a sleep/wake cycle.
-  // The display price is always max(ws, rest) so we never regress to a
-  // stale tick.
-  const wsPrice = useLivePrice(SYMBOL, predictor.entryPrice ?? 0, 'perps');
+  const wsPrice = useLivePrice(symbol, predictor.entryPrice ?? 0, 'perps');
   const [restPrice, setRestPrice] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
       try {
-        const px = await fetchMarkPriceFor(SYMBOL);
+        const px = await fetchMarkPriceFor(symbol);
         if (!cancelled && px && px > 0) setRestPrice(px);
-      } catch { /* swallow — REST blip is non-fatal, ws will catch up */ }
+      } catch { /* swallow */ }
     };
     void tick();
     const id = window.setInterval(() => { void tick(); }, 3_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  }, [symbol]);
 
-  // Pick whichever source is most recent / non-zero. ws takes priority when
-  // it has produced a tick, REST fills the gap otherwise.
   const livePrice = wsPrice > 0 ? wsPrice : restPrice;
 
-  // ── Cycle scheduler refs (avoid stale-closure bugs) ───────────────────────
-  // The scheduler closure must NOT capture livePrice or the whole predictor
-  // object — both change on every WS tick and would tear down the recurring
-  // interval before it ever fired. We mirror the volatile reads through
-  // refs that the closure dereferences just-in-time.
   const intervalRef = useRef<number | null>(null);
   const cycleInflightRef = useRef(false);
   const livePriceRef = useRef(livePrice);
@@ -247,9 +230,8 @@ export const BtcPredictor: React.FC = () => {
 
   useEffect(() => { livePriceRef.current = livePrice; }, [livePrice]);
 
-  // Build (and cache) the active CycleConfig from the user's settings.
   const cfg = useMemo<CycleConfig>(() => ({
-    symbol: SYMBOL,
+    symbol,
     durationMinutes: duration,
     tradeAmountUsdt: parseFloat(tradeAmountUsdt) || 0,
     leverage: tradeLeverage,
@@ -258,7 +240,7 @@ export const BtcPredictor: React.FC = () => {
     aiSizeAdjust: aiSizeAdjustEnabled,
     aiSkipOnDisagree,
   }), [
-    duration, minConfidence,
+    symbol, duration, minConfidence,
     tradeAmountUsdt, tradeLeverage, autoTradeEnabled,
     aiSizeAdjustEnabled, aiSkipOnDisagree,
   ]);
@@ -292,7 +274,7 @@ export const BtcPredictor: React.FC = () => {
         const live = livePriceRef.current;
         const exit = live > 0
           ? live
-          : (await fetchMarkPriceFor(SYMBOL)) ?? head.entryPrice;
+          : (await fetchMarkPriceFor(symbol)) ?? head.entryPrice;
         store.resolvePrediction(head.id, exit);
       }
 
@@ -338,7 +320,7 @@ export const BtcPredictor: React.FC = () => {
       // 5. Persist open position if a trade was placed.
       if (result.trade?.placed && result.trade.side && result.trade.quantity) {
         store.setOpenPosition({
-          symbol: SYMBOL,
+          symbol,
           side: result.trade.side,
           quantity: result.trade.quantity,
           notionalUsdt: result.trade.notional ?? 0,
@@ -424,7 +406,7 @@ export const BtcPredictor: React.FC = () => {
       const interval = btDuration === 1 ? '1m' : btDuration === 3 ? '1m' : btDuration === 5 ? '5m' : btDuration === 15 ? '15m' : '1h';
       
       // Parallel fetches for multi-source historical alignment
-      const klinesP = loadKlines(SYMBOL, interval, 500);
+      const klinesP = loadKlines(symbol, interval, 500);
       const etfHistoryP = fetchEtfHistoricalInflow('us-btc-spot').catch(() => []);
       const fngHistoryP = fetchFearGreedHistory(300).catch(() => []);
       const newsP = fetchSosoNews(1, 100, [1, 3, 5]).catch(() => ({ list: [] }));
@@ -547,14 +529,14 @@ export const BtcPredictor: React.FC = () => {
               <Brain size={22} className="text-primary" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-bold text-text-primary">BTC Predictor</h2>
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <h2 className="text-base font-bold text-text-primary">Price Predictor</h2>
                 <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
-                  Headline
+                  Multi-Asset AI
                 </span>
                 {isDemoMode && (
                   <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
-                    Demo
+                    Demo Mode
                   </span>
                 )}
                 <span className={cn(
@@ -570,9 +552,28 @@ export const BtcPredictor: React.FC = () => {
                   {isRunning ? 'Running' : 'Stopped'}
                 </span>
               </div>
-              <p className="text-[11px] text-text-muted mt-1 leading-snug max-w-md">
-                AI-augmented BTC perps trader. Fuses 13 signals from SoDEX + SoSoValue + external sources
-                through a Gemini consensus overlay, then executes EIP-712 signed market orders on the SoDEX matching engine.
+
+              {/* Asset Selector Buttons */}
+              <div className="flex items-center gap-1.5 my-2">
+                <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold mr-1">Target Asset:</span>
+                {(['SOSO', 'BTC', 'ETH', 'SOL'] as const).map((ast) => (
+                  <button
+                    key={ast}
+                    onClick={() => setSelectedAsset(ast)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg text-xs font-bold transition-all',
+                      selectedAsset === ast
+                        ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm'
+                        : 'bg-background/60 text-text-muted border border-border/60 hover:text-text-secondary'
+                    )}
+                  >
+                    {ast === 'SOSO' ? '🪙 SOSO' : ast === 'BTC' ? '₿ BTC' : ast === 'ETH' ? '🔷 ETH' : '☀️ SOL'}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-[11px] text-text-muted leading-snug max-w-md">
+                AI-augmented multi-asset perps trader predicting price trends for {selectedAsset}. Fuses 13 quantitative signals from SoDEX + SoSoValue through Gemini AI consensus.
               </p>
             </div>
           </div>
@@ -966,7 +967,7 @@ export const BtcPredictor: React.FC = () => {
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <BarChart2 size={14} className="text-primary" />
-              <span className="text-sm font-bold text-text-primary">{SYMBOL} Live</span>
+              <span className="text-sm font-bold text-text-primary">{symbol} Live</span>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <ChartStat
@@ -994,7 +995,7 @@ export const BtcPredictor: React.FC = () => {
           </div>
         </div>
         <TradingChart
-          symbol={SYMBOL}
+          symbol={symbol.replace('-', '')}
           market="perps"
           height={420}
           markers={chartMarkers}

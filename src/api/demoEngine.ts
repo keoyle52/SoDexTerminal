@@ -220,10 +220,11 @@ function ensureInit(): void {
       : p.avgEntryPrice * (1 + 1 / p.leverage * 0.95),
   }));
 
-  // Seed balances — one demo USDC-equivalent + small BTC bag
+  // Seed balances — demo USDC + small BTC bag + 126 SOSO tokens
   _state.balances = [
     { id: 1, coin: 'vUSDC', total: DEMO_BALANCE, locked: 0, price: 1, marginRatio: 1 },
-    { id: 2, coin: 'vBTC', total: 0.05, locked: 0, price: _state.tickers.get('BTC-USD')?.lastPrice ?? 0, marginRatio: 0.5 },
+    { id: 2, coin: 'vBTC', total: 0.05, locked: 0, price: _state.tickers.get('BTC-USD')?.lastPrice ?? 84000, marginRatio: 0.9 },
+    { id: 3, coin: 'vSOSO', total: 126, locked: 0, price: 0.28, marginRatio: 0.5 },
   ];
 
   _state.initialised = true;

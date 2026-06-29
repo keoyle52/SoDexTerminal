@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { TradingChart } from '../components/TradingChart';
 import { AiOrchestratorPanel } from '../components/AiOrchestratorPanel';
-import { BtcPredictorFlowDiagram } from '../components/BtcPredictorFlowDiagram';
-import { Activity, TrendingUp, Cpu, Briefcase } from 'lucide-react';
+import { Activity, Briefcase } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
-import { cn } from '../lib/utils';
 
 export const TerminalWorkspace: React.FC = () => {
-  const [activeView, setActiveView] = useState<'chart' | 'signals'>('chart');
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background p-2 md:p-3 gap-3">
@@ -26,47 +23,13 @@ export const TerminalWorkspace: React.FC = () => {
                 Live SoDEX Feed
               </span>
             </div>
-
-            {/* View Switcher */}
-            <div className="flex items-center gap-1 p-1 bg-background/80 border border-border/80 rounded-lg">
-              <button
-                onClick={() => setActiveView('chart')}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all',
-                  activeView === 'chart'
-                    ? 'bg-primary/20 text-primary border border-primary/30 shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary'
-                )}
-              >
-                <TrendingUp size={13} />
-                Trading Chart
-              </button>
-              <button
-                onClick={() => setActiveView('signals')}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all',
-                  activeView === 'signals'
-                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary'
-                )}
-              >
-                <Cpu size={13} />
-                13-Signal AI Matrix
-              </button>
-            </div>
           </div>
 
           {/* View Container */}
           <div className="flex-1 min-h-0 relative rounded-xl overflow-hidden bg-background/40">
-            {activeView === 'chart' ? (
-              <div className="absolute inset-0">
-                <TradingChart symbol="SOSOUSDT" />
-              </div>
-            ) : (
-              <div className="absolute inset-0 overflow-y-auto p-3">
-                <BtcPredictorFlowDiagram />
-              </div>
-            )}
+            <div className="absolute inset-0">
+              <TradingChart symbol="SOSOUSDT" />
+            </div>
           </div>
         </div>
 

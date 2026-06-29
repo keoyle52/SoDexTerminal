@@ -74,48 +74,49 @@ export const TradingBots: React.FC = () => {
   const ActiveComponent = activeBot.component;
 
   return (
-    <div className="p-3 sm:p-5 md:p-6 h-full flex flex-col gap-5 overflow-y-auto">
-      {/* Header Banner */}
-      <div className="shrink-0 flex items-center justify-between flex-wrap gap-4 border border-border bg-surface/50 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md">
+    <div className="p-4 md:p-6 h-full flex flex-col gap-5 overflow-y-auto bg-background">
+      {/* Header Studio Banner */}
+      <div className="shrink-0 flex items-center justify-between flex-wrap gap-4 border border-border bg-surface rounded-2xl p-5 relative overflow-hidden shadow-xl">
         <div className={cn(
-          "absolute -right-32 -top-32 w-64 h-64 rounded-full bg-gradient-to-br blur-3xl opacity-10 transition-all duration-700",
+          "absolute -right-32 -top-32 w-64 h-64 rounded-full bg-gradient-to-br blur-3xl opacity-15 transition-all duration-700 pointer-events-none",
           activeBot.color
         )} />
         
         <div className="flex items-center gap-4 relative z-10">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Play size={22} className="text-primary" />
+          <div className="w-12 h-12 rounded-2xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-lg shadow-primary/10">
+            <Play size={22} />
           </div>
           <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              Trading Bots Hub
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                <Sparkles size={8} /> Algorithmic
+            <h2 className="text-xl font-extrabold flex items-center gap-2 text-text-primary">
+              Automated Execution Studio
+              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest bg-primary/20 text-primary px-2.5 py-0.5 rounded-full border border-primary/30">
+                <Sparkles size={10} /> Algorithmic
               </span>
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Consolidated automated execution control panel.
+              Deploy zero-latency quantitative strategies signed non-custodially via EIP-712 session keys.
             </p>
           </div>
         </div>
 
-        {/* Tab Selection */}
-        <div className="flex gap-1.5 p-1 bg-background/50 border border-border/80 rounded-xl relative z-10 w-fit shrink-0 overflow-x-auto max-w-full">
+        {/* Tab Selection Pills */}
+        <div className="flex gap-1.5 p-1.5 bg-background border border-border rounded-xl relative z-10 w-fit shrink-0 overflow-x-auto max-w-full shadow-inner">
           {(Object.keys(BOTS_CONFIG) as BotTab[]).map((tab) => {
             const bot = BOTS_CONFIG[tab];
             const isActive = currentTab === tab;
+            const Icon = bot.icon;
             return (
               <button
                 key={tab}
                 onClick={() => selectTab(tab)}
                 className={cn(
-                  'flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-all duration-200 whitespace-nowrap shrink-0',
+                  'flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-lg transition-all duration-200 whitespace-nowrap shrink-0',
                   isActive
-                    ? 'bg-primary/15 text-primary shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
+                    ? 'bg-primary text-background shadow-md shadow-primary/20 scale-[1.02]'
+                    : 'text-text-muted hover:text-text-primary hover:bg-white/[0.04]'
                 )}
               >
-                <bot.icon size={13} />
+                <Icon size={14} />
                 {bot.label}
               </button>
             );
@@ -123,17 +124,19 @@ export const TradingBots: React.FC = () => {
         </div>
       </div>
 
-      {/* Bot Rationale & Info Banner */}
-      <div className="shrink-0 flex items-center gap-3.5 px-4 py-3 rounded-xl bg-surface border border-border text-xs leading-relaxed backdrop-blur-sm">
-        <activeBot.icon size={15} className="text-primary shrink-0" />
+      {/* Active Bot Rationale Strip */}
+      <div className="shrink-0 flex items-center gap-3 px-4 py-3 rounded-xl bg-surface border border-border/80 text-xs leading-relaxed shadow-sm">
+        <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+          <activeBot.icon size={16} />
+        </div>
         <div className="flex-1">
-          <strong className="text-text-primary">{activeBot.label}: </strong>
+          <strong className="text-text-primary font-bold">{activeBot.label} Strategy: </strong>
           <span className="text-text-secondary">{activeBot.desc}</span>
         </div>
       </div>
 
-      {/* Active Bot Render Component */}
-      <div className="flex-1 min-h-0 bg-transparent rounded-2xl animate-fade-in">
+      {/* Active Bot Studio Container */}
+      <div className="flex-1 min-h-0 bg-surface border border-border rounded-2xl p-4 md:p-6 shadow-xl overflow-y-auto animate-fade-in">
         <ActiveComponent />
       </div>
     </div>
