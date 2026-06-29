@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
-import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound, Wallet, X, AlertCircle, Globe } from 'lucide-react';
+import { Wifi, WifiOff, Sun, Moon, FlaskConical, KeyRound, Wallet, X, AlertCircle, Globe, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
 import WalletConnect from './WalletConnect';
+import { OnboardingTour } from './OnboardingTour';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':        'Dashboard',
@@ -284,6 +285,7 @@ export const Topbar: React.FC = () => {
   const activeAddress = store.walletAddress || store.evmAddress || (store.privateKey ? deriveAddressFromPrivateKey(store.privateKey) : '');
   const isLight = store.theme === 'light';
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   return (
     <header className="h-14 border-b border-border bg-surface flex items-center justify-between pl-16 pr-5 md:px-5 shrink-0 z-40">
@@ -293,8 +295,19 @@ export const Topbar: React.FC = () => {
       </h1>
 
       {showWalletModal && <WalletSetupModal onClose={() => setShowWalletModal(false)} />}
+      <OnboardingTour isOpen={showTour} onClose={() => setShowTour(false)} />
 
       <div className="flex items-center gap-2">
+        {/* Quick Tour Button */}
+        <button
+          onClick={() => setShowTour(true)}
+          title="Platform Tour & Overview"
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-all shadow-sm"
+        >
+          <Sparkles size={13} className="animate-pulse" />
+          <span className="hidden sm:inline">Quick Tour</span>
+        </button>
+
         {/* Wallet Setup — opens dropdown modal with network + credentials */}
         <button
           onClick={() => setShowWalletModal((v) => !v)}

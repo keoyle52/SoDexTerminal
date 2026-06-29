@@ -8,17 +8,26 @@ import { cn } from '../lib/utils';
 
 const NAV_SECTIONS = [
   {
-    label: null,
+    label: 'Trading & Execution',
     items: [
       { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor', badge: 'Pro' },
-      { to: '/trading-bots',  icon: Layers,         label: 'Trading Bots' },
+      { to: '/trading-bots',  icon: Layers,         label: 'Trading Bots', badge: '5 Bots' },
       { to: '/positions',     icon: LineChart,       label: 'Positions' },
-      { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting' },
-      { to: '/market-intel',  icon: BarChart2,      label: 'Market Intel', badge: 'New' },
-      { to: '/telegram',      icon: MessageSquare,  label: 'Telegram' },
-      { to: '/marketplace',   icon: Award,          label: 'Marketplace', badge: 'New' },
-      { to: '/settings',      icon: Settings,       label: 'Settings' },
+    ],
+  },
+  {
+    label: 'AI & Intelligence',
+    items: [
+      { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor', badge: 'AI Pro' },
+      { to: '/market-intel',  icon: BarChart2,      label: 'Market Intel' },
+      { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting & VaR' },
+    ],
+  },
+  {
+    label: 'Ecosystem & Tools',
+    items: [
+      { to: '/telegram',      icon: MessageSquare,  label: 'Telegram Bot' },
+      { to: '/marketplace',   icon: Award,          label: 'Marketplace' },
     ],
   },
 ];
@@ -73,9 +82,20 @@ export const Sidebar: React.FC = () => {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 h-14 shrink-0 border-b border-border">
-        <img src="/favicon.svg" alt="SoDEX Logo" className="w-5.5 h-5.5 shrink-0" />
-        <span className="text-sm font-semibold tracking-tight text-text-primary">SoDEX Terminal</span>
+      <div className="flex items-center gap-3 px-4 h-16 shrink-0 border-b border-border bg-white/[0.01]">
+        <div className="relative w-8 h-8 rounded-xl bg-surface-2 border border-primary/30 p-1 flex items-center justify-center shadow-md shadow-primary/10 group cursor-pointer">
+          <img src="/favicon.svg" alt="SoDEX Logo" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110" />
+          <span className="absolute inset-0 rounded-xl bg-primary/15 blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+        </div>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-bold tracking-tight text-text-primary">SoDEX</span>
+            <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.2 rounded bg-primary/20 text-primary border border-primary/30">
+              PRO
+            </span>
+          </div>
+          <span className="text-[10px] font-medium text-text-muted tracking-wide">Institutional PowerOps</span>
+        </div>
       </div>
 
       {/* Nav */}
