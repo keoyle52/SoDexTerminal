@@ -39,6 +39,7 @@ const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ def
 
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
 const AiAlphaMatrix     = lazyFrom(() => import('./pages/AiAlphaMatrix').then(m => ({ default: m.AiAlphaMatrix })), 'AiAlphaMatrix');
+const RiskCentre        = lazyFrom(() => import('./pages/RiskCentre').then(m => ({ default: m.RiskCentre })), 'RiskCentre');
 import { HeaderDock } from './components/HeaderDock';
 
 /**
@@ -125,9 +126,10 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Routes>
-                    <Route path="/terminal text"   element={<TerminalWorkspace />} />
                     <Route path="/terminal"        element={<TerminalWorkspace />} />
                     <Route path="/dashboard"       element={<Navigate to="/terminal" replace />} />
+                    <Route path="/positions"       element={<Positions />} />
+                    <Route path="/risk"            element={<RiskCentre />} />
                     <Route path="/alpha"           element={<AiAlphaMatrix />} />
                     <Route path="/btc-predictor"   element={<Navigate to="/alpha" replace />} />
                     <Route path="/trading-bots"    element={<TradingBots />} />
@@ -140,7 +142,6 @@ function App() {
                     <Route path="/market-intel"    element={<Navigate to="/intel" replace />} />
                     <Route path="/marketplace"     element={<StrategyMarketplace />} />
                     <Route path="/telegram"        element={<TelegramIntegration />} />
-                    <Route path="/positions"       element={<Positions />} />
                     <Route path="/alerts"          element={<Alerts />} />
                     <Route path="/backtesting"     element={<Backtesting />} />
                     <Route path="/ai-console"      element={<AiConsole />} />

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
 import {
-  Zap, Brain, BarChart2, FlaskConical, Settings, Sparkles, Wallet, TrendingUp, TrendingDown, Layers
+  Zap, Brain, BarChart2, FlaskConical, Settings, Sparkles, Wallet, TrendingUp, TrendingDown, Layers, Briefcase, Shield
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
@@ -10,9 +10,11 @@ import { OnboardingTour } from './OnboardingTour';
 
 const NAV_TABS = [
   { to: '/terminal', label: 'Terminal', icon: Zap, badge: 'Live Desk' },
+  { to: '/positions', label: 'Positions', icon: Briefcase },
+  { to: '/risk', label: 'Risk Centre', icon: Shield, badge: 'VaR 95%' },
   { to: '/alpha', label: 'AI Alpha Matrix', icon: Brain, badge: 'Gemini AI' },
   { to: '/intel', label: 'Market Intel', icon: BarChart2 },
-  { to: '/backtesting', label: 'Quant Lab', icon: FlaskConical, badge: '95% VaR' },
+  { to: '/backtesting', label: 'Quant Lab', icon: FlaskConical },
   { to: '/telegram', label: 'Telegram Bot', icon: Layers },
 ];
 

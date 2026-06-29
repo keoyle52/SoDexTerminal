@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { TradingChart } from '../components/TradingChart';
 import { TradingBots } from './TradingBots';
-import { Positions } from './Positions';
 import { BtcPredictorFlowDiagram } from '../components/BtcPredictorFlowDiagram';
-import { Activity, Layers, TrendingUp, Cpu } from 'lucide-react';
+import { Activity, TrendingUp, Cpu, Briefcase } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
 export const TerminalWorkspace: React.FC = () => {
@@ -17,7 +17,7 @@ export const TerminalWorkspace: React.FC = () => {
         {/* LEFT / CENTER: CHART & AI OVERLAY (8 Cols) */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-3 min-h-0 overflow-hidden bg-surface border border-border rounded-2xl p-3 shadow-xl relative">
           {/* Chart Header Bar */}
-          <div className="flex items-center justify-between shrink-0 border-b border-border/80 pb-2.5">
+          <div className="flex items-center justify-between shrink-0 border-b border-border/80 pb-2.5 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-text-primary flex items-center gap-1.5">
                 <Activity size={16} className="text-primary" /> BTC/USDT Perpetual
@@ -76,19 +76,19 @@ export const TerminalWorkspace: React.FC = () => {
         </div>
       </div>
 
-      {/* BOTTOM DOCKABLE POSITIONS & MONITOR PANEL */}
-      <div className="h-64 shrink-0 flex flex-col bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white/[0.02] shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
-              <Layers size={14} className="text-primary" /> Active Positions & Execution History
-            </span>
-          </div>
+      {/* BOTTOM QUICK ACCESS STRIP */}
+      <div className="h-10 shrink-0 flex items-center justify-between px-4 bg-surface border border-border rounded-xl text-xs text-text-muted font-medium">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Active Execution Daemons: <strong className="text-text-primary">2 Bots Running</strong></span>
         </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <Positions />
-        </div>
+        <NavLink
+          to="/positions"
+          className="flex items-center gap-1.5 font-bold text-primary hover:underline"
+        >
+          <Briefcase size={13} />
+          View Full Positions & Orders Manager →
+        </NavLink>
       </div>
     </div>
   );
