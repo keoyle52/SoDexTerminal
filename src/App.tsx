@@ -2,9 +2,7 @@ import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
-import { Sidebar } from './components/Sidebar';
 import { AiConsoleButton } from './components/AiConsoleButton';
-import { Topbar } from './components/Topbar';
 import { useSettingsStore } from './store/settingsStore';
 // Settings loaded synchronously to avoid Suspense stall issues
 import { Settings } from './pages/Settings';
@@ -30,7 +28,6 @@ const lazyFrom = (mod: LazyImport, key: string) => lazy(() => mod().then((m) => 
   ),
 })));
 
-const Dashboard    = lazyFrom(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })), 'Dashboard');
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
 const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
 const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
@@ -38,13 +35,15 @@ const Positions    = lazyFrom(() => import('./pages/Positions').then(m => ({ def
 const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })), 'Alerts');
 const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
 const MarketIntel  = lazyFrom(() => import('./pages/MarketIntel').then(m => ({ default: m.MarketIntel })), 'MarketIntel');
-const BtcPredictor = lazyFrom(() => import('./pages/BtcPredictor').then(m => ({ default: m.BtcPredictor })), 'BtcPredictor');
 const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })), 'AiConsole');
+
+const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
+const AiAlphaMatrix     = lazyFrom(() => import('./pages/AiAlphaMatrix').then(m => ({ default: m.AiAlphaMatrix })), 'AiAlphaMatrix');
+import { HeaderDock } from './components/HeaderDock';
 
 /**
  * Non-blocking Suspense fallback — a subtle top progress shimmer instead of
- * a full-screen spinner so the sidebar/topbar never collapse during a
- * route-chunk fetch.
+ * a full-screen spinner so components never collapse during a route-chunk fetch.
  */
 const PageLoader = () => (
   <div className="flex-1 relative">
@@ -59,14 +58,12 @@ const PageLoader = () => (
 
 /**
  * Keyed wrapper that re-mounts the active route's tree whenever the pathname
- * changes. The `key` prop resets previous-page React state (intervals,
- * subscriptions, stale fetch promises) and the `animate-fade-in` class adds
- * a short fade so the swap does not look jarring.
+ * changes.
  */
 function PageTransition({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   return (
-    <div key={location.pathname} className="animate-fade-in h-full">
+    <div key={location.pathname} className="animate-fade-in flex-1 flex flex-col min-h-0 overflow-hidden">
       {children}
     </div>
   );
@@ -87,9 +84,8 @@ function preloadCommonPages(): void {
   const idle = (window as unknown as { requestIdleCallback?: (cb: () => void) => void })
     .requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
   idle(() => {
+    void import('./pages/TerminalWorkspace');
     void import('./pages/Positions');
-    void import('./pages/GridBot');
-    void import('./pages/FundingTracker');
   });
 }
 
@@ -103,8 +99,6 @@ function App() {
     root.classList.toggle('theme-dark', theme === 'dark');
   }, [theme]);
 
-  // Drive the demo engine lifecycle off the `isDemoMode` flag so every page
-  // sees live-updating fake data without any per-page boilerplate.
   useEffect(() => {
     if (isDemoMode) {
       startDemoEngine();
@@ -113,50 +107,51 @@ function App() {
     return undefined;
   }, [isDemoMode]);
 
-  // Warm a handful of common page chunks once the user is likely idle.
   useEffect(() => {
     preloadCommonPages();
   }, []);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden text-text-primary font-sans antialiased bg-background selection:bg-primary/20">
+    <div className="flex flex-col h-screen w-screen overflow-hidden text-text-primary font-sans antialiased bg-background selection:bg-primary/20">
       <ScrollToTop />
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar />
-        <main id="app-main" className="flex-1 min-w-0 overflow-hidden flex flex-col">
-          <PageTransition>
-            <Routes>
-              <Route path="/settings" element={<Settings />} />
-              <Route
-                path="*"
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Routes>
-                      <Route path="/dashboard"       element={<Dashboard />} />
-                      <Route path="/trading-bots"    element={<TradingBots />} />
-                      <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
-                      <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
-                      <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
-                      <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
-                      <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
-                      <Route path="/marketplace"     element={<StrategyMarketplace />} />
-                      <Route path="/telegram"        element={<TelegramIntegration />} />
-                      <Route path="/positions"       element={<Positions />} />
-                      <Route path="/alerts"          element={<Alerts />} />
-                      <Route path="/backtesting"     element={<Backtesting />} />
-                      <Route path="/market-intel"    element={<MarketIntel />} />
-                      <Route path="/btc-predictor"   element={<BtcPredictor />} />
-                      <Route path="/ai-console"      element={<AiConsole />} />
-                      <Route path="*"                element={<Navigate to="/dashboard" replace />} />
-                    </Routes>
-                  </Suspense>
-                }
-              />
-            </Routes>
-          </PageTransition>
-        </main>
-      </div>
+      <HeaderDock />
+      
+      <main id="app-main" className="flex-1 min-w-0 overflow-hidden flex flex-col">
+        <PageTransition>
+          <Routes>
+            <Route path="/settings" element={<Settings />} />
+            <Route
+              path="*"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    <Route path="/terminal text"   element={<TerminalWorkspace />} />
+                    <Route path="/terminal"        element={<TerminalWorkspace />} />
+                    <Route path="/dashboard"       element={<Navigate to="/terminal" replace />} />
+                    <Route path="/alpha"           element={<AiAlphaMatrix />} />
+                    <Route path="/btc-predictor"   element={<Navigate to="/alpha" replace />} />
+                    <Route path="/trading-bots"    element={<TradingBots />} />
+                    <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
+                    <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
+                    <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
+                    <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
+                    <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
+                    <Route path="/intel"           element={<MarketIntel />} />
+                    <Route path="/market-intel"    element={<Navigate to="/intel" replace />} />
+                    <Route path="/marketplace"     element={<StrategyMarketplace />} />
+                    <Route path="/telegram"        element={<TelegramIntegration />} />
+                    <Route path="/positions"       element={<Positions />} />
+                    <Route path="/alerts"          element={<Alerts />} />
+                    <Route path="/backtesting"     element={<Backtesting />} />
+                    <Route path="/ai-console"      element={<AiConsole />} />
+                    <Route path="*"                element={<Navigate to="/terminal" replace />} />
+                  </Routes>
+                </Suspense>
+              }
+            />
+          </Routes>
+        </PageTransition>
+      </main>
 
       <Toaster
         position="bottom-right"
