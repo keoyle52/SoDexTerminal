@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TradingChart } from '../components/TradingChart';
-import { TradingBots } from './TradingBots';
+import { AiOrchestratorPanel } from '../components/AiOrchestratorPanel';
 import { BtcPredictorFlowDiagram } from '../components/BtcPredictorFlowDiagram';
 import { Activity, TrendingUp, Cpu, Briefcase } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -70,9 +70,9 @@ export const TerminalWorkspace: React.FC = () => {
           </div>
         </div>
 
-        {/* RIGHT: UNIFIED EXECUTION STUDIO (4 Cols) */}
+        {/* RIGHT: AI ORCHESTRATOR RECOMMENDATIONS PANEL (4 Cols) */}
         <div className="lg:col-span-5 xl:col-span-4 flex flex-col min-h-0 overflow-hidden bg-surface border border-border rounded-2xl shadow-xl">
-          <TradingBots />
+          <AiOrchestratorPanel />
         </div>
       </div>
 

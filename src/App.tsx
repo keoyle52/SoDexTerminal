@@ -32,13 +32,12 @@ const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ d
 const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
 const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
 const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })), 'Alerts');
-const Backtesting  = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
-const MarketIntel  = lazyFrom(() => import('./pages/MarketIntel').then(m => ({ default: m.MarketIntel })), 'MarketIntel');
 const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })), 'AiConsole');
 
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
 const AiAlphaMatrix     = lazyFrom(() => import('./pages/AiAlphaMatrix').then(m => ({ default: m.AiAlphaMatrix })), 'AiAlphaMatrix');
 const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
+const ResearchHub       = lazyFrom(() => import('./pages/ResearchHub').then(m => ({ default: m.ResearchHub })), 'ResearchHub');
 import { HeaderDock } from './components/HeaderDock';
 
 /**
@@ -138,12 +137,13 @@ function App() {
                     <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
                     <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
                     <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
-                    <Route path="/intel"           element={<MarketIntel />} />
-                    <Route path="/market-intel"    element={<Navigate to="/intel" replace />} />
+                    <Route path="/research"        element={<ResearchHub />} />
+                    <Route path="/intel"           element={<Navigate to="/research" replace />} />
+                    <Route path="/market-intel"    element={<Navigate to="/research" replace />} />
+                    <Route path="/backtesting"     element={<Navigate to="/research" replace />} />
                     <Route path="/marketplace"     element={<StrategyMarketplace />} />
                     <Route path="/telegram"        element={<TelegramIntegration />} />
                     <Route path="/alerts"          element={<Alerts />} />
-                    <Route path="/backtesting"     element={<Backtesting />} />
                     <Route path="/ai-console"      element={<AiConsole />} />
                     <Route path="*"                element={<Navigate to="/terminal" replace />} />
                   </Routes>

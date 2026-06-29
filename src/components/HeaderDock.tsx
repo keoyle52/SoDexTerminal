@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
 import {
-  Zap, Brain, BarChart2, FlaskConical, Settings, Sparkles, Wallet, TrendingUp, Layers, Shield
+  Zap, Brain, BarChart2, FlaskConical, Settings, Sparkles, Wallet, TrendingUp, Layers, Shield, Bot
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
@@ -11,10 +11,10 @@ import { OnboardingTour } from './OnboardingTour';
 
 const NAV_TABS = [
   { to: '/terminal', label: 'Terminal', icon: Zap, badge: 'Live Desk' },
-  { to: '/account', label: 'Account & Risk', icon: Shield, badge: 'Unified' },
-  { to: '/alpha', label: 'AI Alpha Matrix', icon: Brain, badge: 'Gemini AI' },
-  { to: '/intel', label: 'Market Intel', icon: BarChart2 },
-  { to: '/backtesting', label: 'Quant Lab', icon: FlaskConical },
+  { to: '/trading-bots', label: 'Automated Bots', icon: Bot, badge: 'Studio' },
+  { to: '/alpha', label: 'Price Predictor', icon: Brain, badge: 'Gemini AI' },
+  { to: '/research', label: 'Research Hub', icon: BarChart2, badge: 'Intel & Quant' },
+  { to: '/account', label: 'Account & Risk', icon: Shield },
   { to: '/telegram', label: 'Telegram Bot', icon: Layers },
 ];
 
