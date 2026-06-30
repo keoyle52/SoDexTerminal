@@ -275,7 +275,7 @@ export const HeaderDock: React.FC = () => {
           const isUp = soso.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
           const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
-          const prefix = isUp ? '+' : '';
+
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isUp ? "bg-emerald-400" : "bg-red-400")} />
@@ -296,7 +296,7 @@ export const HeaderDock: React.FC = () => {
           const isUp = btc.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
           const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
-          const prefix = isUp ? '+' : '';
+
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">BTC/USD</span>
@@ -316,7 +316,7 @@ export const HeaderDock: React.FC = () => {
           const isUp = eth.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
           const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
-          const prefix = isUp ? '+' : '';
+
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">ETH/USD</span>
