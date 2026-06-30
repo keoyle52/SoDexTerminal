@@ -248,50 +248,42 @@ function stopTicker(): void {
 
 async function syncRealTickers() {
   try {
-    // 1. Fetch BTC, ETH, SOL from Binance
+    // 1. Fetch BTC, ETH, SOL from CoinCap (CORS-friendly public API)
     try {
-      const targetUrl = 'https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D';
-      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
-      let binanceRes = await fetch(proxyUrl);
-      if (!binanceRes.ok) {
-        binanceRes = await fetch(targetUrl);
-      }
-      if (binanceRes.ok) {
-        const binanceData = await binanceRes.json();
-        if (Array.isArray(binanceData)) {
-          for (const t of binanceData) {
+      const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.data)) {
+          for (const c of json.data) {
             let sym = '';
-            if (t.symbol === 'BTCUSDT') sym = 'BTC-USD';
-            else if (t.symbol === 'ETHUSDT') sym = 'ETH-USD';
-            else if (t.symbol === 'SOLUSDT') sym = 'SOL-USD';
+            if (c.symbol === 'BTC') sym = 'BTC-USD';
+            else if (c.symbol === 'ETH') sym = 'ETH-USD';
+            else if (c.symbol === 'SOL') sym = 'SOL-USD';
             
             if (sym) {
               const row = _state.tickers.get(sym);
               if (row) {
-                const last = parseFloat(String(t.lastPrice)) || row.lastPrice;
+                const last = parseFloat(c.priceUsd) || row.lastPrice;
                 row.lastPrice = last;
                 row.markPrice = last;
                 row.indexPrice = last;
-                row.openPrice = parseFloat(String(t.openPrice)) || row.openPrice;
-                row.high = parseFloat(String(t.highPrice)) || row.high;
-                row.low = parseFloat(String(t.lowPrice)) || row.low;
-                row.volume = parseFloat(String(t.volume)) || row.volume;
-                row.quoteVolume = parseFloat(String(t.quoteVolume)) || row.quoteVolume;
-                row.bidPrice = parseFloat(String(t.bidPrice)) || last * 0.9995;
-                row.askPrice = parseFloat(String(t.askPrice)) || last * 1.0005;
+                const chgPct = parseFloat(c.changePercent24Hr) || 0;
+                row.openPrice = last / (1 + chgPct / 100);
+                row.bidPrice = last * 0.9995;
+                row.askPrice = last * 1.0005;
               }
             }
           }
         }
       }
     } catch {
-      // Ignore binance fail
+      // Ignore
     }
 
-    // 2. Fetch SOSO from Gate.io
+    // 2. Fetch SOSO from Gate.io (via allorigins proxy to bypass CORS)
     try {
       const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
-      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
       let gateRes = await fetch(proxyUrl);
       if (!gateRes.ok) {
         gateRes = await fetch(targetUrl);

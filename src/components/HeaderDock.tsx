@@ -41,32 +41,33 @@ export const HeaderDock: React.FC = () => {
     let mounted = true;
     const loadPrices = async () => {
       try {
-        let binanceTickers: any[] = [];
+        let coincapData: any[] = [];
         let gateTicker: any = null;
 
-        // 1. Fetch BTC, ETH, SOL from Binance (via CORS proxy)
+        // 1. Fetch BTC, ETH, SOL from CoinCap (CORS-friendly public API)
         try {
-          const targetUrl = 'https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D';
-          const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
-          let res = await fetch(proxyUrl);
-          if (!res.ok) res = await fetch(targetUrl);
+          const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
           if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data)) binanceTickers = data;
+            const json = await res.json();
+            if (json && Array.isArray(json.data)) {
+              coincapData = json.data;
+            }
           }
         } catch {
           // ignore
         }
 
-        // 2. Fetch SOSO from Gate.io (via CORS proxy)
+        // 2. Fetch SOSO from Gate.io (via allorigins proxy to bypass CORS)
         try {
           const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
-          const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
           let res = await fetch(proxyUrl);
           if (!res.ok) res = await fetch(targetUrl);
           if (res.ok) {
             const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) gateTicker = data[0];
+            if (Array.isArray(data) && data.length > 0) {
+              gateTicker = data[0];
+            }
           }
         } catch {
           // ignore
@@ -85,14 +86,14 @@ export const HeaderDock: React.FC = () => {
           setTickerPrices((prev) => {
             const updated = { ...prev };
 
-            // Apply Binance updates
-            for (const t of binanceTickers) {
-              const price = parseFloat(t.lastPrice);
-              const change = parseFloat(t.priceChangePercent);
+            // Apply CoinCap updates
+            for (const c of coincapData) {
+              const price = parseFloat(c.priceUsd);
+              const change = parseFloat(c.changePercent24Hr);
               if (price > 0) {
-                if (t.symbol === 'BTCUSDT') updated['BTC-USD'] = { price, change };
-                else if (t.symbol === 'ETHUSDT') updated['ETH-USD'] = { price, change };
-                else if (t.symbol === 'SOLUSDT') updated['SOL-USD'] = { price, change };
+                if (c.symbol === 'BTC') updated['BTC-USD'] = { price, change };
+                else if (c.symbol === 'ETH') updated['ETH-USD'] = { price, change };
+                else if (c.symbol === 'SOL') updated['SOL-USD'] = { price, change };
               }
             }
 
@@ -148,12 +149,12 @@ export const HeaderDock: React.FC = () => {
     let mounted = true;
 
     const loadMeta = async () => {
-      // 1. Fetch Fear & Greed Index
+      // 1. Fetch Fear & Greed Index (Direct call + AllOrigins fallback)
       try {
         const targetUrl = 'https://api.alternative.me/fng/?limit=1';
-        const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
-        let res = await fetch(proxyUrl);
-        if (!res.ok) res = await fetch(targetUrl);
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+        let res = await fetch(targetUrl);
+        if (!res.ok) res = await fetch(proxyUrl);
         if (res.ok) {
           const data = await res.json();
           const item = data?.data?.[0];
