@@ -11,7 +11,9 @@ import { Input, Select } from '../components/common/Input';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { Button } from '../components/common/Button';
 import { fetchKlines } from '../api/services';
+import { queryClient } from '../api/queryClient';
 import { getErrorMessage, cn } from '../lib/utils';
+import { calculateRSI, calculateEMA, calculateATR } from '../lib/indicators';
 import toast from 'react-hot-toast';
 import { fetchSosoNews, extractCoinFromNews } from '../api/sosoServices';
 
@@ -111,56 +113,7 @@ const BOT_CONFIGS: Record<BotType, BotConfig> = {
 };
 
 // ─── Technical Indicators ─────────────────────────────────────────────────
-
-function calculateRSI(data: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = new Array(data.length).fill(null);
-  if (data.length < period + 1) return result;
-
-  let avgGain = 0, avgLoss = 0;
-  for (let i = 1; i <= period; i++) {
-    const diff = data[i] - data[i - 1];
-    if (diff > 0) avgGain += diff;
-    else avgLoss += Math.abs(diff);
-  }
-  avgGain /= period;
-  avgLoss /= period;
-
-  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-
-  for (let i = period + 1; i < data.length; i++) {
-    const diff = data[i] - data[i - 1];
-    const gain = diff > 0 ? diff : 0;
-    const loss = diff < 0 ? Math.abs(diff) : 0;
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-  }
-  return result;
-}
-
-function calculateEMA(data: number[], period: number): number[] {
-  const k = 2 / (period + 1);
-  const result: number[] = [data[0]];
-  for (let i = 1; i < data.length; i++) {
-    result.push(data[i] * k + result[i - 1] * (1 - k));
-  }
-  return result;
-}
-
-function calculateATR(highs: number[], lows: number[], closes: number[], period: number): number[] {
-  const tr: number[] = [];
-  for (let i = 0; i < closes.length; i++) {
-    if (i === 0) {
-      tr.push(highs[i] - lows[i]);
-    } else {
-      const tr1 = highs[i] - lows[i];
-      const tr2 = Math.abs(highs[i] - closes[i - 1]);
-      const tr3 = Math.abs(lows[i] - closes[i - 1]);
-      tr.push(Math.max(tr1, tr2, tr3));
-    }
-  }
-  return calculateEMA(tr, period);
-}
+// Indicators moved to src/lib/indicators.ts
 
 // ─── Backtest Engine ─────────────────────────────────────────────────────
 
@@ -832,7 +785,10 @@ export const Backtesting: React.FC = () => {
     setCompareResults(null);
     setCompareModalOpen(true);
     try {
-      const rawKlines = await fetchKlines(symbol, timeframe, parseInt(candleCount) || 720, 'perps');
+      const rawKlines = await queryClient.fetchQuery({
+        queryKey: ['klines', 'perps', symbol, timeframe, parseInt(candleCount) || 720],
+        queryFn: () => fetchKlines(symbol, timeframe, parseInt(candleCount) || 720, 'perps'),
+      });
       const klines = Array.isArray(rawKlines) ? rawKlines : [];
 
       if (klines.length < 100) {
@@ -953,7 +909,10 @@ export const Backtesting: React.FC = () => {
     setNewsStats(null);
     setNewsModalOpen(true);
     try {
-      const rawKlines = await fetchKlines(symbol, '1h', 1000, 'perps');
+      const rawKlines = await queryClient.fetchQuery({
+        queryKey: ['klines', 'perps', symbol, '1h', 1000],
+        queryFn: () => fetchKlines(symbol, '1h', 1000, 'perps'),
+      });
       const klines = Array.isArray(rawKlines) ? rawKlines : [];
       if (klines.length === 0) {
         toast.error('Could not fetch historical data for news correlation.');
@@ -1084,7 +1043,10 @@ export const Backtesting: React.FC = () => {
     setResult(null);
 
     try {
-      const rawKlines = await fetchKlines(symbol, timeframe, parseInt(candleCount) || 720, 'perps');
+      const rawKlines = await queryClient.fetchQuery({
+        queryKey: ['klines', 'perps', symbol, timeframe, parseInt(candleCount) || 720],
+        queryFn: () => fetchKlines(symbol, timeframe, parseInt(candleCount) || 720, 'perps'),
+      });
       const klines = Array.isArray(rawKlines) ? rawKlines : [];
 
       if (klines.length < 100) {

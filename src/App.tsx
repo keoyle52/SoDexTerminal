@@ -89,7 +89,8 @@ function preloadCommonPages(): void {
 }
 
 function App() {
-  const { theme, isDemoMode } = useSettingsStore();
+  const theme = useSettingsStore(state => state.theme);
+  const isDemoMode = useSettingsStore(state => state.isDemoMode);
 
   // Apply theme class to root element
   useEffect(() => {
