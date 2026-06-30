@@ -92,7 +92,11 @@ export function useLivePrice(
     baseRef.current = fallback > 0 ? fallback : baseRef.current;
   }, [fallback]);
 
-  // WS mode
+  // WS mode — reset price when symbol changes to avoid stale cross-coin prices
+  useEffect(() => {
+    setPrice(0);  // clear stale price from previous symbol
+  }, [symbol]);
+
   useEffect(() => {
     if (!symbol) return;
     try { wsService.connect(isTestnet); } catch { return; }

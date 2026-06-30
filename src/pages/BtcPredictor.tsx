@@ -210,6 +210,7 @@ export const BtcPredictor: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    setRestPrice(0); // clear stale price from previous symbol
     const tick = async () => {
       try {
         const px = await fetchMarkPriceFor(symbol);
