@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSettingsStore } from '../store/settingsStore';
 import {
-  Zap, Brain, BarChart2, FlaskConical, Settings, Sparkles, Wallet, TrendingUp, Layers, Shield, Bot
+  Zap, Brain, BarChart2, FlaskConical, Settings, Sparkles, Wallet, TrendingUp, TrendingDown, Layers, Shield, Bot
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
 import { fetchMarkPrices } from '../api/services';
+import { fetchEtfCurrentMetrics } from '../api/sosoServices';
 import { OnboardingTour } from './OnboardingTour';
 
 const NAV_TABS = [
@@ -31,6 +32,10 @@ export const HeaderDock: React.FC = () => {
     'SOSO-USD': { price: 0.28, change: 5.42 },
   });
 
+  const { sosoApiKey } = useSettingsStore();
+  const [ssiSentiment, setSsiSentiment] = useState<{ value: number; label: string }>({ value: 76, label: 'Extreme Greed' });
+  const [etfFlow, setEtfFlow] = useState<string>('+$428.5M');
+
   // Fetch real live prices continuously
   useEffect(() => {
     let mounted = true;
@@ -39,9 +44,12 @@ export const HeaderDock: React.FC = () => {
         let binanceTickers: any[] = [];
         let gateTicker: any = null;
 
-        // 1. Fetch BTC, ETH, SOL from Binance
+        // 1. Fetch BTC, ETH, SOL from Binance (via CORS proxy)
         try {
-          const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D');
+          const targetUrl = 'https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D';
+          const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+          let res = await fetch(proxyUrl);
+          if (!res.ok) res = await fetch(targetUrl);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) binanceTickers = data;
@@ -50,9 +58,12 @@ export const HeaderDock: React.FC = () => {
           // ignore
         }
 
-        // 2. Fetch SOSO from Gate.io
+        // 2. Fetch SOSO from Gate.io (via CORS proxy)
         try {
-          const res = await fetch('https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT');
+          const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
+          const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+          let res = await fetch(proxyUrl);
+          if (!res.ok) res = await fetch(targetUrl);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0) gateTicker = data[0];
@@ -120,7 +131,7 @@ export const HeaderDock: React.FC = () => {
           });
         }
       } catch {
-        // Fallback to demo jitter if network blip
+        // Fallback
       }
     };
 
@@ -132,6 +143,74 @@ export const HeaderDock: React.FC = () => {
     };
   }, []);
 
+  // Fetch F&G and ETF flows continuously
+  useEffect(() => {
+    let mounted = true;
+
+    const loadMeta = async () => {
+      // 1. Fetch Fear & Greed Index
+      try {
+        const targetUrl = 'https://api.alternative.me/fng/?limit=1';
+        const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+        let res = await fetch(proxyUrl);
+        if (!res.ok) res = await fetch(targetUrl);
+        if (res.ok) {
+          const data = await res.json();
+          const item = data?.data?.[0];
+          if (item && mounted) {
+            const val = parseInt(item.value) || 50;
+            setSsiSentiment({
+              value: val,
+              label: item.value_classification || 'Neutral',
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // 2. Fetch ETF Net Flow (sum of BTC and ETH Spot ETFs)
+      if (sosoApiKey) {
+        try {
+          const [btcMetrics, ethMetrics] = await Promise.all([
+            fetchEtfCurrentMetrics('us-btc-spot'),
+            fetchEtfCurrentMetrics('us-eth-spot'),
+          ]);
+          
+          let totalFlow = 0;
+          let hasData = false;
+          
+          if (btcMetrics?.dailyNetInflow?.value != null) {
+            totalFlow += btcMetrics.dailyNetInflow.value;
+            hasData = true;
+          }
+          if (ethMetrics?.dailyNetInflow?.value != null) {
+            totalFlow += ethMetrics.dailyNetInflow.value;
+            hasData = true;
+          }
+          
+          if (hasData && mounted) {
+            const abs = Math.abs(totalFlow);
+            const sign = totalFlow >= 0 ? '+' : '-';
+            let formatted = '';
+            if (abs >= 1e9) formatted = `${sign}$${(abs / 1e9).toFixed(1)}B`;
+            else formatted = `${sign}$${(abs / 1e6).toFixed(1)}M`;
+            setEtfFlow(formatted);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    loadMeta();
+    const interval = setInterval(loadMeta, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [sosoApiKey]);
+
   const btc = tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 84312.5, change: 2.34 };
   const eth = tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 3241.8, change: 1.12 };
   const soso = tickerPrices['SOSO-USD'] || tickerPrices['SOSOUSDT'] || { price: 0.28, change: 5.42 };
@@ -140,41 +219,84 @@ export const HeaderDock: React.FC = () => {
     <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border shadow-lg">
       {/* 1. TOP LIVE TICKER TAPE (Real-Time Live Updates) */}
       <div className="h-7 bg-black/60 border-b border-border/60 flex items-center px-4 overflow-x-auto text-[11px] font-mono select-none space-x-6 text-text-muted shrink-0 scrollbar-none">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-bold text-text-primary">SOSO/USD</span>
-          <span className="text-primary font-bold">${soso.price < 1 ? soso.price.toFixed(4) : soso.price.toFixed(2)}</span>
-          <span className="text-[10px] text-emerald-400 flex items-center"><TrendingUp size={10} className="mr-0.5" />+{soso.change}%</span>
-        </div>
+        {(() => {
+          const isUp = soso.change >= 0;
+          const TrendIcon = isUp ? TrendingUp : TrendingDown;
+          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const prefix = isUp ? '+' : '';
+          return (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isUp ? "bg-emerald-400" : "bg-red-400")} />
+              <span className="font-bold text-text-primary">SOSO/USD</span>
+              <span className={cn("font-bold", colorClass)}>${soso.price < 1 ? soso.price.toFixed(4) : soso.price.toFixed(2)}</span>
+              <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <TrendIcon size={10} className="mr-0.5" />{prefix}{soso.change.toFixed(2)}%
+              </span>
+            </div>
+          );
+        })()}
 
         <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-bold text-text-primary">BTC/USD</span>
-          <span className="text-emerald-400 font-semibold">${btc.price.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-          <span className="text-[10px] text-emerald-400/80 flex items-center"><TrendingUp size={10} className="mr-0.5" />+{btc.change}%</span>
-        </div>
+        {(() => {
+          const isUp = btc.change >= 0;
+          const TrendIcon = isUp ? TrendingUp : TrendingDown;
+          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const prefix = isUp ? '+' : '';
+          return (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="font-bold text-text-primary">BTC/USD</span>
+              <span className={cn("font-semibold", colorClass)}>${btc.price.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+              <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <TrendIcon size={10} className="mr-0.5" />{prefix}{btc.change.toFixed(2)}%
+              </span>
+            </div>
+          );
+        })()}
 
         <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-bold text-text-primary">ETH/USD</span>
-          <span className="text-emerald-400 font-semibold">${eth.price.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-          <span className="text-[10px] text-emerald-400/80 flex items-center"><TrendingUp size={10} className="mr-0.5" />+{eth.change}%</span>
-        </div>
+        {(() => {
+          const isUp = eth.change >= 0;
+          const TrendIcon = isUp ? TrendingUp : TrendingDown;
+          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const prefix = isUp ? '+' : '';
+          return (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="font-bold text-text-primary">ETH/USD</span>
+              <span className={cn("font-semibold", colorClass)}>${eth.price.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+              <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <TrendIcon size={10} className="mr-0.5" />{prefix}{eth.change.toFixed(2)}%
+              </span>
+            </div>
+          );
+        })()}
 
         <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-text-muted uppercase tracking-wider text-[10px]">SSI Sentiment:</span>
-          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px]">76 (Extreme Greed)</span>
+          <span className={cn(
+            "px-1.5 py-0.5 rounded font-bold text-[10px]",
+            ssiSentiment.value >= 75 ? "bg-emerald-500/20 text-emerald-400" :
+            ssiSentiment.value >= 55 ? "bg-emerald-500/10 text-emerald-300" :
+            ssiSentiment.value >= 45 ? "bg-amber-500/10 text-amber-300" :
+            ssiSentiment.value >= 25 ? "bg-red-500/10 text-red-300" : "bg-red-500/20 text-red-400"
+          )}>
+            {ssiSentiment.value} ({ssiSentiment.label})
+          </span>
         </div>
 
         <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-text-muted uppercase tracking-wider text-[10px]">Spot ETF 24h Net Flow:</span>
-          <span className="text-emerald-400 font-bold">+$428.5M</span>
+          <span className={cn(
+            "font-bold",
+            etfFlow.startsWith('-') ? "text-red-400" : "text-emerald-400"
+          )}>
+            {etfFlow}
+          </span>
         </div>
 
         <div className="h-3 w-[1px] bg-border/60 shrink-0" />

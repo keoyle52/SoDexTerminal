@@ -250,7 +250,12 @@ async function syncRealTickers() {
   try {
     // 1. Fetch BTC, ETH, SOL from Binance
     try {
-      const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D');
+      const targetUrl = 'https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D';
+      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      let binanceRes = await fetch(proxyUrl);
+      if (!binanceRes.ok) {
+        binanceRes = await fetch(targetUrl);
+      }
       if (binanceRes.ok) {
         const binanceData = await binanceRes.json();
         if (Array.isArray(binanceData)) {
@@ -285,7 +290,12 @@ async function syncRealTickers() {
 
     // 2. Fetch SOSO from Gate.io
     try {
-      const gateRes = await fetch('https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT');
+      const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
+      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      let gateRes = await fetch(proxyUrl);
+      if (!gateRes.ok) {
+        gateRes = await fetch(targetUrl);
+      }
       if (gateRes.ok) {
         const gateData = await gateRes.json();
         if (Array.isArray(gateData) && gateData.length > 0) {
