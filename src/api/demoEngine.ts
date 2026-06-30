@@ -247,96 +247,12 @@ function stopTicker(): void {
 }
 
 async function syncRealTickers() {
-  let coincapSuccess = false;
-  let gateSuccess = false;
   try {
-    // 1. Fetch BTC, ETH, SOL from CoinCap (CORS-friendly public API)
-    try {
-      const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
-      if (res.ok) {
-        const json = await res.json();
-        if (json && Array.isArray(json.data) && json.data.length > 0) {
-          coincapSuccess = true;
-          for (const c of json.data) {
-            let sym = '';
-            if (c.symbol === 'BTC') sym = 'BTC-USD';
-            else if (c.symbol === 'ETH') sym = 'ETH-USD';
-            else if (c.symbol === 'SOL') sym = 'SOL-USD';
-            
-            if (sym) {
-              const row = _state.tickers.get(sym);
-              if (row) {
-                const last = parseFloat(c.priceUsd) || row.lastPrice;
-                row.lastPrice = last;
-                row.markPrice = last;
-                row.indexPrice = last;
-                const chgPct = parseFloat(c.changePercent24Hr) || 0;
-                row.openPrice = last / (1 + chgPct / 100);
-                row.bidPrice = last * 0.9995;
-                row.askPrice = last * 1.0005;
-              }
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore
-    }
-
-    // 2. Fetch SOSO from Gate.io (via allorigins proxy to bypass CORS)
-    try {
-      const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      let gateRes = await fetch(proxyUrl);
-      if (!gateRes.ok) {
-        gateRes = await fetch(targetUrl);
-      }
-      if (gateRes.ok) {
-        const gateData = await gateRes.json();
-        if (Array.isArray(gateData) && gateData.length > 0) {
-          gateSuccess = true;
-          const t = gateData[0];
-          const row = _state.tickers.get('SOSO-USD');
-          if (row) {
-            const last = parseFloat(String(t.last)) || row.lastPrice;
-            row.lastPrice = last;
-            row.markPrice = last;
-            row.indexPrice = last;
-            row.high = parseFloat(String(t.high_24h)) || row.high;
-            row.low = parseFloat(String(t.low_24h)) || row.low;
-            row.volume = parseFloat(String(t.base_volume)) || row.volume;
-            row.quoteVolume = parseFloat(String(t.quote_volume)) || row.quoteVolume;
-            row.bidPrice = parseFloat(String(t.highest_bid)) || last * 0.9995;
-            row.askPrice = parseFloat(String(t.lowest_ask)) || last * 1.0005;
-            const chgPct = parseFloat(String(t.change_percentage)) || 0;
-            row.openPrice = last / (1 + chgPct / 100);
-          }
-        }
-      }
-    } catch {
-      // Ignore gate fail
-    }
-
-    // 3. Fallback: Fetch remaining tickers (or all if public APIs failed) from SoDEX
     const res = await perpsClient.get('/markets/tickers');
     const tickers = res?.data ?? res ?? [];
     if (Array.isArray(tickers)) {
       for (const t of tickers) {
         const sym = normaliseSymbolForKey(t.symbol);
-        
-        const isMajor = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'SOSO-USD'].includes(sym);
-        if (isMajor) {
-          const alreadyUpdated = (
-            (sym === 'BTC-USD' && coincapSuccess) ||
-            (sym === 'ETH-USD' && coincapSuccess) ||
-            (sym === 'SOL-USD' && coincapSuccess) ||
-            (sym === 'SOSO-USD' && gateSuccess)
-          );
-          if (alreadyUpdated) {
-            continue;
-          }
-        }
-
         const row = _state.tickers.get(sym);
         if (row) {
           const last = parseFloat(String(t.lastPx ?? t.lastPrice)) || row.lastPrice;
