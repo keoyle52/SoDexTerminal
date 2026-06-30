@@ -247,13 +247,16 @@ function stopTicker(): void {
 }
 
 async function syncRealTickers() {
+  let coincapSuccess = false;
+  let gateSuccess = false;
   try {
     // 1. Fetch BTC, ETH, SOL from CoinCap (CORS-friendly public API)
     try {
       const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
       if (res.ok) {
         const json = await res.json();
-        if (json && Array.isArray(json.data)) {
+        if (json && Array.isArray(json.data) && json.data.length > 0) {
+          coincapSuccess = true;
           for (const c of json.data) {
             let sym = '';
             if (c.symbol === 'BTC') sym = 'BTC-USD';
@@ -291,6 +294,7 @@ async function syncRealTickers() {
       if (gateRes.ok) {
         const gateData = await gateRes.json();
         if (Array.isArray(gateData) && gateData.length > 0) {
+          gateSuccess = true;
           const t = gateData[0];
           const row = _state.tickers.get('SOSO-USD');
           if (row) {
@@ -322,12 +326,14 @@ async function syncRealTickers() {
         
         const isMajor = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'SOSO-USD'].includes(sym);
         if (isMajor) {
-          const row = _state.tickers.get(sym);
-          if (row) {
-            if (sym === 'BTC-USD' && row.markPrice > 70000) continue;
-            if (sym === 'ETH-USD' && row.markPrice > 2500) continue;
-            if (sym === 'SOL-USD' && row.markPrice > 100) continue;
-            if (sym === 'SOSO-USD' && Math.abs(row.markPrice - 0.29) < 0.1) continue;
+          const alreadyUpdated = (
+            (sym === 'BTC-USD' && coincapSuccess) ||
+            (sym === 'ETH-USD' && coincapSuccess) ||
+            (sym === 'SOL-USD' && coincapSuccess) ||
+            (sym === 'SOSO-USD' && gateSuccess)
+          );
+          if (alreadyUpdated) {
+            continue;
           }
         }
 

@@ -34,7 +34,12 @@ export const HeaderDock: React.FC = () => {
 
   const { sosoApiKey } = useSettingsStore();
   const [ssiSentiment, setSsiSentiment] = useState<{ value: number; label: string }>({ value: 76, label: 'Extreme Greed' });
-  const [etfFlow, setEtfFlow] = useState<string>('+$428.5M');
+  
+  const [etfFlow, setEtfFlow] = useState<string>(() => {
+    const cached = localStorage.getItem('sodex_last_etf_flow');
+    if (cached && !cached.includes('NaN')) return cached;
+    return '+$428.5M';
+  });
 
   // Fetch real live prices continuously
   useEffect(() => {
@@ -87,6 +92,7 @@ export const HeaderDock: React.FC = () => {
             const updated = { ...prev };
 
             // Apply CoinCap updates
+            const coincapSuccess = coincapData.length > 0;
             for (const c of coincapData) {
               const price = parseFloat(c.priceUsd);
               const change = parseFloat(c.changePercent24Hr);
@@ -98,6 +104,7 @@ export const HeaderDock: React.FC = () => {
             }
 
             // Apply Gate.io updates
+            const gateSuccess = !!gateTicker;
             if (gateTicker) {
               const price = parseFloat(gateTicker.last);
               const change = parseFloat(gateTicker.change_percentage);
@@ -110,9 +117,10 @@ export const HeaderDock: React.FC = () => {
             for (const item of sodexPrices) {
               const isMajor = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'SOSO-USD'].includes(item.symbol);
               const alreadyUpdated = isMajor && (
-                (item.symbol === 'BTC-USD' && updated['BTC-USD'].price !== 84312.5) ||
-                (item.symbol === 'ETH-USD' && updated['ETH-USD'].price !== 3241.8) ||
-                (item.symbol === 'SOSO-USD' && updated['SOSO-USD'].price !== 0.28)
+                (item.symbol === 'BTC-USD' && coincapSuccess) ||
+                (item.symbol === 'ETH-USD' && coincapSuccess) ||
+                (item.symbol === 'SOL-USD' && coincapSuccess) ||
+                (item.symbol === 'SOSO-USD' && gateSuccess)
               );
 
               if (!alreadyUpdated) {
@@ -190,14 +198,17 @@ export const HeaderDock: React.FC = () => {
             hasData = true;
           }
           
-          if (hasData && mounted) {
+          if (hasData && !isNaN(totalFlow) && mounted) {
             const abs = Math.abs(totalFlow);
             const sign = totalFlow >= 0 ? '+' : '-';
             let formatted = '';
             if (abs >= 1e9) formatted = `${sign}$${(abs / 1e9).toFixed(1)}B`;
             else formatted = `${sign}$${(abs / 1e6).toFixed(1)}M`;
-            setEtfFlow(formatted);
-            localStorage.setItem('sodex_last_etf_flow', formatted);
+            
+            if (!formatted.includes('NaN')) {
+              setEtfFlow(formatted);
+              localStorage.setItem('sodex_last_etf_flow', formatted);
+            }
           }
         } catch {
           // ignore
@@ -206,7 +217,7 @@ export const HeaderDock: React.FC = () => {
 
       if (!hasData && mounted) {
         const cached = localStorage.getItem('sodex_last_etf_flow');
-        if (cached) {
+        if (cached && !cached.includes('NaN')) {
           setEtfFlow(cached);
         } else {
           // Fluctuating fallback so it is never completely static
