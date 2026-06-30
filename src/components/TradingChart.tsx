@@ -26,6 +26,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const markersPrimitiveRef = useRef<{ detach: () => void } | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<string>('1h');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Initialize chart + series together in one effect to avoid race condition
   useEffect(() => {
@@ -107,12 +108,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   useEffect(() => {
     let cancelled = false;
 
+    // Immediately clear old data and show loading when inputs change
+    if (seriesRef.current) {
+      seriesRef.current.setData([]);
+    }
+    setLoading(true);
+    setError(null);
+
     const loadData = async () => {
-      setLoading(true);
       try {
         const rawKlines = await fetchKlines(symbol, selectedInterval, 200, market);
         if (cancelled || !seriesRef.current) return;
-
 
         const klines = Array.isArray(rawKlines) ? rawKlines : [];
 
@@ -137,13 +143,21 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           .sort((a, b) => a.ts - b.ts)
           .map((x) => ({ time: x.ts as Time, open: x.o, high: x.h, low: x.l, close: x.c }));
 
-        if (candlesticks.length > 0 && seriesRef.current) {
-          seriesRef.current.setData(candlesticks);
-          chartRef.current?.timeScale().fitContent();
+        if (!cancelled && seriesRef.current) {
+          if (candlesticks.length > 0) {
+            seriesRef.current.setData(candlesticks);
+            chartRef.current?.timeScale().fitContent();
+            setError(null);
+          } else {
+            setError('No chart data available');
+          }
         }
 
-      } catch {
-        // Chart data load failed silently
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[TradingChart] Failed to load data:', err);
+          setError('Failed to load chart data');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -191,6 +205,24 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/50 backdrop-blur-sm">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/30">
+            <div className="text-center">
+              <p className="text-xs text-text-muted">{error}</p>
+              <button
+                onClick={() => {
+                  setError(null);
+                  setLoading(true);
+                  // Trigger re-fetch by toggling a hidden state
+                  setSelectedInterval((prev) => prev);
+                }}
+                className="mt-2 text-[10px] text-primary hover:underline"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
         <div ref={containerRef} className="w-full" style={{ height }} />

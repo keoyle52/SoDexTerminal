@@ -17,7 +17,7 @@ export const TerminalWorkspace: React.FC = () => {
           <div className="flex items-center justify-between shrink-0 border-b border-border/80 pb-2.5 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-text-primary flex items-center gap-1.5">
-                <Activity size={16} className="text-primary" /> SOSO/USDT Perpetual
+                <Activity size={16} className="text-primary" /> SOSO/USD Perpetual
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">
                 Live SoDEX Feed
@@ -28,7 +28,7 @@ export const TerminalWorkspace: React.FC = () => {
           {/* View Container */}
           <div className="flex-1 min-h-0 relative rounded-xl overflow-hidden bg-background/40">
             <div className="absolute inset-0">
-              <TradingChart symbol="SOSOUSDT" />
+              <TradingChart symbol="SOSO-USD" />
             </div>
           </div>
         </div>

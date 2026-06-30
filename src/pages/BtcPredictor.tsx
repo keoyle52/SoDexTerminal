@@ -274,7 +274,7 @@ export const BtcPredictor: React.FC = () => {
         const live = livePriceRef.current;
         const exit = live > 0
           ? live
-          : (await fetchMarkPriceFor(symbol)) ?? head.entryPrice;
+          : (await fetchMarkPriceFor(cfgRef.current.symbol)) ?? head.entryPrice;
         store.resolvePrediction(head.id, exit);
       }
 
@@ -320,7 +320,7 @@ export const BtcPredictor: React.FC = () => {
       // 5. Persist open position if a trade was placed.
       if (result.trade?.placed && result.trade.side && result.trade.quantity) {
         store.setOpenPosition({
-          symbol,
+          symbol: config.symbol,
           side: result.trade.side,
           quantity: result.trade.quantity,
           notionalUsdt: result.trade.notional ?? 0,
@@ -440,7 +440,7 @@ export const BtcPredictor: React.FC = () => {
     } finally {
       setBacktestLoading(false);
     }
-  }, [btDuration]);
+  }, [btDuration, symbol]);
 
   // ── Derived UI values ─────────────────────────────────────────────────────
   const totalCycleMs = duration * 60 * 1000;

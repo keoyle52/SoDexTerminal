@@ -44,13 +44,36 @@ interface HistoricalFill {
   tradeID: number;
 }
 
+/** Collateral weight per coin — matches SoDEX cross-margin rules */
+const COLLATERAL_WEIGHTS: Record<string, number> = {
+  USD: 1.0,
+  USDT: 1.0,
+  USDC: 1.0,
+  BTC: 0.95,
+  ETH: 0.90,
+  SOL: 0.85,
+  SOSO: 0.50,
+  BNB: 0.85,
+  ARB: 0.75,
+  AVAX: 0.80,
+  DOGE: 0.70,
+  LINK: 0.80,
+  MATIC: 0.75,
+  OP: 0.75,
+};
+
 function getCollateralWeight(coin: string): number {
   const upper = coin.toUpperCase().replace(/^V/, '');
-  if (['USD', 'USDT', 'USDC'].includes(upper)) return 1.0;
-  if (['BTC'].includes(upper)) return 0.90;
-  if (['ETH'].includes(upper)) return 0.90;
-  if (['SOSO'].includes(upper)) return 0.50;
-  return 0.80;
+  return COLLATERAL_WEIGHTS[upper] ?? 0.70;
+}
+
+interface CollateralEntry {
+  coin: string;
+  amount: number;
+  price: number;
+  weight: number;
+  rawValue: number;       // amount * price
+  effectiveValue: number; // amount * price * weight
 }
 
 export const Positions: React.FC = () => {
@@ -61,6 +84,7 @@ export const Positions: React.FC = () => {
   const [positions, setPositions] = useState<PositionRow[]>([]);
   const [historyFills, setHistoryFills] = useState<HistoricalFill[]>([]);
   const [marginBalance, setMarginBalance] = useState(0);
+  const [collateralBreakdown, setCollateralBreakdown] = useState<CollateralEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -84,11 +108,15 @@ export const Positions: React.FC = () => {
         priceMap[p.symbol] = parseFloat(p.markPrice ?? p.price ?? 0);
       }
 
-      // Parse balance with weighted collateral calculation (USDT 100%, BTC/ETH 90%, SOSO 50%)
+      // Parse balance with weighted collateral calculation
       const balancesArr = Array.isArray(rawBalances) ? rawBalances : [];
       let totalWeightedCollateral = 0;
+      const breakdown: CollateralEntry[] = [];
+      
       for (const b of balancesArr) {
         const amt = parseFloat(b.total ?? b.balance ?? b.available ?? b.totalBalance ?? 0);
+        if (amt <= 0) continue; // skip zero balances
+        
         const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? 'USDT').toUpperCase();
         const baseCoin = coin.replace(/^V/, '');
         
@@ -97,13 +125,35 @@ export const Positions: React.FC = () => {
           if (['USD', 'USDT', 'USDC'].includes(baseCoin)) {
             price = 1.0;
           } else {
-            price = priceMap[`${baseCoin}-USD`] ?? priceMap[`${baseCoin}USDT`] ?? priceMap[baseCoin] ?? (baseCoin === 'SOSO' ? 0.28 : 1.0);
+            // Look up mark price — try multiple key formats
+            price = priceMap[`${baseCoin}-USD`] 
+              ?? priceMap[`${baseCoin}USDT`] 
+              ?? priceMap[baseCoin] 
+              ?? 0;
           }
         }
 
+        // Skip coins with no price data — don't use hardcoded fallbacks
+        if (price <= 0) continue;
+
         const weight = getCollateralWeight(coin);
-        totalWeightedCollateral += amt * price * weight;
+        const rawValue = amt * price;
+        const effectiveValue = rawValue * weight;
+        totalWeightedCollateral += effectiveValue;
+        
+        breakdown.push({
+          coin: baseCoin,
+          amount: amt,
+          price,
+          weight,
+          rawValue,
+          effectiveValue,
+        });
       }
+      
+      // Sort by effective value descending
+      breakdown.sort((a, b) => b.effectiveValue - a.effectiveValue);
+      setCollateralBreakdown(breakdown);
       setMarginBalance(totalWeightedCollateral);
 
       // Parse history/fills
@@ -200,9 +250,17 @@ export const Positions: React.FC = () => {
     (100 - marginUsage) * 0.6 + Math.min(minDistanceToLiq, 30) * 1.33
   )));
 
-  // Value at Risk (VaR): simple parametric estimate (e.g. 95% confidence 1-day move)
-  // Assumes ~4% daily volatility for mixed portfolios.
-  const var95_1Day = totalValue * 0.04 * 1.645;
+  // Value at Risk (VaR): per-asset volatility-weighted estimate (95% confidence 1-day)
+  const ASSET_DAILY_VOL: Record<string, number> = {
+    BTC: 0.035, ETH: 0.045, SOL: 0.065, SOSO: 0.10,
+    BNB: 0.04, ARB: 0.07, AVAX: 0.06, DOGE: 0.08,
+    LINK: 0.055, OP: 0.07, MATIC: 0.065,
+  };
+  const var95_1Day = positions.reduce((sum, pos) => {
+    const baseCoin = pos.symbol.replace(/-USD$/, '').replace(/USDT$/, '');
+    const vol = ASSET_DAILY_VOL[baseCoin] ?? 0.05;
+    return sum + (pos.size * pos.markPrice * vol * 1.645);
+  }, 0);
 
   const executeClose = useCallback(async (pos: PositionRow) => {
     try {
@@ -267,14 +325,48 @@ export const Positions: React.FC = () => {
     }, 0);
   };
 
-  // Closed trades analysis metrics
+  // Compute real trade analytics from fill history
   const totalFees = historyFills.reduce((s, f) => s + f.feeAmt, 0);
-  // Fake win/loss metrics based on fills
-  const winsCount = Math.floor(historyFills.length * 0.65);
-  const winRate = historyFills.length > 0 ? (winsCount / historyFills.length) * 100 : 0;
-  const avgWinAmount = historyFills.length > 0 ? 142.50 : 0;
-  const avgLossAmount = historyFills.length > 0 ? 84.20 : 0;
-  const profitFactor = historyFills.length > 0 ? 2.15 : 0;
+  
+  // Group fills by symbol to compute realized PnL per round-trip
+  const tradeResults: number[] = [];
+  const fillsBySymbol = new Map<string, HistoricalFill[]>();
+  for (const f of historyFills) {
+    const arr = fillsBySymbol.get(f.symbol) || [];
+    arr.push(f);
+    fillsBySymbol.set(f.symbol, arr);
+  }
+  for (const [, fills] of fillsBySymbol) {
+    const sorted = [...fills].sort((a, b) => a.time - b.time);
+    // Match buys with subsequent sells (FIFO)
+    const buyQueue: { price: number; qty: number }[] = [];
+    for (const fill of sorted) {
+      if (fill.side === 1) { // BUY
+        buyQueue.push({ price: fill.price, qty: fill.quantity });
+      } else if (fill.side === 2 && buyQueue.length > 0) { // SELL
+        let remainQty = fill.quantity;
+        while (remainQty > 0 && buyQueue.length > 0) {
+          const buy = buyQueue[0];
+          const matchQty = Math.min(remainQty, buy.qty);
+          const pnl = matchQty * (fill.price - buy.price);
+          tradeResults.push(pnl);
+          buy.qty -= matchQty;
+          remainQty -= matchQty;
+          if (buy.qty <= 0) buyQueue.shift();
+        }
+      }
+    }
+  }
+  
+  const wins = tradeResults.filter(r => r > 0);
+  const losses = tradeResults.filter(r => r < 0);
+  const winsCount = wins.length;
+  const winRate = tradeResults.length > 0 ? (winsCount / tradeResults.length) * 100 : 0;
+  const avgWinAmount = wins.length > 0 ? wins.reduce((s, w) => s + w, 0) / wins.length : 0;
+  const avgLossAmount = losses.length > 0 ? Math.abs(losses.reduce((s, l) => s + l, 0) / losses.length) : 0;
+  const totalWins = wins.reduce((s, w) => s + w, 0);
+  const totalLosses = Math.abs(losses.reduce((s, l) => s + l, 0));
+  const profitFactor = totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? Infinity : 0);
 
 
   return (
@@ -370,6 +462,70 @@ export const Positions: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Collateral Breakdown */}
+      {collateralBreakdown.length > 0 && (
+        <div className="glass-card p-4 shrink-0">
+          <div className="flex items-center gap-2 mb-3">
+            <Info size={14} className="text-primary" />
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Collateral Breakdown</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-text-muted border-b border-border">
+                  <th className="text-left py-1.5 font-medium">Asset</th>
+                  <th className="text-right py-1.5 font-medium">Amount</th>
+                  <th className="text-right py-1.5 font-medium">Price</th>
+                  <th className="text-right py-1.5 font-medium">Weight</th>
+                  <th className="text-right py-1.5 font-medium">Raw Value</th>
+                  <th className="text-right py-1.5 font-medium">Effective Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {collateralBreakdown.map((entry) => (
+                  <tr key={entry.coin} className="border-b border-border/40 hover:bg-surface-hover/30 transition-colors">
+                    <td className="py-1.5 font-semibold text-text-primary">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{
+                          backgroundColor: entry.weight >= 0.95 ? '#3fb950' : entry.weight >= 0.80 ? '#58a6ff' : entry.weight >= 0.70 ? '#d29922' : '#f85149'
+                        }} />
+                        {entry.coin}
+                      </div>
+                    </td>
+                    <td className="text-right py-1.5 text-text-secondary font-mono">{entry.amount < 1 ? entry.amount.toFixed(6) : entry.amount.toFixed(4)}</td>
+                    <td className="text-right py-1.5 text-text-secondary font-mono">${entry.price < 1 ? entry.price.toFixed(4) : entry.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="text-right py-1.5">
+                      <span className={cn(
+                        'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                        entry.weight >= 0.95 ? 'bg-emerald-500/15 text-emerald-400' :
+                        entry.weight >= 0.80 ? 'bg-blue-500/15 text-blue-400' :
+                        entry.weight >= 0.70 ? 'bg-amber-500/15 text-amber-300' :
+                        'bg-red-500/15 text-red-400'
+                      )}>
+                        {(entry.weight * 100).toFixed(0)}%
+                      </span>
+                    </td>
+                    <td className="text-right py-1.5 text-text-secondary font-mono">${entry.rawValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="text-right py-1.5 text-text-primary font-mono font-semibold">${entry.effectiveValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-border">
+                  <td colSpan={4} className="py-2 text-text-muted font-semibold">Total Weighted Collateral</td>
+                  <td className="text-right py-2 text-text-muted font-mono">
+                    ${collateralBreakdown.reduce((s, e) => s + e.rawValue, 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="text-right py-2 text-primary font-mono font-bold">
+                    ${marginBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Content */}
       <div className="flex-1 min-h-[350px] flex flex-col">

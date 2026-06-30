@@ -27,9 +27,10 @@ export const HeaderDock: React.FC = () => {
   
   const [showTour, setShowTour] = useState(false);
   const [tickerPrices, setTickerPrices] = useState<Record<string, { price: number; change: number }>>({
-    'BTC-USD': { price: 84312.5, change: 2.34 },
-    'ETH-USD': { price: 3241.8, change: 1.12 },
-    'SOSO-USD': { price: 0.28, change: 5.42 },
+    'BTC-USD': { price: 0, change: 0 },
+    'ETH-USD': { price: 0, change: 0 },
+    'SOL-USD': { price: 0, change: 0 },
+    'SOSO-USD': { price: 0, change: 0 },
   });
 
   const { sosoApiKey } = useSettingsStore();
@@ -38,7 +39,7 @@ export const HeaderDock: React.FC = () => {
   const [etfFlow, setEtfFlow] = useState<string>(() => {
     const cached = localStorage.getItem('sodex_last_etf_flow');
     if (cached && !cached.includes('NaN')) return cached;
-    return '+$428.5M';
+    return '—';
   });
 
   // Fetch real live prices continuously
@@ -62,17 +63,41 @@ export const HeaderDock: React.FC = () => {
           // ignore
         }
 
-        // 2. Fetch SOSO from Gate.io (via allorigins proxy to bypass CORS)
+        // 2. Fetch SOSO from CoinGecko first, then Gate.io as fallback
         try {
-          const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
-          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-          let res = await fetch(proxyUrl);
-          if (!res.ok) res = await fetch(targetUrl);
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              gateTicker = data[0];
+          let sosoPrice = 0;
+          let sosoChange = 0;
+          // Try CoinGecko first (most reliable, CORS-friendly)
+          try {
+            const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=sosovalue&vs_currencies=usd&include_24hr_change=true');
+            if (cgRes.ok) {
+              const cgData = await cgRes.json();
+              if (cgData?.sosovalue?.usd) {
+                sosoPrice = cgData.sosovalue.usd;
+                sosoChange = cgData.sosovalue.usd_24h_change ?? 0;
+              }
             }
+          } catch { /* CoinGecko failed, try Gate.io */ }
+
+          // Fallback to Gate.io if CoinGecko failed
+          if (sosoPrice <= 0) {
+            try {
+              const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
+              const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+              let res = await fetch(proxyUrl);
+              if (!res.ok) res = await fetch(targetUrl);
+              if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) {
+                  sosoPrice = parseFloat(data[0].last);
+                  sosoChange = parseFloat(data[0].change_percentage);
+                }
+              }
+            } catch { /* Gate.io also failed */ }
+          }
+
+          if (sosoPrice > 0) {
+            gateTicker = { last: String(sosoPrice), change_percentage: String(sosoChange) };
           }
         } catch {
           // ignore
@@ -220,10 +245,7 @@ export const HeaderDock: React.FC = () => {
         if (cached && !cached.includes('NaN')) {
           setEtfFlow(cached);
         } else {
-          // Fluctuating fallback so it is never completely static
-          const base = 428.5; // million
-          const jitter = (Math.sin(Date.now() / 86400000) * 12.4); // daily sine wave fluctuation
-          setEtfFlow(`+$${(base + jitter).toFixed(1)}M`);
+          setEtfFlow('—');
         }
       }
     };
@@ -236,9 +258,14 @@ export const HeaderDock: React.FC = () => {
     };
   }, [sosoApiKey]);
 
-  const btc = tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 84312.5, change: 2.34 };
-  const eth = tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 3241.8, change: 1.12 };
-  const soso = tickerPrices['SOSO-USD'] || tickerPrices['SOSOUSDT'] || { price: 0.28, change: 5.42 };
+  const fmtPrice = (p: number, minDecimals = 1) => 
+    p > 0 ? `$${p < 1 ? p.toFixed(4) : p.toLocaleString(undefined, { minimumFractionDigits: minDecimals, maximumFractionDigits: minDecimals })}` : '—';
+  const fmtChange = (c: number, price: number) => price > 0 ? `${c >= 0 ? '+' : ''}${c.toFixed(2)}%` : '';
+
+  const btc = tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 0, change: 0 };
+  const eth = tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 0, change: 0 };
+  const sol = tickerPrices['SOL-USD'] || tickerPrices['SOLUSDT'] || { price: 0, change: 0 };
+  const soso = tickerPrices['SOSO-USD'] || tickerPrices['SOSOUSDT'] || { price: 0, change: 0 };
 
   return (
     <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border shadow-lg">
@@ -253,10 +280,12 @@ export const HeaderDock: React.FC = () => {
             <div className="flex items-center gap-1.5 shrink-0">
               <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isUp ? "bg-emerald-400" : "bg-red-400")} />
               <span className="font-bold text-text-primary">SOSO/USD</span>
-              <span className={cn("font-bold", colorClass)}>${soso.price < 1 ? soso.price.toFixed(4) : soso.price.toFixed(2)}</span>
-              <span className={cn("text-[10px] flex items-center", colorClass)}>
-                <TrendIcon size={10} className="mr-0.5" />{prefix}{soso.change.toFixed(2)}%
-              </span>
+              <span className={cn("font-bold", colorClass)}>{fmtPrice(soso.price)}</span>
+              {soso.price > 0 && (
+                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                  <TrendIcon size={10} className="mr-0.5" />{fmtChange(soso.change, soso.price)}
+                </span>
+              )}
             </div>
           );
         })()}
@@ -271,10 +300,12 @@ export const HeaderDock: React.FC = () => {
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">BTC/USD</span>
-              <span className={cn("font-semibold", colorClass)}>${btc.price.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-              <span className={cn("text-[10px] flex items-center", colorClass)}>
-                <TrendIcon size={10} className="mr-0.5" />{prefix}{btc.change.toFixed(2)}%
-              </span>
+              <span className={cn("font-semibold", colorClass)}>{fmtPrice(btc.price)}</span>
+              {btc.price > 0 && (
+                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                  <TrendIcon size={10} className="mr-0.5" />{fmtChange(btc.change, btc.price)}
+                </span>
+              )}
             </div>
           );
         })()}
@@ -289,10 +320,31 @@ export const HeaderDock: React.FC = () => {
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">ETH/USD</span>
-              <span className={cn("font-semibold", colorClass)}>${eth.price.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
-              <span className={cn("text-[10px] flex items-center", colorClass)}>
-                <TrendIcon size={10} className="mr-0.5" />{prefix}{eth.change.toFixed(2)}%
-              </span>
+              <span className={cn("font-semibold", colorClass)}>{fmtPrice(eth.price)}</span>
+              {eth.price > 0 && (
+                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                  <TrendIcon size={10} className="mr-0.5" />{fmtChange(eth.change, eth.price)}
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
+        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
+
+        {(() => {
+          const isUp = sol.change >= 0;
+          const TrendIcon = isUp ? TrendingUp : TrendingDown;
+          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          return (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="font-bold text-text-primary">SOL/USD</span>
+              <span className={cn("font-semibold", colorClass)}>{fmtPrice(sol.price)}</span>
+              {sol.price > 0 && (
+                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                  <TrendIcon size={10} className="mr-0.5" />{fmtChange(sol.change, sol.price)}
+                </span>
+              )}
             </div>
           );
         })()}
@@ -328,7 +380,7 @@ export const HeaderDock: React.FC = () => {
 
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <span className="text-text-muted uppercase tracking-wider text-[10px]">Portfolio 95% VaR:</span>
-          <span className="text-primary font-bold">1.82% (Normal)</span>
+          <span className="text-primary font-bold">—</span>
         </div>
       </div>
 
