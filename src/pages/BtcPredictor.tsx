@@ -996,7 +996,7 @@ export const BtcPredictor: React.FC = () => {
         </div>
         <TradingChart
           key={symbol}
-          symbol={symbol.replace('-', '')}
+          symbol={symbol}
           market="perps"
           height={420}
           markers={chartMarkers}

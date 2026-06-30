@@ -36,18 +36,88 @@ export const HeaderDock: React.FC = () => {
     let mounted = true;
     const loadPrices = async () => {
       try {
-        const rawPrices = await fetchMarkPrices();
-        if (mounted && Array.isArray(rawPrices) && rawPrices.length > 0) {
-          const updated: Record<string, { price: number; change: number }> = { ...tickerPrices };
-          for (const item of rawPrices) {
-            const p = parseFloat(item.markPrice ?? item.price ?? 0);
-            if (p > 0) {
-              const prev = updated[item.symbol]?.price || p;
-              const chg = prev > 0 ? parseFloat((((p - prev) / prev) * 100).toFixed(2)) : 0.5;
-              updated[item.symbol] = { price: p, change: chg !== 0 ? chg : (updated[item.symbol]?.change || 1.2) };
-            }
+        let binanceTickers: any[] = [];
+        let gateTicker: any = null;
+
+        // 1. Fetch BTC, ETH, SOL from Binance
+        try {
+          const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D');
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) binanceTickers = data;
           }
-          setTickerPrices(updated);
+        } catch {
+          // ignore
+        }
+
+        // 2. Fetch SOSO from Gate.io
+        try {
+          const res = await fetch('https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT');
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) gateTicker = data[0];
+          }
+        } catch {
+          // ignore
+        }
+
+        // 3. Fetch fallback mark prices from SoDEX perps API
+        let sodexPrices: any[] = [];
+        try {
+          const raw = await fetchMarkPrices();
+          if (Array.isArray(raw)) sodexPrices = raw;
+        } catch {
+          // ignore
+        }
+
+        if (mounted) {
+          setTickerPrices((prev) => {
+            const updated = { ...prev };
+
+            // Apply Binance updates
+            for (const t of binanceTickers) {
+              const price = parseFloat(t.lastPrice);
+              const change = parseFloat(t.priceChangePercent);
+              if (price > 0) {
+                if (t.symbol === 'BTCUSDT') updated['BTC-USD'] = { price, change };
+                else if (t.symbol === 'ETHUSDT') updated['ETH-USD'] = { price, change };
+                else if (t.symbol === 'SOLUSDT') updated['SOL-USD'] = { price, change };
+              }
+            }
+
+            // Apply Gate.io updates
+            if (gateTicker) {
+              const price = parseFloat(gateTicker.last);
+              const change = parseFloat(gateTicker.change_percentage);
+              if (price > 0) {
+                updated['SOSO-USD'] = { price, change };
+              }
+            }
+
+            // Apply SoDEX updates for anything else (or fallback)
+            for (const item of sodexPrices) {
+              const isMajor = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'SOSO-USD'].includes(item.symbol);
+              const alreadyUpdated = isMajor && (
+                (item.symbol === 'BTC-USD' && updated['BTC-USD'].price !== 84312.5) ||
+                (item.symbol === 'ETH-USD' && updated['ETH-USD'].price !== 3241.8) ||
+                (item.symbol === 'SOSO-USD' && updated['SOSO-USD'].price !== 0.28)
+              );
+
+              if (!alreadyUpdated) {
+                const p = parseFloat(item.markPrice ?? item.price ?? 0);
+                if (p > 0) {
+                  const prevPrice = updated[item.symbol]?.price || p;
+                  const chg = prevPrice > 0 ? parseFloat((((p - prevPrice) / prevPrice) * 100).toFixed(2)) : 0.5;
+                  updated[item.symbol] = {
+                    price: p,
+                    change: chg !== 0 ? chg : (updated[item.symbol]?.change || 1.2)
+                  };
+                }
+              }
+            }
+
+            return updated;
+          });
         }
       } catch {
         // Fallback to demo jitter if network blip

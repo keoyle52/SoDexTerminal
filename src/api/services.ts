@@ -21,6 +21,7 @@ import {
   getDemoFeeRate,
   getDemoOrderStatus,
   getDemoMarkPrices,
+  getDemoTickers,
   type DemoReplaceInput,
 } from './demoEngine';
 
@@ -673,6 +674,7 @@ export async function fetchSpotSymbolID(symbol: string): Promise<number | null> 
 }
 
 export async function fetchTickers(market: 'spot' | 'perps' = 'perps') {
+  if (isDemo()) return getDemoTickers();
   const cacheKey = `${getNetworkTag()}:${market}`;
   const cached = _tickersCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < QUOTE_CACHE_TTL) {

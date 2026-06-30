@@ -239,7 +239,6 @@ function startTicker(): void {
     void syncRealTickers();
   }
 }
-
 function stopTicker(): void {
   if (_state.tickTimer) clearInterval(_state.tickTimer);
   _state.tickTimer = null;
@@ -249,24 +248,100 @@ function stopTicker(): void {
 
 async function syncRealTickers() {
   try {
+    // 1. Fetch BTC, ETH, SOL from Binance
+    try {
+      const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D');
+      if (binanceRes.ok) {
+        const binanceData = await binanceRes.json();
+        if (Array.isArray(binanceData)) {
+          for (const t of binanceData) {
+            let sym = '';
+            if (t.symbol === 'BTCUSDT') sym = 'BTC-USD';
+            else if (t.symbol === 'ETHUSDT') sym = 'ETH-USD';
+            else if (t.symbol === 'SOLUSDT') sym = 'SOL-USD';
+            
+            if (sym) {
+              const row = _state.tickers.get(sym);
+              if (row) {
+                const last = parseFloat(String(t.lastPrice)) || row.lastPrice;
+                row.lastPrice = last;
+                row.markPrice = last;
+                row.indexPrice = last;
+                row.openPrice = parseFloat(String(t.openPrice)) || row.openPrice;
+                row.high = parseFloat(String(t.highPrice)) || row.high;
+                row.low = parseFloat(String(t.lowPrice)) || row.low;
+                row.volume = parseFloat(String(t.volume)) || row.volume;
+                row.quoteVolume = parseFloat(String(t.quoteVolume)) || row.quoteVolume;
+                row.bidPrice = parseFloat(String(t.bidPrice)) || last * 0.9995;
+                row.askPrice = parseFloat(String(t.askPrice)) || last * 1.0005;
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore binance fail
+    }
+
+    // 2. Fetch SOSO from Gate.io
+    try {
+      const gateRes = await fetch('https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT');
+      if (gateRes.ok) {
+        const gateData = await gateRes.json();
+        if (Array.isArray(gateData) && gateData.length > 0) {
+          const t = gateData[0];
+          const row = _state.tickers.get('SOSO-USD');
+          if (row) {
+            const last = parseFloat(String(t.last)) || row.lastPrice;
+            row.lastPrice = last;
+            row.markPrice = last;
+            row.indexPrice = last;
+            row.high = parseFloat(String(t.high_24h)) || row.high;
+            row.low = parseFloat(String(t.low_24h)) || row.low;
+            row.volume = parseFloat(String(t.base_volume)) || row.volume;
+            row.quoteVolume = parseFloat(String(t.quote_volume)) || row.quoteVolume;
+            row.bidPrice = parseFloat(String(t.highest_bid)) || last * 0.9995;
+            row.askPrice = parseFloat(String(t.lowest_ask)) || last * 1.0005;
+            const chgPct = parseFloat(String(t.change_percentage)) || 0;
+            row.openPrice = last / (1 + chgPct / 100);
+          }
+        }
+      }
+    } catch {
+      // Ignore gate fail
+    }
+
+    // 3. Fallback: Fetch remaining tickers (or all if public APIs failed) from SoDEX
     const res = await perpsClient.get('/markets/tickers');
     const tickers = res?.data ?? res ?? [];
-    if (!Array.isArray(tickers)) return;
-    
-    for (const t of tickers) {
-      const sym = normaliseSymbolForKey(t.symbol);
-      const row = _state.tickers.get(sym);
-      if (row) {
-        const last = parseFloat(String(t.lastPx ?? t.lastPrice)) || row.lastPrice;
-        row.lastPrice = last;
-        row.markPrice = parseFloat(String(t.markPrice)) || last;
-        row.indexPrice = parseFloat(String(t.indexPrice)) || last;
-        row.bidPrice = parseFloat(String(t.bidPx ?? t.bidPrice)) || last;
-        row.askPrice = parseFloat(String(t.askPx ?? t.askPrice)) || last;
-        row.high = parseFloat(String(t.highPx ?? t.high)) || row.high;
-        row.low = parseFloat(String(t.lowPx ?? t.low)) || row.low;
-        row.volume = parseFloat(String(t.volume)) || row.volume;
-        row.quoteVolume = parseFloat(String(t.quoteVolume)) || row.quoteVolume;
+    if (Array.isArray(tickers)) {
+      for (const t of tickers) {
+        const sym = normaliseSymbolForKey(t.symbol);
+        
+        const isMajor = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'SOSO-USD'].includes(sym);
+        if (isMajor) {
+          const row = _state.tickers.get(sym);
+          if (row) {
+            if (sym === 'BTC-USD' && row.markPrice > 70000) continue;
+            if (sym === 'ETH-USD' && row.markPrice > 2500) continue;
+            if (sym === 'SOL-USD' && row.markPrice > 100) continue;
+            if (sym === 'SOSO-USD' && Math.abs(row.markPrice - 0.29) < 0.1) continue;
+          }
+        }
+
+        const row = _state.tickers.get(sym);
+        if (row) {
+          const last = parseFloat(String(t.lastPx ?? t.lastPrice)) || row.lastPrice;
+          row.lastPrice = last;
+          row.markPrice = parseFloat(String(t.markPrice)) || last;
+          row.indexPrice = parseFloat(String(t.indexPrice)) || last;
+          row.bidPrice = parseFloat(String(t.bidPx ?? t.bidPrice)) || last;
+          row.askPrice = parseFloat(String(t.askPx ?? t.askPrice)) || last;
+          row.high = parseFloat(String(t.highPx ?? t.high)) || row.high;
+          row.low = parseFloat(String(t.lowPx ?? t.low)) || row.low;
+          row.volume = parseFloat(String(t.volume)) || row.volume;
+          row.quoteVolume = parseFloat(String(t.quoteVolume)) || row.quoteVolume;
+        }
       }
     }
   } catch (e) {
@@ -276,7 +351,6 @@ async function syncRealTickers() {
 
 function tick(): void {
   const now = Date.now();
-
   for (const t of _state.tickers.values()) {
     // Continuous live price micro-fluctuations
     const microDelta = t.markPrice * (Math.random() * 0.0016 - 0.0008);
@@ -569,6 +643,27 @@ export function getDemoMarkPrices() {
     symbol: t.symbol,
     markPrice: t.markPrice,
     price: t.markPrice,
+  }));
+}
+
+export function getDemoTickers() {
+  ensureInit();
+  return Array.from(_state.tickers.values()).map((t) => ({
+    symbol: t.symbol,
+    lastPrice: t.lastPrice,
+    close: t.lastPrice,
+    priceChangePercent: t.openPrice > 0 ? parseFloat((((t.lastPrice - t.openPrice) / t.openPrice) * 100).toFixed(2)) : 0.5,
+    bidPrice: t.bidPrice,
+    askPrice: t.askPrice,
+    high: t.high,
+    low: t.low,
+    volume: t.volume,
+    quoteVolume: t.quoteVolume,
+    openPrice: t.openPrice,
+    fundingRate: t.fundingRate,
+    nextFundingTime: t.nextFundingTime,
+    markPrice: t.markPrice,
+    indexPrice: t.indexPrice,
   }));
 }
 
