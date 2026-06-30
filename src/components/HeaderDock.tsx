@@ -47,117 +47,84 @@ export const HeaderDock: React.FC = () => {
     let mounted = true;
     const loadPrices = async () => {
       try {
-        let coincapData: any[] = [];
-        let gateTicker: any = null;
+        if (!mounted) return;
 
-        // 1. Fetch BTC, ETH, SOL from CoinCap (CORS-friendly public API)
-        try {
-          const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
-          if (res.ok) {
-            const json = await res.json();
-            if (json && Array.isArray(json.data)) {
-              coincapData = json.data;
-            }
-          }
-        } catch {
-          // ignore
-        }
-
-        // 2. Fetch SOSO from CoinGecko first, then Gate.io as fallback
-        try {
-          let sosoPrice = 0;
-          let sosoChange = 0;
-          // Try CoinGecko first (most reliable, CORS-friendly)
-          try {
-            const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=sosovalue&vs_currencies=usd&include_24hr_change=true');
-            if (cgRes.ok) {
-              const cgData = await cgRes.json();
-              if (cgData?.sosovalue?.usd) {
-                sosoPrice = cgData.sosovalue.usd;
-                sosoChange = cgData.sosovalue.usd_24h_change ?? 0;
-              }
-            }
-          } catch { /* CoinGecko failed, try Gate.io */ }
-
-          // Fallback to Gate.io if CoinGecko failed
-          if (sosoPrice <= 0) {
-            try {
-              const targetUrl = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=SOSO_USDT';
-              const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-              let res = await fetch(proxyUrl);
-              if (!res.ok) res = await fetch(targetUrl);
-              if (res.ok) {
-                const data = await res.json();
-                if (Array.isArray(data) && data.length > 0) {
-                  sosoPrice = parseFloat(data[0].last);
-                  sosoChange = parseFloat(data[0].change_percentage);
-                }
-              }
-            } catch { /* Gate.io also failed */ }
-          }
-
-          if (sosoPrice > 0) {
-            gateTicker = { last: String(sosoPrice), change_percentage: String(sosoChange) };
-          }
-        } catch {
-          // ignore
-        }
-
-        // 3. Fetch fallback mark prices from SoDEX perps API
+        // 1. PRIMARY: Fetch mark prices from SoDEX perps API (our own exchange — most reliable)
         let sodexPrices: any[] = [];
         try {
           const raw = await fetchMarkPrices();
           if (Array.isArray(raw)) sodexPrices = raw;
         } catch {
-          // ignore
+          // SoDEX API failed
+        }
+
+        // 2. SECONDARY: Try CoinCap for 24h change data (public, CORS-friendly)
+        let coincapMap: Record<string, { price: number; change: number }> = {};
+        try {
+          const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
+          if (res.ok) {
+            const json = await res.json();
+            if (json && Array.isArray(json.data)) {
+              for (const c of json.data) {
+                const price = parseFloat(c.priceUsd);
+                const change = parseFloat(c.changePercent24Hr);
+                if (price > 0) {
+                  const sym = c.symbol === 'BTC' ? 'BTC-USD' : c.symbol === 'ETH' ? 'ETH-USD' : c.symbol === 'SOL' ? 'SOL-USD' : null;
+                  if (sym) coincapMap[sym] = { price, change };
+                }
+              }
+            }
+          }
+        } catch {
+          // CoinCap down — no problem, SoDEX is primary
+        }
+
+        // 3. TERTIARY: Try Binance public API as backup for 24h change (CORS-friendly)
+        if (Object.keys(coincapMap).length === 0) {
+          try {
+            const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=["BTCUSDT","ETHUSDT","SOLUSDT","SOSOUSDT"]');
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data)) {
+                for (const t of data) {
+                  const price = parseFloat(t.lastPrice);
+                  const change = parseFloat(t.priceChangePercent);
+                  if (price > 0) {
+                    const symMap: Record<string, string> = { BTCUSDT: 'BTC-USD', ETHUSDT: 'ETH-USD', SOLUSDT: 'SOL-USD', SOSOUSDT: 'SOSO-USD' };
+                    const sym = symMap[t.symbol];
+                    if (sym) coincapMap[sym] = { price, change };
+                  }
+                }
+              }
+            }
+          } catch {
+            // Binance also unavailable
+          }
         }
 
         if (mounted) {
           setTickerPrices((prev) => {
             const updated = { ...prev };
 
-            // Apply CoinCap updates
-            const coincapSuccess = coincapData.length > 0;
-            for (const c of coincapData) {
-              const price = parseFloat(c.priceUsd);
-              const change = parseFloat(c.changePercent24Hr);
-              if (price > 0) {
-                if (c.symbol === 'BTC') updated['BTC-USD'] = { price, change };
-                else if (c.symbol === 'ETH') updated['ETH-USD'] = { price, change };
-                else if (c.symbol === 'SOL') updated['SOL-USD'] = { price, change };
-              }
-            }
-
-            // Apply Gate.io updates
-            const gateSuccess = !!gateTicker;
-            if (gateTicker) {
-              const price = parseFloat(gateTicker.last);
-              const change = parseFloat(gateTicker.change_percentage);
-              if (price > 0) {
-                updated['SOSO-USD'] = { price, change };
-              }
-            }
-
-            // Apply SoDEX updates for anything else (or fallback)
+            // Apply SoDEX mark prices as base (always available for our exchange coins)
             for (const item of sodexPrices) {
-              const isMajor = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'SOSO-USD'].includes(item.symbol);
-              const alreadyUpdated = isMajor && (
-                (item.symbol === 'BTC-USD' && coincapSuccess) ||
-                (item.symbol === 'ETH-USD' && coincapSuccess) ||
-                (item.symbol === 'SOL-USD' && coincapSuccess) ||
-                (item.symbol === 'SOSO-USD' && gateSuccess)
-              );
+              const p = parseFloat(item.markPrice ?? item.price ?? 0);
+              if (p > 0) {
+                const sym = String(item.symbol ?? '');
+                // Use existing change if we have it, otherwise calculate from previous price
+                const prevEntry = updated[sym];
+                const prevPrice = prevEntry?.price || 0;
+                const change = prevPrice > 0 && prevPrice !== p
+                  ? parseFloat((((p - prevPrice) / prevPrice) * 100).toFixed(2))
+                  : (prevEntry?.change || 0);
+                updated[sym] = { price: p, change };
+              }
+            }
 
-              if (!alreadyUpdated) {
-                const p = parseFloat(item.markPrice ?? item.price ?? 0);
-                if (p > 0) {
-                  const prevPrice = updated[item.symbol]?.price || p;
-                  const chg = prevPrice > 0 ? parseFloat((((p - prevPrice) / prevPrice) * 100).toFixed(2)) : 0.5;
-                  updated[item.symbol] = {
-                    price: p,
-                    change: chg !== 0 ? chg : (updated[item.symbol]?.change || 1.2)
-                  };
-                }
+            // Overlay external API data (better 24h change data)
+            for (const [sym, data] of Object.entries(coincapMap)) {
+              if (data.price > 0) {
+                updated[sym] = { price: data.price, change: data.change };
               }
             }
 
@@ -165,7 +132,7 @@ export const HeaderDock: React.FC = () => {
           });
         }
       } catch {
-        // Fallback
+        // Fallback — keep existing prices
       }
     };
 
