@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
-import { fetchEtfCurrentMetrics, fetchSosoIndices } from '../api/sosoServices';
+import { fetchSosoIndices } from '../api/sosoServices';
 import { OnboardingTour } from './OnboardingTour';
 import { useTickers } from '../api/queries';
 
@@ -36,11 +36,7 @@ export const HeaderDock: React.FC = () => {
   const { sosoApiKey } = useSettingsStore();
   const [ssiSentiment, setSsiSentiment] = useState<{ value: number; label: string }>({ value: 76, label: 'Extreme Greed' });
   
-  const [etfFlow, setEtfFlow] = useState<string>(() => {
-    const cached = localStorage.getItem('sodex_last_etf_flow');
-    if (cached && !cached.includes('NaN')) return cached;
-    return '—';
-  });
+
 
   const { data: rawTickers } = useTickers('spot');
 
@@ -101,49 +97,7 @@ export const HeaderDock: React.FC = () => {
         // ignore
       }
 
-      // 2. Fetch ETF Net Flow (sum of BTC and ETH Spot ETFs)
-      let hasData = false;
-      try {
-        const [btcMetrics, ethMetrics] = await Promise.all([
-          fetchEtfCurrentMetrics('us-btc-spot'),
-          fetchEtfCurrentMetrics('us-eth-spot'),
-        ]);
-        
-        let totalFlow = 0;
-        
-        if (btcMetrics?.dailyNetInflow?.value != null) {
-          totalFlow += btcMetrics.dailyNetInflow.value;
-          hasData = true;
-        }
-        if (ethMetrics?.dailyNetInflow?.value != null) {
-          totalFlow += ethMetrics.dailyNetInflow.value;
-          hasData = true;
-        }
-        
-        if (hasData && !isNaN(totalFlow) && mounted) {
-          const abs = Math.abs(totalFlow);
-          const sign = totalFlow >= 0 ? '+' : '-';
-          let formatted = '';
-          if (abs >= 1e9) formatted = `${sign}$${(abs / 1e9).toFixed(1)}B`;
-          else formatted = `${sign}$${(abs / 1e6).toFixed(1)}M`;
-          
-          if (!formatted.includes('NaN')) {
-            setEtfFlow(formatted);
-            localStorage.setItem('sodex_last_etf_flow', formatted);
-          }
-        }
-      } catch {
-        // ignore
-      }
 
-      if (!hasData && mounted) {
-        const cached = localStorage.getItem('sodex_last_etf_flow');
-        if (cached && !cached.includes('NaN')) {
-          setEtfFlow(cached);
-        } else {
-          setEtfFlow('—');
-        }
-      }
     };
 
     loadMeta();
@@ -260,19 +214,7 @@ export const HeaderDock: React.FC = () => {
           </span>
         </div>
 
-        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-text-muted uppercase tracking-wider text-[10px]">Spot ETF 24h Net Flow:</span>
-          <span className={cn(
-            "font-bold",
-            etfFlow.startsWith('-') ? "text-red-400" : "text-emerald-400"
-          )}>
-            {etfFlow}
-          </span>
-        </div>
-
-        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <span className="text-text-muted uppercase tracking-wider text-[10px]">Portfolio 95% VaR:</span>
