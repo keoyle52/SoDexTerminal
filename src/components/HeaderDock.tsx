@@ -43,14 +43,19 @@ export const HeaderDock: React.FC = () => {
   });
 
   const { data: rawTickers } = useTickers('perps');
+  const { data: rawSpotTickers } = useTickers('spot');
 
   // Continually update ticker prices based on react-query response
   useEffect(() => {
-    if (!rawTickers || !Array.isArray(rawTickers)) return;
+    const allTickers = [
+      ...(Array.isArray(rawTickers) ? rawTickers : []),
+      ...(Array.isArray(rawSpotTickers) ? rawSpotTickers : [])
+    ];
+    if (allTickers.length === 0) return;
     
     setTickerPrices((prev) => {
       const updated = { ...prev };
-      for (const t of rawTickers as any[]) {
+      for (const t of allTickers as any[]) {
         const p = parseFloat(t.markPrice ?? t.lastPrice ?? 0);
         if (p > 0) {
           const sym = String(t.symbol ?? '');
@@ -64,7 +69,7 @@ export const HeaderDock: React.FC = () => {
       }
       return updated;
     });
-  }, [rawTickers]);
+  }, [rawTickers, rawSpotTickers]);
 
   // Fetch F&G and ETF flows continuously
   useEffect(() => {
@@ -161,7 +166,7 @@ export const HeaderDock: React.FC = () => {
   const btc = tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 0, change: 0 };
   const eth = tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 0, change: 0 };
   const sol = tickerPrices['SOL-USD'] || tickerPrices['SOLUSDT'] || { price: 0, change: 0 };
-  const soso = tickerPrices['SOSO-USD'] || tickerPrices['SOSOUSDT'] || { price: 0, change: 0 };
+  const soso = tickerPrices['SOSO-USD'] || tickerPrices['WSOSO_vUSDC'] || tickerPrices['WSOSO_USDC'] || { price: 0, change: 0 };
 
   return (
     <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border shadow-lg">
