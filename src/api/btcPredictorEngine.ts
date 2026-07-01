@@ -51,6 +51,7 @@ import {
   fetchSosoNews,
   fetchEtfHistoricalInflow,
   getNewsTitle,
+  fetchSosoIndices,
   type SosoNewsItem,
   type EtfDayData,
 } from './sosoServices';
@@ -136,8 +137,8 @@ const MIN_AGREEMENT = 3;
  *  multiples of the fee envelope to overcome friction. */
 const FEE_MARGIN_MULTIPLIER = 0.8;
 
-/** Public Fear & Greed Index endpoint (no key required). */
-const FNG_URL = 'https://api.alternative.me/fng/?limit=1';
+/** Public Fear & Greed Index proxy fallback */
+const FNG_PROXY_URL = 'https://api.allorigins.win/raw?url=https://api.alternative.me/fng/';
 /** Cached F&G value (refreshed at most once per hour). */
 let _fngCache: { value: number; ts: number } | null = null;
 const FNG_CACHE_TTL = 60 * 60 * 1000;
@@ -286,8 +287,18 @@ async function fetchFearGreedSignal(): Promise<{ raw: number; signal: number } |
     const v = _fngCache.value;
     return { raw: v, signal: contrarianFng(v) };
   }
+  
+  // 1. Try SoSoValue
+  const sosoData = await fetchSosoIndices();
+  if (sosoData?.fngIndex) {
+    const raw = parseInt(sosoData.fngIndex);
+    _fngCache = { value: raw, ts: now };
+    return { raw, signal: contrarianFng(raw) };
+  }
+
+  // 2. Fallback to alternative.me
   try {
-    const res = await fetch(FNG_URL, { method: 'GET' });
+    const res = await fetch(`${FNG_PROXY_URL}?limit=1`, { method: 'GET' });
     if (!res.ok) return null;
     const json = await res.json() as { data?: Array<{ value?: string | number }> };
     const raw = Number(json?.data?.[0]?.value ?? NaN);
@@ -308,7 +319,7 @@ function contrarianFng(value: number): number {
 
 export async function fetchFearGreedHistory(limit = 300): Promise<{ date: string; value: number }[]> {
   try {
-    const res = await fetch(`https://api.alternative.me/fng/?limit=${limit}`, { method: 'GET' });
+    const res = await fetch(`${FNG_PROXY_URL}?limit=${limit}`, { method: 'GET' });
     if (!res.ok) return [];
     const json = await res.json() as { data?: Array<{ value?: string | number; timestamp?: string }> };
     const list = json?.data ?? [];

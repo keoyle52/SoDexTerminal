@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
-import { fetchMarkPrices } from '../api/services';
-import { fetchEtfCurrentMetrics } from '../api/sosoServices';
+import { fetchEtfCurrentMetrics, fetchSosoIndices } from '../api/sosoServices';
 import { OnboardingTour } from './OnboardingTour';
+import { useTickers } from '../api/queries';
 
 const NAV_TABS = [
   { to: '/terminal', label: 'Terminal', icon: Zap, badge: 'Live Desk' },
@@ -42,129 +42,60 @@ export const HeaderDock: React.FC = () => {
     return '—';
   });
 
-  // Fetch real live prices continuously
+  const { data: rawTickers } = useTickers('perps');
+
+  // Continually update ticker prices based on react-query response
   useEffect(() => {
-    let mounted = true;
-    const loadPrices = async () => {
-      try {
-        if (!mounted) return;
-
-        // 1. PRIMARY: Fetch mark prices from SoDEX perps API (our own exchange — most reliable)
-        let sodexPrices: any[] = [];
-        try {
-          const raw = await fetchMarkPrices();
-          if (Array.isArray(raw)) sodexPrices = raw;
-        } catch {
-          // SoDEX API failed
+    if (!rawTickers || !Array.isArray(rawTickers)) return;
+    
+    setTickerPrices((prev) => {
+      const updated = { ...prev };
+      for (const t of rawTickers as any[]) {
+        const p = parseFloat(t.markPrice ?? t.lastPrice ?? 0);
+        if (p > 0) {
+          const sym = String(t.symbol ?? '');
+          const prevEntry = updated[sym];
+          const prevPrice = prevEntry?.price || 0;
+          const change = prevPrice > 0 && prevPrice !== p
+            ? parseFloat((((p - prevPrice) / prevPrice) * 100).toFixed(2))
+            : (prevEntry?.change || 0);
+          updated[sym] = { price: p, change };
         }
-
-        // 2. SECONDARY: Try CoinCap for 24h change data (public, CORS-friendly)
-        let coincapMap: Record<string, { price: number; change: number }> = {};
-        try {
-          const res = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
-          if (res.ok) {
-            const json = await res.json();
-            if (json && Array.isArray(json.data)) {
-              for (const c of json.data) {
-                const price = parseFloat(c.priceUsd);
-                const change = parseFloat(c.changePercent24Hr);
-                if (price > 0) {
-                  const sym = c.symbol === 'BTC' ? 'BTC-USD' : c.symbol === 'ETH' ? 'ETH-USD' : c.symbol === 'SOL' ? 'SOL-USD' : null;
-                  if (sym) coincapMap[sym] = { price, change };
-                }
-              }
-            }
-          }
-        } catch {
-          // CoinCap down — no problem, SoDEX is primary
-        }
-
-        // 3. TERTIARY: Try Binance public API as backup for 24h change (CORS-friendly)
-        if (Object.keys(coincapMap).length === 0) {
-          try {
-            const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=["BTCUSDT","ETHUSDT","SOLUSDT","SOSOUSDT"]');
-            if (res.ok) {
-              const data = await res.json();
-              if (Array.isArray(data)) {
-                for (const t of data) {
-                  const price = parseFloat(t.lastPrice);
-                  const change = parseFloat(t.priceChangePercent);
-                  if (price > 0) {
-                    const symMap: Record<string, string> = { BTCUSDT: 'BTC-USD', ETHUSDT: 'ETH-USD', SOLUSDT: 'SOL-USD', SOSOUSDT: 'SOSO-USD' };
-                    const sym = symMap[t.symbol];
-                    if (sym) coincapMap[sym] = { price, change };
-                  }
-                }
-              }
-            }
-          } catch {
-            // Binance also unavailable
-          }
-        }
-
-        if (mounted) {
-          setTickerPrices((prev) => {
-            const updated = { ...prev };
-
-            // Apply SoDEX mark prices as base (always available for our exchange coins)
-            for (const item of sodexPrices) {
-              const p = parseFloat(item.markPrice ?? item.price ?? 0);
-              if (p > 0) {
-                const sym = String(item.symbol ?? '');
-                // Use existing change if we have it, otherwise calculate from previous price
-                const prevEntry = updated[sym];
-                const prevPrice = prevEntry?.price || 0;
-                const change = prevPrice > 0 && prevPrice !== p
-                  ? parseFloat((((p - prevPrice) / prevPrice) * 100).toFixed(2))
-                  : (prevEntry?.change || 0);
-                updated[sym] = { price: p, change };
-              }
-            }
-
-            // Overlay external API data (better 24h change data)
-            for (const [sym, data] of Object.entries(coincapMap)) {
-              if (data.price > 0) {
-                updated[sym] = { price: data.price, change: data.change };
-              }
-            }
-
-            return updated;
-          });
-        }
-      } catch {
-        // Fallback — keep existing prices
       }
-    };
-
-    loadPrices();
-    const interval = setInterval(loadPrices, 3000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+      return updated;
+    });
+  }, [rawTickers]);
 
   // Fetch F&G and ETF flows continuously
   useEffect(() => {
     let mounted = true;
 
     const loadMeta = async () => {
-      // 1. Fetch Fear & Greed Index (Direct call + AllOrigins fallback)
+      // 1. Fetch Fear & Greed Index from SoSoValue (or fallback API)
       try {
-        const targetUrl = 'https://api.alternative.me/fng/?limit=1';
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-        let res = await fetch(targetUrl);
-        if (!res.ok) res = await fetch(proxyUrl);
-        if (res.ok) {
-          const data = await res.json();
-          const item = data?.data?.[0];
-          if (item && mounted) {
-            const val = parseInt(item.value) || 50;
-            setSsiSentiment({
-              value: val,
-              label: item.value_classification || 'Neutral',
-            });
+        let val = 50;
+        let label = 'Neutral';
+        
+        const indices = await fetchSosoIndices();
+        if (indices?.fngIndex) {
+          val = parseInt(indices.fngIndex);
+          label = indices.fngClass || 'Neutral';
+        } else {
+          // Fallback to allorigins proxy of alternative.me if SoSoValue fails
+          const targetUrl = 'https://api.alternative.me/fng/?limit=1';
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+          const res = await fetch(proxyUrl);
+          if (res.ok) {
+            const data = await res.json();
+            const item = data?.data?.[0];
+            if (item) {
+              val = parseInt(item.value) || 50;
+              label = item.value_classification || 'Neutral';
+            }
           }
+        }
+        if (mounted) {
+          setSsiSentiment({ value: val, label });
         }
       } catch {
         // ignore
@@ -172,39 +103,37 @@ export const HeaderDock: React.FC = () => {
 
       // 2. Fetch ETF Net Flow (sum of BTC and ETH Spot ETFs)
       let hasData = false;
-      if (sosoApiKey) {
-        try {
-          const [btcMetrics, ethMetrics] = await Promise.all([
-            fetchEtfCurrentMetrics('us-btc-spot'),
-            fetchEtfCurrentMetrics('us-eth-spot'),
-          ]);
-          
-          let totalFlow = 0;
-          
-          if (btcMetrics?.dailyNetInflow?.value != null) {
-            totalFlow += btcMetrics.dailyNetInflow.value;
-            hasData = true;
-          }
-          if (ethMetrics?.dailyNetInflow?.value != null) {
-            totalFlow += ethMetrics.dailyNetInflow.value;
-            hasData = true;
-          }
-          
-          if (hasData && !isNaN(totalFlow) && mounted) {
-            const abs = Math.abs(totalFlow);
-            const sign = totalFlow >= 0 ? '+' : '-';
-            let formatted = '';
-            if (abs >= 1e9) formatted = `${sign}$${(abs / 1e9).toFixed(1)}B`;
-            else formatted = `${sign}$${(abs / 1e6).toFixed(1)}M`;
-            
-            if (!formatted.includes('NaN')) {
-              setEtfFlow(formatted);
-              localStorage.setItem('sodex_last_etf_flow', formatted);
-            }
-          }
-        } catch {
-          // ignore
+      try {
+        const [btcMetrics, ethMetrics] = await Promise.all([
+          fetchEtfCurrentMetrics('us-btc-spot'),
+          fetchEtfCurrentMetrics('us-eth-spot'),
+        ]);
+        
+        let totalFlow = 0;
+        
+        if (btcMetrics?.dailyNetInflow?.value != null) {
+          totalFlow += btcMetrics.dailyNetInflow.value;
+          hasData = true;
         }
+        if (ethMetrics?.dailyNetInflow?.value != null) {
+          totalFlow += ethMetrics.dailyNetInflow.value;
+          hasData = true;
+        }
+        
+        if (hasData && !isNaN(totalFlow) && mounted) {
+          const abs = Math.abs(totalFlow);
+          const sign = totalFlow >= 0 ? '+' : '-';
+          let formatted = '';
+          if (abs >= 1e9) formatted = `${sign}$${(abs / 1e9).toFixed(1)}B`;
+          else formatted = `${sign}$${(abs / 1e6).toFixed(1)}M`;
+          
+          if (!formatted.includes('NaN')) {
+            setEtfFlow(formatted);
+            localStorage.setItem('sodex_last_etf_flow', formatted);
+          }
+        }
+      } catch {
+        // ignore
       }
 
       if (!hasData && mounted) {

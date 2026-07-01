@@ -220,6 +220,22 @@ export async function fetchEtfCurrentMetrics(type: EtfType): Promise<EtfCurrentM
   return res?.data ?? null;
 }
 
+// ─── Indices ────────────────────────────────────────────────────────────────────
+
+export async function fetchSosoIndices(): Promise<{ fngIndex?: string; fngClass?: string } | null> {
+  try {
+    const res = await sosoValueClient.get('/openapi/v1/indices') as { data: { fngIndex?: string } };
+    if (res?.data?.fngIndex) {
+      const val = parseInt(res.data.fngIndex);
+      const label = val >= 75 ? 'Extreme Greed' : val >= 55 ? 'Greed' : val >= 45 ? 'Neutral' : val >= 25 ? 'Fear' : 'Extreme Fear';
+      return { fngIndex: res.data.fngIndex, fngClass: label };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export const NEWS_CATEGORIES: Record<number, { label: string; color: string }> = {
