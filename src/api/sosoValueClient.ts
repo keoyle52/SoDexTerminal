@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE } from './backendBase';
+import { useSettingsStore } from '../store/settingsStore';
 
 // All SoSoValue requests are proxied through our backend.
 // The backend holds the API key and routes to the correct SoSoValue domain.
@@ -141,9 +142,23 @@ function makeClient() {
   // Request interceptor
   client.interceptors.request.use(async (config) => {
     const url = config.url ?? '';
-    // Route everything through our backend proxy.
-    // The backend holds the SoSoValue API key and handles domain selection.
-    config.baseURL = BACKEND_PROXY;
+    
+    // We dynamically pull the API key from settings
+    const { sosoApiKey } = useSettingsStore.getState();
+
+    if (sosoApiKey) {
+      // Direct connection to SoSoValue servers
+      config.baseURL = url.includes('/openapi/v2/etf') 
+        ? 'https://api.sosovalue.xyz' 
+        : 'https://openapi.sosovalue.com';
+      
+      // Axios headers type is weak, need any cast or set method
+      if (!config.headers) config.headers = {} as any;
+      (config.headers as any)['x-soso-api-key'] = sosoApiKey;
+    } else {
+      // Fallback to backend proxy
+      config.baseURL = BACKEND_PROXY;
+    }
 
     const ttl = getCacheTtl(url);
     const key = cacheKey(url, config.data);
