@@ -42,20 +42,15 @@ export const HeaderDock: React.FC = () => {
     return '—';
   });
 
-  const { data: rawTickers } = useTickers('perps');
-  const { data: rawSpotTickers } = useTickers('spot');
+  const { data: rawTickers } = useTickers('spot');
 
   // Continually update ticker prices based on react-query response
   useEffect(() => {
-    const allTickers = [
-      ...(Array.isArray(rawTickers) ? rawTickers : []),
-      ...(Array.isArray(rawSpotTickers) ? rawSpotTickers : [])
-    ];
-    if (allTickers.length === 0) return;
+    if (!rawTickers || !Array.isArray(rawTickers) || rawTickers.length === 0) return;
     
     setTickerPrices((prev) => {
       const updated = { ...prev };
-      for (const t of allTickers as any[]) {
+      for (const t of rawTickers as any[]) {
         const p = parseFloat(t.markPrice ?? t.lastPrice ?? 0);
         if (p > 0) {
           const sym = String(t.symbol ?? '');
@@ -69,7 +64,7 @@ export const HeaderDock: React.FC = () => {
       }
       return updated;
     });
-  }, [rawTickers, rawSpotTickers]);
+  }, [rawTickers]);
 
   // Fetch F&G and ETF flows continuously
   useEffect(() => {
@@ -163,10 +158,10 @@ export const HeaderDock: React.FC = () => {
     p > 0 ? `$${p < 1 ? p.toFixed(4) : p.toLocaleString(undefined, { minimumFractionDigits: minDecimals, maximumFractionDigits: minDecimals })}` : '—';
   const fmtChange = (c: number, price: number) => price > 0 ? `${c >= 0 ? '+' : ''}${c.toFixed(2)}%` : '';
 
-  const btc = tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 0, change: 0 };
-  const eth = tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 0, change: 0 };
-  const sol = tickerPrices['SOL-USD'] || tickerPrices['SOLUSDT'] || { price: 0, change: 0 };
-  const soso = tickerPrices['SOSO-USD'] || tickerPrices['WSOSO_vUSDC'] || tickerPrices['WSOSO_USDC'] || { price: 0, change: 0 };
+  const btc = tickerPrices['BTC_USDC'] || tickerPrices['WBTC_vUSDC'] || tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 0, change: 0 };
+  const eth = tickerPrices['ETH_USDC'] || tickerPrices['WETH_vUSDC'] || tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 0, change: 0 };
+  const sol = tickerPrices['SOL_USDC'] || tickerPrices['WSOL_vUSDC'] || tickerPrices['SOL-USD'] || tickerPrices['SOLUSDT'] || { price: 0, change: 0 };
+  const soso = tickerPrices['WSOSO_vUSDC'] || tickerPrices['WSOSO_USDC'] || tickerPrices['SOSO-USD'] || { price: 0, change: 0 };
 
   return (
     <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border shadow-lg">
