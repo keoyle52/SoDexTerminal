@@ -158,9 +158,9 @@ export const HeaderDock: React.FC = () => {
     p > 0 ? `$${p < 1 ? p.toFixed(4) : p.toLocaleString(undefined, { minimumFractionDigits: minDecimals, maximumFractionDigits: minDecimals })}` : '—';
   const fmtChange = (c: number, price: number) => price > 0 ? `${c >= 0 ? '+' : ''}${c.toFixed(2)}%` : '';
 
-  const btc = tickerPrices['BTC_USDC'] || tickerPrices['WBTC_vUSDC'] || tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 0, change: 0 };
-  const eth = tickerPrices['ETH_USDC'] || tickerPrices['WETH_vUSDC'] || tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 0, change: 0 };
-  const sol = tickerPrices['SOL_USDC'] || tickerPrices['WSOL_vUSDC'] || tickerPrices['SOL-USD'] || tickerPrices['SOLUSDT'] || { price: 0, change: 0 };
+  const btc = tickerPrices['BTC_USDC'] || tickerPrices['vBTC_vUSDC'] || tickerPrices['BTC-USD'] || tickerPrices['BTCUSDT'] || { price: 0, change: 0 };
+  const eth = tickerPrices['ETH_USDC'] || tickerPrices['vETH_vUSDC'] || tickerPrices['ETH-USD'] || tickerPrices['ETHUSDT'] || { price: 0, change: 0 };
+  const sol = tickerPrices['SOL_USDC'] || tickerPrices['vSOL_vUSDC'] || tickerPrices['SOL-USD'] || tickerPrices['SOLUSDT'] || { price: 0, change: 0 };
   const soso = tickerPrices['WSOSO_vUSDC'] || tickerPrices['WSOSO_USDC'] || tickerPrices['SOSO-USD'] || { price: 0, change: 0 };
 
   return (

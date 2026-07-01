@@ -347,6 +347,31 @@ export const Settings: React.FC = () => {
             <div className="space-y-5 max-w-xl">
               <Card>
                 <div className="flex items-center gap-2 mb-5">
+                  <Key size={16} className="text-primary" />
+                  <h3 className="text-sm font-semibold">External API Keys</h3>
+                </div>
+                <div className="space-y-4">
+                  <Input
+                    label="SoSoValue API Key"
+                    type="password"
+                    value={store.sosoApiKey}
+                    onChange={(e) => store.setSosoApiKey(e.target.value)}
+                    placeholder="Enter SoSoValue key for ETF flows & Intelligence"
+                    hint="Bypasses the backend to directly fetch Spot ETF flows and Market Intelligence from SoSoValue."
+                  />
+                  <Input
+                    label="Gemini API Key"
+                    type="password"
+                    value={store.geminiApiKey}
+                    onChange={(e) => store.setGeminiApiKey(e.target.value)}
+                    placeholder="Enter Google Gemini key for AI features"
+                    hint="Required for AI Price Predictor and AI Alpha Matrix."
+                  />
+                </div>
+              </Card>
+
+              <Card>
+                <div className="flex items-center gap-2 mb-5">
                   <Hash size={16} className="text-primary" />
                   <h3 className="text-sm font-semibold">Defaults</h3>
                 </div>
