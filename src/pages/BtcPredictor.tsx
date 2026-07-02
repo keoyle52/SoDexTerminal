@@ -87,11 +87,12 @@ function fmtPct(pct: number, decimals = 2, withSign = true): string {
   return `${withSign ? sign : ''}${pct.toFixed(decimals)}%`;
 }
 
-function fmtUsd(n: number, decimals = 2): string {
+function fmtUsd(n: number, forceDecimals?: number): string {
   if (!Number.isFinite(n)) return '—';
+  const dec = forceDecimals !== undefined ? forceDecimals : (n < 1 ? 4 : n < 100 ? 2 : 0);
   return n.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    minimumFractionDigits: dec,
+    maximumFractionDigits: dec,
   });
 }
 
@@ -337,7 +338,7 @@ export const BtcPredictor: React.FC = () => {
 
       // 6. UX surfacing.
       if (result.trade?.placed) {
-        toast.success(`${result.trade.side} placed @ $${fmtUsd(result.entryPrice, 0)} — ${result.confidence}% conviction`);
+        toast.success(`${result.trade.side} placed @ $${fmtUsd(result.entryPrice)} - ${result.confidence}% conviction`);
       } else if (result.skippedReason) {
         toast(`Cycle skipped — ${result.skippedReason}`, { icon: '⏸️' });
       } else if (result.direction !== 'NEUTRAL') {
@@ -896,11 +897,11 @@ export const BtcPredictor: React.FC = () => {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wider">Entry</div>
-                  <div className="text-sm font-mono font-bold text-text-primary">${fmtUsd(openPosition.entryPrice, 0)}</div>
+                  <div className="text-sm font-mono font-bold text-text-primary">${fmtUsd(openPosition.entryPrice)}</div>
                 </div>
                 <div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wider">Mark</div>
-                  <div className="text-sm font-mono font-bold text-text-primary">${fmtUsd(livePrice, 0)}</div>
+                  <div className="text-sm font-mono font-bold text-text-primary">${fmtUsd(livePrice)}</div>
                 </div>
                 <div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wider">Qty</div>
@@ -908,7 +909,7 @@ export const BtcPredictor: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wider">Notional</div>
-                  <div className="text-sm font-mono text-text-primary">${fmtUsd(openPosition.notionalUsdt, 0)}</div>
+                  <div className="text-sm font-mono text-text-primary">${fmtUsd(openPosition.notionalUsdt)}</div>
                 </div>
               </div>
               <div className={cn(
@@ -977,11 +978,11 @@ export const BtcPredictor: React.FC = () => {
             <div className="flex items-center gap-3 flex-wrap">
               <ChartStat
                 label="Entry"
-                value={entryRef > 0 ? `$${fmtUsd(entryRef, 0)}` : '—'}
+                value={entryRef > 0 ? `$${fmtUsd(entryRef)}` : '—'}
               />
               <ChartStat
                 label="Live"
-                value={livePrice > 0 ? `$${fmtUsd(livePrice, 0)}` : '—'}
+                value={livePrice > 0 ? `$${fmtUsd(livePrice)}` : '—'}
                 pulse
               />
               <ChartStat
@@ -1475,10 +1476,10 @@ const CycleRow: React.FC<{ entry: PredictionEntry }> = ({ entry }) => {
         {entry.confidence > 0 ? `${entry.confidence.toFixed(0)}%` : '—'}
       </td>
       <td className="px-2 py-2.5 text-right font-mono text-[11px] text-text-primary">
-        ${fmtUsd(entry.entryPrice, 0)}
+        ${fmtUsd(entry.entryPrice)}
       </td>
       <td className="px-2 py-2.5 text-right font-mono text-[11px] text-text-secondary">
-        {entry.exitPrice ? `$${fmtUsd(entry.exitPrice, 0)}` : '—'}
+        {entry.exitPrice ? `$${fmtUsd(entry.exitPrice)}` : '—'}
       </td>
       <td className={cn(
         'px-2 py-2.5 text-right font-mono text-[11px]',
