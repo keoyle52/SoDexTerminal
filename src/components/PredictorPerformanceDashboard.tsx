@@ -10,11 +10,13 @@ import { usePredictorStore, computePerformanceMetrics, type PredictionEntry } fr
 import { cn } from '../lib/utils';
 
 interface PredictorPerformanceDashboardProps {
+  symbol: string;
   history: PredictionEntry[];
   className?: string;
 }
 
 export const PredictorPerformanceDashboard: React.FC<PredictorPerformanceDashboardProps> = ({
+  symbol,
   history,
   className,
 }) => {
@@ -73,7 +75,7 @@ export const PredictorPerformanceDashboard: React.FC<PredictorPerformanceDashboa
           <button
             onClick={() => {
               if (window.confirm("Are you sure you want to clear all predictor history and reset statistics? This cannot be undone.")) {
-                resetStats();
+                resetStats(symbol);
               }
             }}
             className="px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"

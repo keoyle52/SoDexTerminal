@@ -76,75 +76,56 @@ export interface PredictionEntry {
   signals: SignalSnapshot;
 }
 
-interface PredictorState {
-  // current cycle
+export interface SymbolState {
   currentPrediction: PredictionDirection;
   currentConfidence: number;
   currentSignals: SignalSnapshot | null;
-  cycleStartTime: number | null;   // epoch ms when current 5-min window started
+  cycleStartTime: number | null;
   entryPrice: number | null;
-
-  // history (max 100)
   history: PredictionEntry[];
-
-  // accuracy stats
   correct: number;
   wrong: number;
   skipped: number;
+  aiVerdict: StrategistVerdict | null;
+  openPosition: OpenPosition | null;
+}
+
+const defaultSymbolState: SymbolState = {
+  currentPrediction: 'NEUTRAL',
+  currentConfidence: 0,
+  currentSignals: null,
+  cycleStartTime: null,
+  entryPrice: null,
+  history: [],
+  correct: 0,
+  wrong: 0,
+  skipped: 0,
+  aiVerdict: null,
+  openPosition: null,
+};
+
+interface PredictorState {
+  symbols: Record<string, SymbolState>;
 
   // ── Trading settings (optional auto-order placement) ──
-  /** When true, predictor places a market order on each non-neutral prediction. */
   autoTradeEnabled: boolean;
-  /** Notional order size in USDT. Converted to BTC quantity at order time. */
   tradeAmountUsdt: string;
-  /** Leverage applied before placing the order. SoDEX cap = 25x. */
   tradeLeverage: number;
-  /** When true, on a NEUTRAL prediction the open position is also closed. */
   closeOnNeutral: boolean;
-  /** When true, at the start of every new prediction cycle the existing
-   *  position is closed and a fresh one is opened in the new direction —
-   *  even if the direction is unchanged. Primary use-case: volume farming
-   *  for airdrop eligibility. Costs 2x taker fees per cycle. */
   renewEveryCycle: boolean;
-  /** When true, the predictor evaluates an ATR-scaled stop-loss on every
-   *  live BTC tick and force-closes the position when the unrealised loss
-   *  exceeds `slAtrMult × ATR%`. Defends against the tail-risk pattern
-   *  where a single 5-minute cycle gives the position room to take a
-   *  full-distance adverse move that erases multiple winning trades. */
   stopLossEnabled: boolean;
-  /** Multiplier applied to the latest 1-min ATR(14)% to compute the
-   *  intracycle stop-loss distance. 1.5 means "stop out at 1.5x normal
-   *  volatility against me" — tight enough to cap tail risk, wide
-   *  enough to avoid noise stop-outs in calm regimes. */
   slAtrMult: number;
 
-  // ── AI Strategist overlay ─────────────────────────────────────────
-  /** When true, every cycle calls the AI Strategist (Gemini or demo
-   *  synth) and the verdict is surfaced in the Predictor UI. Default ON
-   *  because the demo synth has zero cost and adds the "AI brain"
-   *  narrative the workshop emphasised. */
+  // ── AI Strategist overlay ──
   aiStrategistEnabled: boolean;
-  /** When true, the auto-trade order size is multiplied by the
-   *  Strategist's `sizeMultiplier`. 0.5 = half size, 0 = skip the
-   *  trade entirely. Lets the LLM act as a risk-overlay without ever
-   *  giving it the power to flip the rule-based direction. */
   aiSizeAdjustEnabled: boolean;
-  /** When true, the bot SKIPS the trade if the Strategist's decision
-   *  contradicts the rule-based direction (LONG vs SHORT). HOLD does
-   *  NOT skip — only opposite-direction disagreements. */
   aiSkipOnDisagree: boolean;
-  /** Latest verdict — refreshed each cycle. null until the first cycle
-   *  resolves. NOT persisted (always fresh on app reload). */
-  aiVerdict: StrategistVerdict | null;
-
-  // ── Currently open bot-managed position ──
-  openPosition: OpenPosition | null;
 
   // actions
-  setCurrentPrediction: (d: PredictionDirection, conf: number, signals: SignalSnapshot, price: number) => void;
-  resolvePrediction: (id: string, exitPrice: number) => void;
-  addHistoryEntry: (entry: PredictionEntry) => void;
-  resetStats: () => void;
+  setCurrentPrediction: (symbol: string, d: PredictionDirection, conf: number, signals: SignalSnapshot, price: number) => void;
+  resolvePrediction: (symbol: string, id: string, exitPrice: number) => void;
+  addHistoryEntry: (symbol: string, entry: PredictionEntry) => void;
+  resetStats: (symbol: string) => void;
   setAutoTradeEnabled: (v: boolean) => void;
   setTradeAmountUsdt: (v: string) => void;
   setTradeLeverage: (v: number) => void;
@@ -155,8 +136,8 @@ interface PredictorState {
   setAiStrategistEnabled: (v: boolean) => void;
   setAiSizeAdjustEnabled: (v: boolean) => void;
   setAiSkipOnDisagree: (v: boolean) => void;
-  setAiVerdict: (v: StrategistVerdict | null) => void;
-  setOpenPosition: (p: OpenPosition | null) => void;
+  setAiVerdict: (symbol: string, v: StrategistVerdict | null) => void;
+  setOpenPosition: (symbol: string, p: OpenPosition | null) => void;
 }
 
 /**
@@ -186,15 +167,7 @@ export interface OpenPosition {
 export const usePredictorStore = create<PredictorState>()(
   persist(
     (set, get) => ({
-      currentPrediction: 'NEUTRAL',
-      currentConfidence: 0,
-      currentSignals: null,
-      cycleStartTime: null,
-      entryPrice: null,
-      history: [],
-      correct: 0,
-      wrong: 0,
-      skipped: 0,
+      symbols: {},
 
       // Trading defaults: disabled, conservative size + leverage
       autoTradeEnabled: false,
@@ -202,51 +175,57 @@ export const usePredictorStore = create<PredictorState>()(
       tradeLeverage: 5,
       closeOnNeutral: false,
       renewEveryCycle: false,
-      // Stop-loss defaults: ON at 1.5x ATR. Empirically calibrated against
-      // a 5-trade live sample where a single −0.19% loss erased four
-      // ~+0% wins; with ATR ~0.10–0.15% that translates to a stop
-      // distance of ~0.15–0.22% which would have capped the worst trade
-      // before it ran the full cycle.
       stopLossEnabled: true,
       slAtrMult: 1.5,
-      // AI Strategist defaults: ON (zero-cost demo synth covers no-key
-      // case), size adjust ON (LLM can dampen sizing on weak verdicts),
-      // skip-on-disagree OFF (jury wants to see the bot trade — disagree
-      // skip can be too restrictive in noisy real-time markets).
       aiStrategistEnabled: true,
       aiSizeAdjustEnabled: true,
       aiSkipOnDisagree: false,
-      aiVerdict: null,
-      openPosition: null,
 
       setAutoTradeEnabled: (v) => set({ autoTradeEnabled: v }),
       setTradeAmountUsdt: (v) => set({ tradeAmountUsdt: v }),
-      // SoDEX caps perps leverage at 25x — enforce here.
       setTradeLeverage: (v) => set({ tradeLeverage: Math.max(1, Math.min(25, v)) }),
       setCloseOnNeutral: (v) => set({ closeOnNeutral: v }),
       setRenewEveryCycle: (v) => set({ renewEveryCycle: v }),
       setStopLossEnabled: (v) => set({ stopLossEnabled: v }),
-      // Clamp to a sensible range so users can't disable the SL via 0
-      // (use the toggle for that) or set absurdly wide values.
       setSlAtrMult: (v) => set({ slAtrMult: Math.max(0.5, Math.min(5, v)) }),
       setAiStrategistEnabled: (v) => set({ aiStrategistEnabled: v }),
       setAiSizeAdjustEnabled: (v) => set({ aiSizeAdjustEnabled: v }),
       setAiSkipOnDisagree: (v) => set({ aiSkipOnDisagree: v }),
-      setAiVerdict: (v) => set({ aiVerdict: v }),
-      setOpenPosition: (p) => set({ openPosition: p }),
+      
+      setAiVerdict: (symbol, v) => set((s) => ({
+        symbols: {
+          ...s.symbols,
+          [symbol]: { ...(s.symbols[symbol] || defaultSymbolState), aiVerdict: v }
+        }
+      })),
+      
+      setOpenPosition: (symbol, p) => set((s) => ({
+        symbols: {
+          ...s.symbols,
+          [symbol]: { ...(s.symbols[symbol] || defaultSymbolState), openPosition: p }
+        }
+      })),
 
-      setCurrentPrediction: (direction, confidence, signals, price) =>
-        set({
-          currentPrediction: direction,
-          currentConfidence: confidence,
-          currentSignals: signals,
-          cycleStartTime: Date.now(),
-          entryPrice: price,
-        }),
+      setCurrentPrediction: (symbol, direction, confidence, signals, price) => set((s) => ({
+        symbols: {
+          ...s.symbols,
+          [symbol]: {
+            ...(s.symbols[symbol] || defaultSymbolState),
+            currentPrediction: direction,
+            currentConfidence: confidence,
+            currentSignals: signals,
+            cycleStartTime: Date.now(),
+            entryPrice: price,
+          }
+        }
+      })),
 
-      resolvePrediction: (id, exitPrice) => {
+      resolvePrediction: (symbol, id, exitPrice) => {
         const state = get();
-        const entry = state.history.find((e) => e.id === id);
+        const symState = state.symbols[symbol];
+        if (!symState) return;
+        
+        const entry = symState.history.find((e) => e.id === id);
         if (!entry || entry.result !== 'PENDING') return;
         if (entry.entryPrice <= 0) return;
 
@@ -260,53 +239,80 @@ export const usePredictorStore = create<PredictorState>()(
           result = pct < 0 ? 'CORRECT' : 'WRONG';
         }
 
-        // Compute net % after round-trip taker fees. Only meaningful for
-        // non-neutral trades — NEUTRAL predictions place no orders.
         const feeRateUsed = DEFAULT_TAKER_FEE_RATE;
         const netPricePct = entry.direction === 'NEUTRAL'
           ? null
           : (entry.direction === 'UP' ? pct : -pct) - 2 * feeRateUsed * 100;
 
-        set((s) => ({
-          history: s.history.map((e) =>
-            e.id === id
-              ? { ...e, exitPrice, pricePct: pct, result, netPricePct, feeRateUsed }
-              : e,
-          ),
-          correct: result === 'CORRECT' ? s.correct + 1 : s.correct,
-          wrong:   result === 'WRONG'   ? s.wrong + 1   : s.wrong,
-          skipped: result === 'SKIPPED' ? s.skipped + 1 : s.skipped,
-        }));
+        set((s) => {
+          const cSym = s.symbols[symbol] || defaultSymbolState;
+          return {
+            symbols: {
+              ...s.symbols,
+              [symbol]: {
+                ...cSym,
+                history: cSym.history.map((e) =>
+                  e.id === id
+                    ? { ...e, exitPrice, pricePct: pct, result, netPricePct, feeRateUsed }
+                    : e,
+                ),
+                correct: result === 'CORRECT' ? cSym.correct + 1 : cSym.correct,
+                wrong:   result === 'WRONG'   ? cSym.wrong + 1   : cSym.wrong,
+                skipped: result === 'SKIPPED' ? cSym.skipped + 1 : cSym.skipped,
+              }
+            }
+          };
+        });
       },
 
-      addHistoryEntry: (entry) =>
-        set((s) => ({
-          history: [entry, ...s.history].slice(0, 100),
-          skipped: entry.result === 'SKIPPED' ? s.skipped + 1 : s.skipped,
-        })),
+      addHistoryEntry: (symbol, entry) => set((s) => {
+        const cSym = s.symbols[symbol] || defaultSymbolState;
+        return {
+          symbols: {
+            ...s.symbols,
+            [symbol]: {
+              ...cSym,
+              history: [entry, ...cSym.history].slice(0, 100),
+              skipped: entry.result === 'SKIPPED' ? cSym.skipped + 1 : cSym.skipped,
+            }
+          }
+        };
+      }),
 
-      resetStats: () =>
-        set({ history: [], correct: 0, wrong: 0, skipped: 0, currentPrediction: 'NEUTRAL', currentConfidence: 0, currentSignals: null, cycleStartTime: null, entryPrice: null, openPosition: null }),
+      resetStats: (symbol) => set((s) => ({
+        symbols: {
+          ...s.symbols,
+          [symbol]: { ...defaultSymbolState }
+        }
+      })),
     }),
     {
-      name: 'predictor-store-v2',
-      partialize: (s) => ({
-        history: s.history,
-        correct: s.correct,
-        wrong: s.wrong,
-        skipped: s.skipped,
-        autoTradeEnabled: s.autoTradeEnabled,
-        tradeAmountUsdt: s.tradeAmountUsdt,
-        tradeLeverage: s.tradeLeverage,
-        closeOnNeutral: s.closeOnNeutral,
-        renewEveryCycle: s.renewEveryCycle,
-        openPosition: s.openPosition,
-        // AI Strategist settings persist; the verdict itself does not
-        // (always recomputed on next cycle from fresh signals).
-        aiStrategistEnabled: s.aiStrategistEnabled,
-        aiSizeAdjustEnabled: s.aiSizeAdjustEnabled,
-        aiSkipOnDisagree: s.aiSkipOnDisagree,
-      }),
+      name: 'predictor-store-v3',
+      partialize: (s) => {
+        // Strip out volatile properties like openPosition/aiVerdict from persistence if desired,
+        // or just persist the core stats of each symbol.
+        const persistedSymbols: Record<string, any> = {};
+        for (const [sym, st] of Object.entries(s.symbols)) {
+          persistedSymbols[sym] = {
+            history: st.history,
+            correct: st.correct,
+            wrong: st.wrong,
+            skipped: st.skipped,
+            openPosition: st.openPosition,
+          };
+        }
+        return {
+          symbols: persistedSymbols,
+          autoTradeEnabled: s.autoTradeEnabled,
+          tradeAmountUsdt: s.tradeAmountUsdt,
+          tradeLeverage: s.tradeLeverage,
+          closeOnNeutral: s.closeOnNeutral,
+          renewEveryCycle: s.renewEveryCycle,
+          aiStrategistEnabled: s.aiStrategistEnabled,
+          aiSizeAdjustEnabled: s.aiSizeAdjustEnabled,
+          aiSkipOnDisagree: s.aiSkipOnDisagree,
+        };
+      },
     },
   ),
 );

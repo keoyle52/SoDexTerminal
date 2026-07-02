@@ -152,7 +152,8 @@ export const AiConsole: React.FC = () => {
           funding = parseFloat(String(btcFr?.fundingRate ?? btcFr?.lastFundingRate ?? 0));
         } catch { /* funding optional */ }
 
-        const predictor = usePredictorStore.getState();
+        const store = usePredictorStore.getState();
+        const predictor = store.symbols['BTC-USD'] || { currentPrediction: 'NEUTRAL', currentConfidence: 0, currentSignals: null, aiVerdict: null };
         const aiV = predictor.aiVerdict;
 
         return JSON.stringify({
@@ -211,7 +212,8 @@ export const AiConsole: React.FC = () => {
       description: 'BTC Predictor stats (last verdict, accuracy, AI Strategist verdict, history sample).',
       args: {} as Record<string, ToolArgSchema>,
       handler: async () => {
-        const s = usePredictorStore.getState();
+        const store = usePredictorStore.getState();
+        const s = store.symbols['BTC-USD'] || { history: [], correct: 0, wrong: 0, skipped: 0, currentPrediction: 'NEUTRAL', currentConfidence: 0, currentSignals: null, aiVerdict: null, openPosition: null };
         const totalDecided = s.correct + s.wrong;
         const winRate = totalDecided > 0 ? s.correct / totalDecided : 0;
         const recent = s.history.slice(0, 5).map((h) => ({

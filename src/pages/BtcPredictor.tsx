@@ -182,6 +182,8 @@ export const BtcPredictor: React.FC = () => {
   // cycle scheduler closure (executeCycle) can stay stable across
   // re-renders. Setters in zustand are reference-stable across renders.
   const predictor = usePredictorStore();
+  
+
   const tradeAmountUsdt = predictor.tradeAmountUsdt;
   const tradeLeverage = predictor.tradeLeverage;
   const autoTradeEnabled = predictor.autoTradeEnabled;
@@ -193,6 +195,22 @@ export const BtcPredictor: React.FC = () => {
   const isSoso = selectedAsset === 'SOSO';
   const market = (isSoso && !isDemoMode) ? 'spot' : 'perps';
   const symbol = isSoso ? (isDemoMode ? 'SOSO-USD' : 'WSOSO_vUSDC') : `${selectedAsset}-USD`;
+
+  const symState = predictor.symbols[symbol] || {
+    currentPrediction: 'NEUTRAL',
+    currentConfidence: 0,
+    currentSignals: null,
+    cycleStartTime: null,
+    entryPrice: null,
+    history: [],
+    correct: 0,
+    wrong: 0,
+    skipped: 0,
+    aiVerdict: null,
+    openPosition: null,
+  } as any;
+
+
 
   const [activeTab, setActiveTab] = useState<'live' | 'performance' | 'how'>('live');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -209,7 +227,7 @@ export const BtcPredictor: React.FC = () => {
   const [showEvidence, setShowEvidence] = useState(false);
 
   // WS uses perps. If market is spot, WS price won't populate, so we rely on REST below.
-  const wsPrice = useLivePrice(symbol, predictor.entryPrice ?? 0, 'perps');
+  const wsPrice = useLivePrice(symbol, symState.entryPrice ?? 0, 'perps');
   const [restPrice, setRestPrice] = useState(0);
 
   useEffect(() => {
@@ -275,23 +293,24 @@ export const BtcPredictor: React.FC = () => {
       const store = usePredictorStore.getState();
 
       // 1. Resolve any pending prediction first (bookkeeping).
-      const head = store.history[0];
+      const symStateActive = store.symbols[cfgRef.current.symbol] || { history: [], openPosition: null } as any;
+      const head = symStateActive.history[0];
       if (head && head.result === 'PENDING') {
         const live = livePriceRef.current;
         const exit = live > 0
           ? live
           : (await fetchMarkPriceFor(cfgRef.current.symbol, cfgRef.current.market)) ?? head.entryPrice;
-        store.resolvePrediction(head.id, exit);
+        store.resolvePrediction(cfgRef.current.symbol, head.id, exit);
       }
 
       // 2. Close any open position from the previous cycle. We always close
       //    at cycle boundary so the bot never compounds multi-cycle exposure
       //    and each cycle's outcome is unambiguous in the metrics.
-      const openPos = store.openPosition;
+      const openPos = symStateActive?.openPosition;
       if (openPos) {
         try {
           const r = await closeMarketPosition(openPos.symbol, openPos.side, openPos.quantity);
-          if (r.closed) store.setOpenPosition(null);
+          if (r.closed) store.setOpenPosition(cfgRef.current.symbol, null);
         } catch { /* non-fatal — continue with new cycle */ }
       }
 
@@ -302,13 +321,13 @@ export const BtcPredictor: React.FC = () => {
 
       // 4. Persist into the store as both currentPrediction and a new
       //    PENDING history entry so the metrics dashboard updates.
-      store.setCurrentPrediction(
+      store.setCurrentPrediction(cfgRef.current.symbol, 
         result.direction,
         result.confidence,
         result.signals,
         result.entryPrice,
       );
-      store.setAiVerdict(result.ai);
+      store.setAiVerdict(cfgRef.current.symbol, result.ai);
 
       const entry: PredictionEntry = {
         id: makeId(),
@@ -321,11 +340,11 @@ export const BtcPredictor: React.FC = () => {
         pricePct: null,
         signals: result.signals,
       };
-      store.addHistoryEntry(entry);
+      store.addHistoryEntry(cfgRef.current.symbol, entry);
 
       // 5. Persist open position if a trade was placed.
       if (result.trade?.placed && result.trade.side && result.trade.quantity) {
-        store.setOpenPosition({
+        store.setOpenPosition(cfgRef.current.symbol, {
           symbol: config.symbol,
           side: result.trade.side,
           quantity: result.trade.quantity,
@@ -454,7 +473,7 @@ export const BtcPredictor: React.FC = () => {
   const remainingMs = Math.max(0, totalCycleMs - elapsedMs);
   const cycleProgress = cycleStartedAt ? Math.min(1, elapsedMs / totalCycleMs) : 0;
 
-  const openPosition = predictor.openPosition;
+  const openPosition = symState.openPosition;
   const positionPnlPct = openPosition && livePrice > 0
     ? ((livePrice - openPosition.entryPrice) / openPosition.entryPrice) * 100
       * (openPosition.side === 'LONG' ? 1 : -1)
@@ -463,8 +482,8 @@ export const BtcPredictor: React.FC = () => {
     ? (positionPnlPct / 100) * openPosition.notionalUsdt * openPosition.leverage
     : 0;
 
-  // Change since entry overlay value (entry = predictor.entryPrice).
-  const entryRef = predictor.entryPrice ?? 0;
+  // Change since entry overlay value (entry = symState.entryPrice).
+  const entryRef = symState.entryPrice ?? 0;
   const changeSinceEntry = entryRef > 0 && livePrice > 0
     ? ((livePrice - entryRef) / entryRef) * 100
     : 0;
@@ -473,27 +492,27 @@ export const BtcPredictor: React.FC = () => {
   // of the latest cycle plus any open-position marker.
   const chartMarkers = useMemo<SeriesMarker<Time>[]>(() => {
     const out: SeriesMarker<Time>[] = [];
-    if (predictor.cycleStartTime && predictor.entryPrice) {
+    if (symState.cycleStartTime && symState.entryPrice) {
       out.push({
-        time: Math.floor(predictor.cycleStartTime / 1000) as Time,
+        time: Math.floor(symState.cycleStartTime / 1000) as Time,
         position: 'aboveBar',
-        color: predictor.currentPrediction === 'UP' ? '#10B981' : predictor.currentPrediction === 'DOWN' ? '#EF4444' : '#F59E0B',
+        color: symState.currentPrediction === 'UP' ? '#10B981' : symState.currentPrediction === 'DOWN' ? '#EF4444' : '#F59E0B',
         shape: 'arrowDown',
-        text: `${predictor.currentPrediction} ${predictor.currentConfidence.toFixed(0)}%`,
+        text: `${symState.currentPrediction} ${symState.currentConfidence.toFixed(0)}%`,
       });
     }
     return out;
-  }, [predictor.cycleStartTime, predictor.entryPrice, predictor.currentPrediction, predictor.currentConfidence]);
+  }, [symState.cycleStartTime, symState.entryPrice, symState.currentPrediction, symState.currentConfidence]);
 
   // ── Recent history view ───────────────────────────────────────────────────
-  const recentHistory = predictor.history.slice(0, 25);
+  const recentHistory = symState.history.slice(0, 25);
   const winRate = (() => {
-    const decided = predictor.history.filter((e) => e.result === 'CORRECT' || e.result === 'WRONG');
+    const decided = symState.history.filter((e) => e.result === 'CORRECT' || e.result === 'WRONG');
     if (decided.length === 0) return 0;
     const wins = decided.filter((e) => e.result === 'CORRECT').length;
     return (wins / decided.length) * 100;
   })();
-  const totalNetPct = predictor.history.reduce(
+  const totalNetPct = symState.history.reduce(
     (a, e) => a + (typeof e.netPricePct === 'number' ? e.netPricePct : 0), 0,
   );
 
@@ -644,7 +663,7 @@ export const BtcPredictor: React.FC = () => {
           />
           <MiniStat
             label="Cycles"
-            value={String(predictor.history.length)}
+            value={String(symState.history.length)}
             icon={<Activity size={14} />}
           />
           <MiniStat
@@ -661,7 +680,7 @@ export const BtcPredictor: React.FC = () => {
       <div className="flex items-center gap-1 p-1 rounded-xl glass-card overflow-x-auto scrollbar-thin" role="tablist">
         {([
           { id: 'live',        label: 'Live',         icon: Activity },
-          { id: 'performance', label: 'Performance',  icon: LineChart, badge: predictor.history.length },
+          { id: 'performance', label: 'Performance',  icon: LineChart, badge: symState.history.length },
           { id: 'how',         label: 'How it Works', icon: BookOpen },
         ] as const).map((t) => {
           const Icon = t.icon;
@@ -709,24 +728,24 @@ export const BtcPredictor: React.FC = () => {
               <div className="text-[9px] uppercase tracking-widest text-text-muted">13-signal rule ensemble</div>
             </div>
           </div>
-          <DirectionBadge direction={predictor.currentPrediction} confidence={predictor.currentConfidence} />
-          {predictor.currentSignals ? (
+          <DirectionBadge direction={symState.currentPrediction} confidence={symState.currentConfidence} />
+          {symState.currentSignals ? (
             <div className="space-y-2.5">
               {/* Weighted score bar */}
               <div>
                 <div className="flex items-center justify-between text-[9px] mb-1.5">
                   <span className="text-text-muted">Bear</span>
                   <span className={cn('font-mono font-bold text-xs',
-                    predictor.currentSignals.weightedScore > 0.05 ? 'text-emerald-400'
-                    : predictor.currentSignals.weightedScore < -0.05 ? 'text-red-400'
+                    symState.currentSignals.weightedScore > 0.05 ? 'text-emerald-400'
+                    : symState.currentSignals.weightedScore < -0.05 ? 'text-red-400'
                     : 'text-amber-300',
-                  )}>{fmtSig(predictor.currentSignals.weightedScore)}</span>
+                  )}>{fmtSig(symState.currentSignals.weightedScore)}</span>
                   <span className="text-text-muted">Bull</span>
                 </div>
                 <div className="relative h-2 rounded-full bg-background/60 border border-border/50 overflow-hidden">
                   <div className="absolute top-0 bottom-0 w-px bg-border/70" style={{ left: '50%' }} />
                   {(() => {
-                    const s = Math.min(Math.max(predictor.currentSignals.weightedScore, -1), 1);
+                    const s = Math.min(Math.max(symState.currentSignals.weightedScore, -1), 1);
                     const w = Math.abs(s) * 50;
                     const left = s >= 0 ? 50 : 50 - w;
                     const col = s > 0.05 ? '#10B981' : s < -0.05 ? '#EF4444' : '#F59E0B';
@@ -738,20 +757,20 @@ export const BtcPredictor: React.FC = () => {
               <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-background/40 border border-border/50">
                 <span className="text-[9px] uppercase tracking-wider text-text-muted">Confluence</span>
                 <span className="font-mono font-bold text-xs text-text-primary">
-                  {predictor.currentSignals.agreementCount}
-                  <span className="text-text-muted font-normal text-[10px]">/{predictor.currentSignals.totalSignals} agree</span>
+                  {symState.currentSignals.agreementCount}
+                  <span className="text-text-muted font-normal text-[10px]">/{symState.currentSignals.totalSignals} agree</span>
                 </span>
               </div>
               {/* 4 key signals */}
               <div className="grid grid-cols-2 gap-1.5">
-                <SignalChip label="RSI(14)"  val={predictor.currentSignals.rsi.toFixed(1)} />
-                <SignalChip label="MACD"     val={fmtSig(predictor.currentSignals.macdSignal)} />
-                <SignalChip label="Funding"  val={`${(predictor.currentSignals.fundingRate * 100).toFixed(4)}%`} />
-                <SignalChip label="F&G"      val={fmtSig(predictor.currentSignals.fearGreedSignal ?? 0)} />
+                <SignalChip label="RSI(14)"  val={symState.currentSignals.rsi.toFixed(1)} />
+                <SignalChip label="MACD"     val={fmtSig(symState.currentSignals.macdSignal)} />
+                <SignalChip label="Funding"  val={`${(symState.currentSignals.fundingRate * 100).toFixed(4)}%`} />
+                <SignalChip label="F&G"      val={fmtSig(symState.currentSignals.fearGreedSignal ?? 0)} />
               </div>
-              {predictor.currentSignals.neutralReason && (
+              {symState.currentSignals.neutralReason && (
                 <div className="text-[9px] text-amber-300 leading-snug px-0.5">
-                  ⚠ {predictor.currentSignals.neutralReason.replace(/_/g, ' ')}
+                  ⚠ {symState.currentSignals.neutralReason.replace(/_/g, ' ')}
                 </div>
               )}
             </div>
@@ -771,23 +790,23 @@ export const BtcPredictor: React.FC = () => {
             <div className="flex-1">
               <div className="text-xs font-semibold text-text-primary">AI Strategist</div>
               <div className="text-[9px] uppercase tracking-widest text-text-muted">
-                {predictor.aiVerdict?.source ?? 'Gemini 2.0 Flash'}
+                {symState.aiVerdict?.source ?? 'Gemini 2.0 Flash'}
               </div>
             </div>
           </div>
-          {predictor.aiVerdict ? (
+          {symState.aiVerdict ? (
             <>
               <div className="flex items-center gap-2 flex-wrap">
-                <AiDecisionBadge decision={predictor.aiVerdict.decision} />
+                <AiDecisionBadge decision={symState.aiVerdict.decision} />
                 <span className="text-xs font-mono text-text-secondary">
-                  {predictor.aiVerdict.confidence}% conf.
+                  {symState.aiVerdict.confidence}% conf.
                 </span>
                 <span className="text-[10px] text-text-muted">
-                  size <span className="text-primary font-bold">×{predictor.aiVerdict.sizeMultiplier.toFixed(2)}</span>
+                  size <span className="text-primary font-bold">×{symState.aiVerdict.sizeMultiplier.toFixed(2)}</span>
                 </span>
               </div>
               <p className="text-[11px] text-text-secondary leading-relaxed bg-background/40 border border-border/50 rounded-md p-2.5 italic">
-                "{predictor.aiVerdict.rationale}"
+                "{symState.aiVerdict.rationale}"
               </p>
               {lastResult?.skippedReason && (
                 <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/5 border border-amber-500/20">
@@ -799,7 +818,7 @@ export const BtcPredictor: React.FC = () => {
               )}
 
               {/* Collapsible Decision Anchors & Evidence */}
-              {predictor.currentSignals && (
+              {symState.currentSignals && (
                 <div className="border-t border-border/50 pt-2.5 mt-1">
                   <button
                     onClick={() => setShowEvidence(!showEvidence)}
@@ -825,17 +844,17 @@ export const BtcPredictor: React.FC = () => {
                         </div>
                         <ul className="space-y-1 text-text-secondary list-disc pl-3">
                           <li>
-                            News Sentiment: <span className="font-semibold text-text-primary">{predictor.currentSignals.newsSentiment > 0.15 ? '🟢 Bullish' : predictor.currentSignals.newsSentiment < -0.15 ? '🔴 Bearish' : '🟡 Neutral'}</span> ({predictor.currentSignals.newsSentiment.toFixed(2)})
-                            {predictor.currentSignals.newsFallback && <span className="text-[8px] text-amber-300 ml-1">(Fallback Data)</span>}
+                            News Sentiment: <span className="font-semibold text-text-primary">{symState.currentSignals.newsSentiment > 0.15 ? '🟢 Bullish' : symState.currentSignals.newsSentiment < -0.15 ? '🔴 Bearish' : '🟡 Neutral'}</span> ({symState.currentSignals.newsSentiment.toFixed(2)})
+                            {symState.currentSignals.newsFallback && <span className="text-[8px] text-amber-300 ml-1">(Fallback Data)</span>}
                           </li>
                           <li>
-                            ETF Flow Score: <span className="font-semibold text-text-primary">{predictor.currentSignals.etfFlow > 0.15 ? '🟢 Positive' : predictor.currentSignals.etfFlow < -0.15 ? '🔴 Negative' : '🟡 Sideways'}</span> ({predictor.currentSignals.etfFlow.toFixed(2)})
-                            {predictor.currentSignals.etfFallback && <span className="text-[8px] text-amber-300 ml-1">(Fallback Data)</span>}
+                            ETF Flow Score: <span className="font-semibold text-text-primary">{symState.currentSignals.etfFlow > 0.15 ? '🟢 Positive' : symState.currentSignals.etfFlow < -0.15 ? '🔴 Negative' : '🟡 Sideways'}</span> ({symState.currentSignals.etfFlow.toFixed(2)})
+                            {symState.currentSignals.etfFallback && <span className="text-[8px] text-amber-300 ml-1">(Fallback Data)</span>}
                           </li>
-                          {typeof predictor.currentSignals.treasurySignal === 'number' && (
+                          {typeof symState.currentSignals.treasurySignal === 'number' && (
                             <li>
-                              Institutional Treasury Accumulation: <span className="font-semibold text-text-primary">{predictor.currentSignals.treasurySignal > 0.15 ? '🟢 Accumulation' : predictor.currentSignals.treasurySignal < -0.15 ? '🔴 Distribution' : '🟡 Undecided'}</span>
-                              {predictor.currentSignals.treasuryTopBuyer && ` (Top Buyer: ${predictor.currentSignals.treasuryTopBuyer})`}
+                              Institutional Treasury Accumulation: <span className="font-semibold text-text-primary">{symState.currentSignals.treasurySignal > 0.15 ? '🟢 Accumulation' : symState.currentSignals.treasurySignal < -0.15 ? '🔴 Distribution' : '🟡 Undecided'}</span>
+                              {symState.currentSignals.treasuryTopBuyer && ` (Top Buyer: ${symState.currentSignals.treasuryTopBuyer})`}
                             </li>
                           )}
                         </ul>
@@ -848,16 +867,16 @@ export const BtcPredictor: React.FC = () => {
                         </div>
                         <ul className="space-y-1 text-text-secondary list-disc pl-3">
                           <li>
-                            RSI(14): <span className="font-semibold text-text-primary">{predictor.currentSignals.rsi.toFixed(1)}</span> ({predictor.currentSignals.rsi > 70 ? 'Overbought' : predictor.currentSignals.rsi < 30 ? 'Oversold' : 'Normal'})
+                            RSI(14): <span className="font-semibold text-text-primary">{symState.currentSignals.rsi.toFixed(1)}</span> ({symState.currentSignals.rsi > 70 ? 'Overbought' : symState.currentSignals.rsi < 30 ? 'Oversold' : 'Normal'})
                           </li>
                           <li>
-                            EMA & MACD Signal: <span className="font-semibold text-text-primary">{predictor.currentSignals.emaSignal > 0 ? '🟢 Bull' : predictor.currentSignals.emaSignal < 0 ? '🔴 Bear' : '🟡 Neutral'}</span>
+                            EMA & MACD Signal: <span className="font-semibold text-text-primary">{symState.currentSignals.emaSignal > 0 ? '🟢 Bull' : symState.currentSignals.emaSignal < 0 ? '🔴 Bear' : '🟡 Neutral'}</span>
                           </li>
                           <li>
-                            Exchange Order Imbalance: <span className="font-semibold text-text-primary">{(predictor.currentSignals.orderBookImbalance * 100).toFixed(0)}% buyers (bid-side)</span>
+                            Exchange Order Imbalance: <span className="font-semibold text-text-primary">{(symState.currentSignals.orderBookImbalance * 100).toFixed(0)}% buyers (bid-side)</span>
                           </li>
                           <li>
-                            Funding Rate: <span className="font-semibold text-text-primary">{(predictor.currentSignals.fundingRate * 100).toFixed(4)}%</span> ({predictor.currentSignals.fundingRateSignal > 0.15 ? 'Bullish Bias' : predictor.currentSignals.fundingRateSignal < -0.15 ? 'Bearish Bias' : 'Balanced'})
+                            Funding Rate: <span className="font-semibold text-text-primary">{(symState.currentSignals.fundingRate * 100).toFixed(4)}%</span> ({symState.currentSignals.fundingRateSignal > 0.15 ? 'Bullish Bias' : symState.currentSignals.fundingRateSignal < -0.15 ? 'Bearish Bias' : 'Balanced'})
                           </li>
                         </ul>
                       </div>
@@ -946,7 +965,7 @@ export const BtcPredictor: React.FC = () => {
                   try {
                     const r = await closeMarketPosition(openPosition.symbol, openPosition.side, openPosition.quantity);
                     if (r.closed) {
-                      predictor.setOpenPosition(null);
+                      predictor.setOpenPosition(symbol, null);
                       toast.success('Position closed');
                     } else {
                       toast.error(`Close failed: ${r.error ?? 'unknown'}`);
@@ -1188,7 +1207,7 @@ export const BtcPredictor: React.FC = () => {
       {/* === Performance tab ===================================================== */}
       {activeTab === 'performance' && (
       <div className="space-y-5">
-      <PredictorPerformanceDashboard history={predictor.history} />
+      <PredictorPerformanceDashboard symbol={symbol} history={symState.history} />
 
       {/* ─── Backtest ───────────────────────────────────────────────── */}
       <Card className="p-5">

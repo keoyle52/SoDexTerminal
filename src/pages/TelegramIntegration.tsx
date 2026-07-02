@@ -1464,7 +1464,7 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
           predStepRef.current = 1;
         } else if (step === 1) {
           if (Math.random() > 0.8) {
-            const verdict = usePredictorStore.getState().aiVerdict?.decision ?? 'BULLISH';
+            const verdict = usePredictorStore.getState().symbols['BTC-USD']?.aiVerdict?.decision ?? 'BULLISH';
             
             if (isDemoMode) {
               const price = 64300 + (Math.random() - 0.5) * 50;

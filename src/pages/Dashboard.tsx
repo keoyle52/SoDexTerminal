@@ -47,10 +47,10 @@ export const Dashboard: React.FC = () => {
   // technical features (ATR, EMA, MACD) without re-fetching klines.
   // When the Predictor hasn't run yet (currentSignals === null) we
   // fall back to a "Run Predictor first" recommendation card.
-  const predictorSignals      = usePredictorStore((s) => s.currentSignals);
-  const currentPrediction     = usePredictorStore((s) => s.currentPrediction);
-  const aiVerdict              = usePredictorStore((s) => s.aiVerdict);
-  const predictorHistory       = usePredictorStore((s) => s.history);
+  const predictorSignals      = usePredictorStore((s) => s.symbols['BTC-USD']?.currentSignals ?? null);
+  const currentPrediction     = usePredictorStore((s) => s.symbols['BTC-USD']?.currentPrediction ?? 'NEUTRAL');
+  const aiVerdict              = usePredictorStore((s) => s.symbols['BTC-USD']?.aiVerdict ?? null);
+  const predictorHistory       = usePredictorStore((s) => s.symbols['BTC-USD']?.history ?? []);
   const setCurrentPrediction   = usePredictorStore((s) => s.setCurrentPrediction);
   const predictorMetrics = useMemo(() => computePerformanceMetrics(predictorHistory), [predictorHistory]);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
@@ -150,7 +150,7 @@ export const Dashboard: React.FC = () => {
     setSnapshotLoading(true);
     runSignalSnapshot('BTC-USD').then((result) => {
       if (cancelled || !result) return;
-      setCurrentPrediction(result.direction, result.confidence, result.signals, result.price);
+      setCurrentPrediction('BTC-USD', result.direction, result.confidence, result.signals, result.price);
     }).finally(() => {
       if (!cancelled) setSnapshotLoading(false);
     });
