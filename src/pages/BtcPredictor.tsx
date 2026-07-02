@@ -189,7 +189,9 @@ export const BtcPredictor: React.FC = () => {
 
   // ── Local UI state ────────────────────────────────────────────────────────
   const [selectedAsset, setSelectedAsset] = useState<'SOSO' | 'BTC' | 'ETH' | 'SOL'>('SOSO');
-  const symbol = `${selectedAsset}-USD`;
+  const isSoso = selectedAsset === 'SOSO';
+  const market = (isSoso && !isDemoMode) ? 'spot' : 'perps';
+  const symbol = isSoso ? (isDemoMode ? 'SOSO-USD' : 'WSOSO_vUSDC') : `${selectedAsset}-USD`;
 
   const [activeTab, setActiveTab] = useState<'live' | 'performance' | 'how'>('live');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -205,6 +207,7 @@ export const BtcPredictor: React.FC = () => {
   const [btDuration, setBtDuration] = useState<CycleDurationMinutes>(5);
   const [showEvidence, setShowEvidence] = useState(false);
 
+  // WS uses perps. If market is spot, WS price won't populate, so we rely on REST below.
   const wsPrice = useLivePrice(symbol, predictor.entryPrice ?? 0, 'perps');
   const [restPrice, setRestPrice] = useState(0);
 
@@ -213,14 +216,14 @@ export const BtcPredictor: React.FC = () => {
     setRestPrice(0); // clear stale price from previous symbol
     const tick = async () => {
       try {
-        const px = await fetchMarkPriceFor(symbol);
+        const px = await fetchMarkPriceFor(symbol, market);
         if (!cancelled && px && px > 0) setRestPrice(px);
       } catch { /* swallow */ }
     };
     void tick();
     const id = window.setInterval(() => { void tick(); }, 3_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [symbol]);
+  }, [symbol, market]);
 
   const livePrice = wsPrice > 0 ? wsPrice : restPrice;
 
@@ -233,6 +236,7 @@ export const BtcPredictor: React.FC = () => {
 
   const cfg = useMemo<CycleConfig>(() => ({
     symbol,
+    market,
     durationMinutes: duration,
     tradeAmountUsdt: parseFloat(tradeAmountUsdt) || 0,
     leverage: tradeLeverage,
@@ -241,7 +245,7 @@ export const BtcPredictor: React.FC = () => {
     aiSizeAdjust: aiSizeAdjustEnabled,
     aiSkipOnDisagree,
   }), [
-    symbol, duration, minConfidence,
+    symbol, market, duration, minConfidence,
     tradeAmountUsdt, tradeLeverage, autoTradeEnabled,
     aiSizeAdjustEnabled, aiSkipOnDisagree,
   ]);
@@ -275,7 +279,7 @@ export const BtcPredictor: React.FC = () => {
         const live = livePriceRef.current;
         const exit = live > 0
           ? live
-          : (await fetchMarkPriceFor(cfgRef.current.symbol)) ?? head.entryPrice;
+          : (await fetchMarkPriceFor(cfgRef.current.symbol, cfgRef.current.market)) ?? head.entryPrice;
         store.resolvePrediction(head.id, exit);
       }
 
@@ -998,7 +1002,7 @@ export const BtcPredictor: React.FC = () => {
         <TradingChart
           key={symbol}
           symbol={symbol}
-          market="perps"
+          market={market}
           height={420}
           markers={chartMarkers}
         />

@@ -66,8 +66,10 @@ import { analyzeSentimentBatch } from './geminiClient';
 export type CycleDurationMinutes = 1 | 3 | 5 | 15 | 60;
 
 export interface CycleConfig {
-  /** Trading symbol (perps). Default "BTC-USD". */
+  /** Trading symbol. Default "BTC-USD". */
   symbol: string;
+  /** Market type: 'spot' or 'perps'. Default 'perps'. */
+  market?: 'spot' | 'perps';
   /** Cycle window in minutes. Used both for the resolution timer and for
    *  picking the kline interval. */
   durationMinutes: CycleDurationMinutes;
@@ -338,6 +340,7 @@ export async function fetchFearGreedHistory(limit = 300): Promise<{ date: string
 
 interface GatherContext {
   symbol: string;
+  market?: 'spot' | 'perps';
   interval: string;
   /** When provided, cap async work to a stale-tolerant subset (e.g. backtest). */
   skipExternal?: boolean;
@@ -755,7 +758,7 @@ export async function closeMarketPosition(
  */
 export async function runCycle(cfg: CycleConfig): Promise<CycleResult> {
   const interval = CYCLE_TO_INTERVAL[cfg.durationMinutes];
-  const { signals, livePrice } = await gatherSignals({ symbol: cfg.symbol, interval });
+  const { signals, livePrice } = await gatherSignals({ symbol: cfg.symbol, market: cfg.market, interval });
   const rule = computeRuleDecision(signals);
 
   // Strategist always runs (cheap synth in demo mode). Even on NEUTRAL
@@ -1170,8 +1173,8 @@ export function runQuickBacktest(
 
 // ─── Public utility: reload klines (used by the page's backtest button) ──────
 
-export async function loadKlines(symbol: string, interval: string, limit = 500): Promise<Kline[]> {
-  const raw = await fetchKlines(symbol, interval, limit, 'perps', { bypassCache: true });
+export async function loadKlines(symbol: string, interval: string, limit = 500, market: 'spot'|'perps' = 'perps'): Promise<Kline[]> {
+  const raw = await fetchKlines(symbol, interval, limit, market, { bypassCache: true });
   return normaliseKlines(raw as Record<string, unknown>[]);
 }
 
@@ -1181,9 +1184,9 @@ export async function loadKlines(symbol: string, interval: string, limit = 500):
  * Cheap REST fetch of the current mark price for a symbol. Used by the
  * cycle resolver as an exitPrice when no live WS tick has arrived yet.
  */
-export async function fetchMarkPriceFor(symbol: string): Promise<number | null> {
+export async function fetchMarkPriceFor(symbol: string, market: 'spot' | 'perps' = 'perps'): Promise<number | null> {
   try {
-    const tickers = (await fetchTickers('perps')) as Record<string, unknown>[];
+    const tickers = (await fetchTickers(market)) as Record<string, unknown>[];
     const list = Array.isArray(tickers) ? tickers : [];
     const row = list.find((t) => String(t.symbol ?? '') === symbol);
     if (!row) return null;
