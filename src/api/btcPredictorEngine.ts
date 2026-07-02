@@ -1190,7 +1190,7 @@ export async function fetchMarkPriceFor(symbol: string, market: 'spot' | 'perps'
     const list = Array.isArray(tickers) ? tickers : [];
     const row = list.find((t) => String(t.symbol ?? '') === symbol);
     if (!row) return null;
-    const px = parseFloat(String(row.markPrice ?? row.lastPrice ?? 0));
+    const px = parseFloat(String(row.markPrice ?? row.lastPrice ?? (row as any).lastPx ?? 0));
     return Number.isFinite(px) && px > 0 ? px : null;
   } catch {
     return null;
