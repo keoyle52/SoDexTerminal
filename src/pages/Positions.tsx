@@ -53,6 +53,7 @@ const COLLATERAL_WEIGHTS: Record<string, number> = {
   ETH: 0.90,
   SOL: 0.85,
   SOSO: 0.50,
+  WSOSO: 0.50,
   BNB: 0.85,
   ARB: 0.75,
   AVAX: 0.80,
