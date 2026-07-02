@@ -1,26 +1,18 @@
-import React, { useState } from 'react';
-import { 
-  Brain, Play, Square, Clock, Cpu, Sparkles 
-} from 'lucide-react';
-import { TradingChart } from '../components/TradingChart';
-import { cn } from '../lib/utils';
-import { usePredictorStore } from '../store/predictorStore';
+const fs = require('fs');
+const path = require('path');
 
-export const BtcPredictor: React.FC = () => {
-  const [selectedAsset, setSelectedAsset] = useState<'SOSO' | 'BTC' | 'ETH' | 'SOL'>('SOSO');
-  const [isRunning, setIsRunning] = useState(false);
-  const [duration, setDuration] = useState(5);
-  
-  const predictor = usePredictorStore();
-  const symbol = selectedAsset + '-USD';
-  const symState = predictor.symbols[symbol] || {
-    aiVerdict: null,
-    openPosition: null
-  };
+const predictorPath = path.join(__dirname, 'src', 'pages', 'BtcPredictor.tsx');
+const content = fs.readFileSync(predictorPath, 'utf8');
 
-  const market = selectedAsset === 'SOSO' ? 'spot' : 'perps';
+const returnIndex = content.indexOf('return (');
+if (returnIndex === -1) {
+  console.error("Could not find return statement");
+  process.exit(1);
+}
 
-  return (
+const beforeReturn = content.substring(0, returnIndex);
+
+const newReturn = `return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative">
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none" />
@@ -51,6 +43,7 @@ export const BtcPredictor: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 relative z-10 custom-scrollbar space-y-6">
+        {/* Status Hero */}
         <div className="p-6 rounded-3xl bg-surface/30 border border-border/40 backdrop-blur-xl shadow-2xl flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg", isRunning ? "bg-emerald-500 text-white animate-pulse" : "bg-surface-2 text-text-muted border border-border")}>
@@ -61,7 +54,7 @@ export const BtcPredictor: React.FC = () => {
                 {isRunning ? 'Predictor Online' : 'Predictor Offline'}
               </h2>
               <div className="text-sm font-medium text-text-secondary flex items-center gap-2 mt-1">
-                <Clock size={14} /> Next Cycle: {isRunning ? '45s' : '--'}
+                <Clock size={14} /> Next Cycle: {isRunning ? Math.max(0, Math.ceil((((cycleStartedAt || 0) + duration * 60000) - now) / 1000)) : '--'}s
               </div>
             </div>
           </div>
@@ -71,35 +64,35 @@ export const BtcPredictor: React.FC = () => {
               <span className="text-xs font-bold text-text-muted px-2">Duration</span>
               <select 
                 value={duration} 
-                onChange={(e) => setDuration(Number(e.target.value))}
+                onChange={(e) => setDuration(Number(e.target.value) as any)}
                 className="bg-transparent text-text-primary font-bold outline-none cursor-pointer"
                 disabled={isRunning}
               >
-                <option value={1}>1 min</option>
-                <option value={5}>5 min</option>
-                <option value={15}>15 min</option>
-                <option value={60}>60 min</option>
+                {DURATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             
             <button
-              onClick={() => setIsRunning(!isRunning)}
+              onClick={() => isRunning ? handleStop() : handleStart()}
+              disabled={busy}
               className={cn(
                 "px-8 py-3 rounded-xl font-black text-lg transition-all shadow-xl flex items-center gap-2",
                 isRunning ? "bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20" : "bg-primary text-background hover:scale-105"
               )}
             >
-              {isRunning ? <Square size={20} /> : <Play size={20} />}
+              {isRunning ? <StopCircle size={20} /> : <Play size={20} />}
               {isRunning ? 'STOP' : 'START CYCLE'}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Chart */}
           <div className="lg:col-span-2 rounded-3xl border border-border overflow-hidden bg-surface shadow-2xl h-[450px]">
              <TradingChart symbol={symbol} market={market} markers={[]} />
           </div>
 
+          {/* Verdict Panel */}
           <div className="bg-[#0a0a0c] border border-border/40 rounded-3xl p-6 shadow-2xl flex flex-col">
             <h3 className="text-sm font-bold text-text-muted uppercase tracking-widest mb-4 flex items-center gap-2">
               <Cpu size={16} /> Latest Verdict
@@ -108,17 +101,17 @@ export const BtcPredictor: React.FC = () => {
             {symState.aiVerdict ? (
                <div className="space-y-4 flex-1">
                  <div className="text-3xl font-black text-text-primary">
-                   {symState.aiVerdict.decision === 'LONG' ? <span className="text-emerald-400">LONG</span> :
-                    symState.aiVerdict.decision === 'SHORT' ? <span className="text-red-400">SHORT</span> : 
+                   {symState.aiVerdict.verdict === 'LONG' ? <span className="text-emerald-400">LONG</span> :
+                    symState.aiVerdict.verdict === 'SHORT' ? <span className="text-red-400">SHORT</span> : 
                     <span className="text-amber-400">HOLD</span>}
                  </div>
-                 <p className="text-sm text-text-secondary leading-relaxed">{symState.aiVerdict.rationale}</p>
+                 <p className="text-sm text-text-secondary leading-relaxed">{symState.aiVerdict.reasoning}</p>
                  
                  {symState.openPosition && (
                    <div className="mt-auto p-4 rounded-xl bg-primary/10 border border-primary/20">
                      <div className="text-xs font-bold text-primary uppercase tracking-widest mb-1">Active Position</div>
                      <div className="text-xl font-black text-text-primary">
-                       {symState.openPosition.side} @ {symState.openPosition.entryPrice.toFixed(4)}
+                       {symState.openPosition.direction} @ {symState.openPosition.entryPrice.toFixed(4)}
                      </div>
                    </div>
                  )}
@@ -134,6 +127,9 @@ export const BtcPredictor: React.FC = () => {
       </div>
     </div>
   );
-};
+}
 
 export default BtcPredictor;
+`;
+
+fs.writeFileSync(predictorPath, beforeReturn + newReturn);

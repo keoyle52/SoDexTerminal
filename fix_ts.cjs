@@ -1,38 +1,35 @@
 const fs = require('fs');
 const path = require('path');
 
-const file = path.join(__dirname, 'src', 'pages', 'BtcPredictor.tsx');
-let content = fs.readFileSync(file, 'utf8');
+// 1. App.tsx
+const appPath = path.join(__dirname, 'src', 'App.tsx');
+let appContent = fs.readFileSync(appPath, 'utf8');
+if (!appContent.includes('startWave3Engine')) {
+  appContent = appContent.replace(
+    /import \{ startDemoEngine, stopDemoEngine \} from '\.\/api\/demoEngine';/,
+    "import { startDemoEngine, stopDemoEngine } from './api/demoEngine';\nimport { startWave3Engine } from './api/wave3Engine';"
+  );
+  appContent = appContent.replace(
+    /useEffect\(\(\) => \{\n\s*preloadCommonPages\(\);\n\s*\}, \[\]\);/,
+    "useEffect(() => {\n    preloadCommonPages();\n    startWave3Engine();\n  }, []);"
+  );
+  fs.writeFileSync(appPath, appContent);
+}
 
-// 1. Fix symbol declaration order
-content = content.replace(/const predictor = usePredictorStore\(\);\s*const symState = predictor\.symbols\[symbol\] \|\| \{[\s\S]*?\} as any;/g, `const predictor = usePredictorStore();`);
+// 2. BtcPredictor.tsx
+const btcPath = path.join(__dirname, 'src', 'pages', 'BtcPredictor.tsx');
+let btcContent = fs.readFileSync(btcPath, 'utf8');
+btcContent = btcContent.replace(/symState\.aiVerdict\.verdict/g, "symState.aiVerdict.decision");
+btcContent = btcContent.replace(/symState\.aiVerdict\.reasoning/g, "symState.aiVerdict.rationale");
+btcContent = btcContent.replace(/symState\.openPosition\.direction/g, "symState.openPosition.side");
+fs.writeFileSync(btcPath, btcContent);
 
-content = content.replace(/const symbol = isSoso \? \(isDemoMode \? 'SOSO-USD' : 'WSOSO_vUSDC'\) : \`\$\{selectedAsset\}-USD\`;/, 
-`const symbol = isSoso ? (isDemoMode ? 'SOSO-USD' : 'WSOSO_vUSDC') : \`\${selectedAsset}-USD\`;
+// 3. TradingBots.tsx
+const tbPath = path.join(__dirname, 'src', 'pages', 'TradingBots.tsx');
+let tbContent = fs.readFileSync(tbPath, 'utf8');
+tbContent = tbContent.replace(/import \{ \n  Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle, \n  ShieldAlert, ShieldCheck, Cpu, Brain, Zap, CheckCircle2, TrendingUp, Settings, FileText, AlertTriangle \n\} from 'lucide-react';/,
+"import {\n  Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle,\n  ShieldAlert, ShieldCheck, Cpu, Brain, Zap, TrendingUp, FileText, AlertTriangle\n} from 'lucide-react';");
+tbContent = tbContent.replace(/colorize/g, ""); // remove colorize from NumberDisplay
+fs.writeFileSync(tbPath, tbContent);
 
-  const symState = predictor.symbols[symbol] || {
-    currentPrediction: 'NEUTRAL',
-    currentConfidence: 0,
-    currentSignals: null,
-    cycleStartTime: null,
-    entryPrice: null,
-    history: [],
-    correct: 0,
-    wrong: 0,
-    skipped: 0,
-    aiVerdict: null,
-    openPosition: null,
-  } as any;`);
-
-// 2. Fix lines 293: error TS2339: Property 'history' does not exist on type 'PredictorState'.
-content = content.replace(/const decided = store\.history\.filter/g, `const decided = symStateActive?.history?.filter`);
-
-// 3. Fix line 305: error TS2304: Cannot find name 'symStateActive'.
-// Let's check where symStateActive is missing.
-content = content.replace(/const totalNetPct = store\.history\.reduce/g, `const totalNetPct = symStateActive?.history?.reduce`);
-content = content.replace(/if \(store\.history\.length > 0\) \{/g, `if (symStateActive?.history?.length > 0) {`);
-
-// 4. Fix line 1206: PredictorPerformanceDashboardProps missing symbol
-content = content.replace(/<PredictorPerformanceDashboard history=\{symState\.history\} \/>/g, `<PredictorPerformanceDashboard symbol={symbol} history={symState.history} />`);
-
-fs.writeFileSync(file, content);
+console.log("Patched all TS errors");

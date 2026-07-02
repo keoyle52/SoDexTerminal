@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 
 export type Wave3Regime = 'CONSOLIDATION' | 'TRENDING_UP' | 'TRENDING_DOWN' | 'HIGH_VOLATILITY';
-export type Wave3Action = 'DEPLOY_GRID' | 'DEPLOY_DCA' | 'DEPLOY_TWAP' | 'EMERGENCY_HALT' | 'WAITING';
 
 export interface Wave3Log {
   id: string;
@@ -26,11 +25,20 @@ interface Wave3Store {
   targetCoin: string;
   setTargetCoin: (coin: string) => void;
 
+  market: 'spot' | 'perps';
+  setMarket: (market: 'spot' | 'perps') => void;
+
+  investment: number;
+  setInvestment: (amount: number) => void;
+
+  feeDragProtection: boolean;
+  setFeeDragProtection: (active: boolean) => void;
+
   currentRegime: Wave3Regime;
   setCurrentRegime: (regime: Wave3Regime) => void;
 
-  activeAction: Wave3Action;
-  setActiveAction: (action: Wave3Action) => void;
+  activeAction: string;
+  setActiveAction: (action: string) => void;
 
   logs: Wave3Log[];
   addLog: (message: string, type?: Wave3Log['type']) => void;
@@ -47,6 +55,15 @@ export const useWave3Store = create<Wave3Store>((set) => ({
 
   targetCoin: 'BTC-USD',
   setTargetCoin: (coin) => set({ targetCoin: coin }),
+
+  market: 'perps',
+  setMarket: (market) => set({ market }),
+
+  investment: 5000,
+  setInvestment: (amount) => set({ investment: amount }),
+
+  feeDragProtection: true,
+  setFeeDragProtection: (active) => set({ feeDragProtection: active }),
 
   currentRegime: 'CONSOLIDATION',
   setCurrentRegime: (regime) => set({ currentRegime: regime }),
@@ -72,10 +89,9 @@ export const useWave3Store = create<Wave3Store>((set) => ({
   setActivePosition: (pos) => set({ activePosition: pos }),
   updatePositionPnl: (currentPrice) => set((state) => {
     if (!state.activePosition) return state;
-    const isLong = state.activePosition.botType === 'DCA' || state.activePosition.botType === 'TWAP';
-    // Dummy PNL calculation for visualization
+    const isLong = state.activePosition.botType === 'DCA Bot' || state.activePosition.botType === 'TWAP Bot';
     const diff = currentPrice - state.activePosition.entryPrice;
-    const pnl = isLong ? diff : diff * 0.5; // grid is delta neutralish
+    const pnl = isLong ? diff : diff * 0.5; // dummy
     
     return {
       activePosition: {
