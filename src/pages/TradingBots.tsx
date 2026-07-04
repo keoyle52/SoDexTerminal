@@ -2,84 +2,22 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle, 
-  ShieldAlert, ShieldCheck, Cpu, Brain, Zap, TrendingUp, FileText, AlertTriangle, ChevronDown 
+  ShieldAlert, ShieldCheck, Cpu, Brain, Zap, TrendingUp, Newspaper 
 } from 'lucide-react';
 import { useWave3Store } from '../store/wave3Store';
 import { useRiskStore } from '../store/riskStore';
-import { useBotStore } from '../store/botStore';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { NumberDisplay } from '../components/common/NumberDisplay';
-import { TradingChart } from '../components/TradingChart';
 import { cn } from '../lib/utils';
+import { RiskSummaryModal } from '../components/common/RiskSummaryModal';
 
-// --- Pre-Flight Risk Modal ---
-const PreFlightModal: React.FC<{ botName: string; onClose: () => void; onConfirm: () => void }> = ({ botName, onClose, onConfirm }) => {
-  const [flash, setFlash] = useState(true);
-  const [feeDrag, setFeeDrag] = useState(true);
-  const [drawdown, setDrawdown] = useState(false);
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="w-[500px] bg-surface border border-border rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-        <div className="p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-border">
-          <div className="flex items-center gap-3 text-amber-500 mb-2">
-            <AlertTriangle size={24} />
-            <h2 className="text-xl font-black">Pre-Flight Risk Check</h2>
-          </div>
-          <p className="text-sm text-text-secondary font-medium">Gemini AI is analyzing current market conditions before deploying {botName}. Please review recommended safeguards.</p>
-        </div>
-        
-        <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border group hover:border-emerald-500/50 transition-colors cursor-pointer" onClick={() => setFlash(!flash)}>
-            <div className="flex items-center gap-3">
-              <ShieldCheck className={cn("transition-colors", flash ? "text-emerald-400" : "text-text-muted")} />
-              <div>
-                <div className="text-sm font-bold text-text-primary">Flash Crash Protection <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full uppercase tracking-widest">Recommended</span></div>
-                <div className="text-xs text-text-secondary">Auto-halt if market drops &gt;3% instantly.</div>
-              </div>
-            </div>
-            <div className={cn("w-10 h-5 rounded-full transition-colors relative", flash ? "bg-emerald-500" : "bg-border")}>
-              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", flash ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border group hover:border-emerald-500/50 transition-colors cursor-pointer" onClick={() => setFeeDrag(!feeDrag)}>
-            <div className="flex items-center gap-3">
-              <Zap className={cn("transition-colors", feeDrag ? "text-emerald-400" : "text-text-muted")} />
-              <div>
-                <div className="text-sm font-bold text-text-primary">Fee Drag Prevention <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full uppercase tracking-widest">Recommended</span></div>
-                <div className="text-xs text-text-secondary">Skip trades where fees exceed expected profit.</div>
-              </div>
-            </div>
-            <div className={cn("w-10 h-5 rounded-full transition-colors relative", feeDrag ? "bg-emerald-500" : "bg-border")}>
-              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", feeDrag ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border group hover:border-primary/50 transition-colors cursor-pointer" onClick={() => setDrawdown(!drawdown)}>
-            <div className="flex items-center gap-3">
-              <TrendingUp className={cn("transition-colors", drawdown ? "text-primary" : "text-text-muted")} />
-              <div>
-                <div className="text-sm font-bold text-text-primary">Max Drawdown Limit (5%)</div>
-                <div className="text-xs text-text-secondary">Liquidate position if PnL hits -5%.</div>
-              </div>
-            </div>
-            <div className={cn("w-10 h-5 rounded-full transition-colors relative", drawdown ? "bg-primary" : "bg-border")}>
-              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", drawdown ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 bg-surface-2 border-t border-border flex gap-4">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl font-bold text-text-muted hover:text-text-primary bg-background border border-border transition-colors">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 py-3 rounded-xl font-black text-background bg-emerald-500 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 transition-colors flex items-center justify-center gap-2">
-            <Play size={18} fill="currentColor" /> Confirm & Execute
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+// Old Components Restored
+import { GridBot } from './GridBot';
+import { DcaBot } from './DcaBot';
+import { TwapBot } from './TwapBot';
+import { MarketMakerBot } from './MarketMakerBot';
+import { SignalBot } from './SignalBot';
+import { NewsBot } from './NewsBot';
 
 // --- Wave 3 Autonomous Agent Component ---
 const Wave3AgentConsole: React.FC = () => {
@@ -88,6 +26,8 @@ const Wave3AgentConsole: React.FC = () => {
   const [showPreFlight, setShowPreFlight] = useState(false);
 
   const isSoso = w3.targetCoin.startsWith('SOSO');
+
+  const [showInfo, setShowInfo] = useState(false);
 
   const handleStartRequest = () => {
     if (w3.isAgentRunning) {
@@ -118,10 +58,13 @@ const Wave3AgentConsole: React.FC = () => {
             
             <div className="flex items-start justify-between mb-8 relative z-10">
               <div>
-                <h2 className="text-3xl font-black text-text-primary flex items-center gap-3 tracking-tight">
-                  <Sparkles className="text-purple-400" size={28} />
-                  Wave 3 <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">Autonomous</span>
-                </h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-3xl font-black text-text-primary flex items-center gap-3 tracking-tight">
+                    <Sparkles className="text-purple-400" size={28} />
+                    Wave 3 <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">Autonomous</span>
+                  </h2>
+                  <button onClick={() => setShowInfo(true)} className="px-2 py-1 bg-surface-2 hover:bg-surface border border-border rounded-lg text-xs font-bold text-text-secondary transition-colors">How it works</button>
+                </div>
                 <p className="text-sm text-text-muted mt-2 font-medium">Fully autonomous AI agent. Select an asset and let Gemini orchestrate your portfolio 24/7.</p>
               </div>
               
@@ -151,7 +94,7 @@ const Wave3AgentConsole: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Investment</label>
                   <div className="relative">
@@ -159,10 +102,16 @@ const Wave3AgentConsole: React.FC = () => {
                     <input type="number" value={w3.investment} onChange={(e) => w3.setInvestment(Number(e.target.value))} className="w-full bg-background border border-border rounded-xl h-11 pl-8 pr-4 font-bold text-text-primary focus:outline-none focus:border-primary transition-colors" />
                   </div>
                 </div>
+                <div>
+                  <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Max Drawdown</label>
+                  <div className="relative">
+                    <input type="number" value={w3.maxDrawdownPct} onChange={(e) => w3.setMaxDrawdownPct(Number(e.target.value))} className="w-full bg-background border border-border rounded-xl h-11 px-4 pr-8 font-bold text-text-primary focus:outline-none focus:border-primary transition-colors" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted font-bold">%</span>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between bg-background/40 border border-border/50 rounded-xl px-4 mt-6">
                   <div>
-                    <div className="text-xs font-bold text-text-primary">Fee Drag Protection</div>
-                    <div className="text-[10px] text-text-muted">Prevent neg. EV trades</div>
+                    <div className="text-xs font-bold text-text-primary">Fee Drag Prot.</div>
                   </div>
                   <button onClick={() => w3.setFeeDragProtection(!w3.feeDragProtection)} className={cn("w-10 h-5 rounded-full transition-colors relative", w3.feeDragProtection ? "bg-emerald-500" : "bg-border")}>
                     <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", w3.feeDragProtection ? "translate-x-5" : "translate-x-0")} />
@@ -249,440 +198,53 @@ const Wave3AgentConsole: React.FC = () => {
         </div>
       </div>
       
-      {showPreFlight && <PreFlightModal botName="Wave 3 Agent" onClose={() => setShowPreFlight(false)} onConfirm={handleConfirmStart} />}
+      <RiskSummaryModal 
+        isOpen={showPreFlight} 
+        title="Pre-Flight Risk Check"
+        botName="Wave 3 Agent" 
+        onCancel={() => setShowPreFlight(false)} 
+        onConfirm={handleConfirmStart} 
+      />
+
+      {showInfo && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+          <div className="w-[500px] max-w-full bg-surface border border-border rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 bg-primary/10 border-b border-border flex justify-between items-center">
+              <h3 className="text-xl font-black flex items-center gap-2"><Sparkles className="text-primary" /> How Wave 3 Works</h3>
+              <button onClick={() => setShowInfo(false)} className="p-1 hover:bg-white/10 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4 text-sm text-text-secondary leading-relaxed">
+              <p>Wave 3 is a fully autonomous quantitative orchestrator that connects directly to the exchange's data stream. It analyzes real-time <strong className="text-text-primary">1-minute k-lines</strong> every 10 seconds.</p>
+              
+              <div className="space-y-3 bg-background p-4 rounded-xl border border-border">
+                <div className="flex gap-3"><div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" /><div><strong>High Volatility:</strong> If the max/min spread of the last 14 mins exceeds 1.5%, it deploys the <strong className="text-purple-400">Grid Bot</strong> to capture wide price swings.</div></div>
+                <div className="flex gap-3"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" /><div><strong>Trending Up (RSI &lt; 40):</strong> Market is oversold. Deploys the <strong className="text-purple-400">DCA Bot</strong> to accumulate Long positions at the dip.</div></div>
+                <div className="flex gap-3"><div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 shrink-0" /><div><strong>Trending Down (RSI &gt; 60):</strong> Market is overbought. Deploys the <strong className="text-purple-400">Signal Bot</strong> to execute Short positions.</div></div>
+                <div className="flex gap-3"><div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" /><div><strong>Consolidation (RSI 40-60):</strong> Price is moving sideways. Deploys the <strong className="text-purple-400">Market Maker Bot</strong> to farm tight bid/ask spreads.</div></div>
+              </div>
+
+              <p>Positions are automatically monitored and closed out when target profits are reached or RSI indicators reverse. <strong className="text-text-primary">Flash Crash Protection</strong> instantly liquidates everything if the price drops &gt;3% in a single tick.</p>
+            </div>
+            <div className="p-4 border-t border-border bg-surface-2">
+              <button onClick={() => setShowInfo(false)} className="w-full py-3 bg-primary text-background font-bold rounded-xl hover:bg-primary/90 transition-colors">Understood</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
 
-// --- Standard Bot View (Form + Active State) using Real botStore ---
-type BotTab = 'wave3' | 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal';
+type BotTab = 'wave3' | 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal' | 'news';
 
-const BOTS_CONFIG: Record<BotTab, { label: string; icon: React.ElementType; color: string; desc: string }> = {
-  wave3: { label: 'Wave 3 Autonomous', icon: Sparkles, color: 'from-purple-500 to-indigo-600', desc: 'Fully autonomous AI orchestrator.' },
-  grid: { label: 'Grid Bot', icon: Grid2X2, color: 'from-cyan-500 to-blue-600', desc: 'High-frequency price volatility grid trading.' },
-  dca: { label: 'DCA Bot', icon: Clock, color: 'from-emerald-500 to-teal-600', desc: 'Automated Dollar Cost Averaging capital accumulation.' },
-  twap: { label: 'TWAP Bot', icon: Repeat, color: 'from-pink-500 to-rose-600', desc: 'Time-Weighted Average Price execution for whales.' },
-  marketmaker: { label: 'Market Maker', icon: Layers, color: 'from-amber-500 to-orange-600', desc: 'Provide liquidity and capture spread.' },
-  signal: { label: 'Signal Bot', icon: Activity, color: 'from-blue-500 to-indigo-600', desc: 'Execute complex TradingView/Webhook signals.' },
-};
-
-const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
-  const config = BOTS_CONFIG[type];
-  const Icon = config.icon;
-  const store = useBotStore();
-
-  const [showPreFlight, setShowPreFlight] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
-  // Status mapping
-  let isRunning = false;
-  let symbol = 'BTC-USD';
-  let market: 'spot' | 'perps' = 'spot';
-  let realizedPnl = 0;
-  let logs: any[] = [];
-  
-  if (type === 'grid') {
-    isRunning = store.gridBot.status === 'RUNNING';
-    symbol = store.gridBot.symbol.replace('vBTC-vUSDC', 'BTC-USD');
-    market = store.gridBot.isSpot ? 'spot' : 'perps';
-    realizedPnl = store.gridBot.realizedPnl;
-    logs = store.gridBot.logs;
-  } else if (type === 'marketmaker') {
-    isRunning = store.marketMakerBot.status === 'RUNNING';
-    symbol = store.marketMakerBot.symbol.replace('vBTC-vUSDC', 'BTC-USD');
-    realizedPnl = store.marketMakerBot.realizedPnl;
-    logs = store.marketMakerBot.logs;
-  } else if (type === 'signal') {
-    isRunning = store.signalBot.status === 'RUNNING';
-    symbol = store.signalBot.symbol;
-    market = store.signalBot.isSpot ? 'spot' : 'perps';
-    realizedPnl = store.signalBot.realizedPnl;
-    logs = store.signalBot.logs;
-  } else if (type === 'dca') {
-    isRunning = store.dcaBot.status === 'RUNNING';
-    symbol = store.dcaBot.symbol;
-    realizedPnl = store.dcaBot.realizedPnl;
-    logs = store.dcaBot.logs;
-  } else if (type === 'twap') {
-    isRunning = store.twapBot.status === 'RUNNING';
-    symbol = store.twapBot.symbol;
-    realizedPnl = store.twapBot.realizedPnl;
-    logs = store.twapBot.logs;
-  }
-
-  const handleAutoConfigure = () => {
-    // Note: Do NOT overwrite the user's budget (investmentUsdt / budgetUsdt). 
-    // Just overwrite other fields based on the AI's logic.
-    if (type === 'grid') {
-      store.gridBot.setField('lowerPrice', '55000');
-      store.gridBot.setField('upperPrice', '72000');
-      store.gridBot.setField('gridCount', '20');
-      store.gridBot.setField('amountPerGrid', (parseFloat(store.gridBot.investmentUsdt || '1000') / 20).toFixed(4));
-    } else if (type === 'marketmaker') {
-      store.marketMakerBot.setField('layers', '3');
-      store.marketMakerBot.setField('spreadBps', '1');
-      store.marketMakerBot.setField('orderSizeUsdt', (parseFloat(store.marketMakerBot.budgetUsdt || '1000') / 3).toFixed(2));
-    } else if (type === 'signal') {
-      store.signalBot.setField('takeProfitPct', '5');
-      store.signalBot.setField('stopLossPct', '2.5');
-    } else if (type === 'dca') {
-      store.dcaBot.setField('intervalMinutes', '60');
-      store.dcaBot.setField('orderSizeUsdt', (parseFloat(store.dcaBot.investmentUsdt || '1000') / 24).toFixed(2));
-    } else if (type === 'twap') {
-      store.twapBot.setField('totalDurationHours', '12');
-      store.twapBot.setField('sliceCount', '12');
-    }
-  };
-
-  const handleDeployClick = () => setShowPreFlight(true);
-  
-  const handleConfirmDeploy = () => {
-    setShowPreFlight(false);
-    if (type === 'grid') { store.gridBot.addLog('Grid bot deployed and engine engaged.', 'INFO'); store.gridBot.setField('status', 'RUNNING'); }
-    else if (type === 'marketmaker') { store.marketMakerBot.addLog('Market Maker engaged.', 'INFO'); store.marketMakerBot.setField('status', 'RUNNING'); }
-    else if (type === 'signal') { store.signalBot.addLog('Signal Bot engaged. Awaiting webhooks.', 'INFO'); store.signalBot.setField('status', 'RUNNING'); }
-    else if (type === 'dca') { store.dcaBot.addLog('DCA Bot engaged. Beginning accumulation.', 'INFO'); store.dcaBot.setField('status', 'RUNNING'); }
-    else if (type === 'twap') { store.twapBot.addLog('TWAP Bot engaged. Slicing orders.', 'INFO'); store.twapBot.setField('status', 'RUNNING'); }
-  };
-
-  const handleStop = () => {
-    if (type === 'grid') store.gridBot.setField('status', 'STOPPED');
-    else if (type === 'marketmaker') store.marketMakerBot.setField('status', 'STOPPED');
-    else if (type === 'signal') store.signalBot.setField('status', 'STOPPED');
-    else if (type === 'dca') store.dcaBot.setField('status', 'STOPPED');
-    else if (type === 'twap') store.twapBot.setField('status', 'STOPPED');
-  };
-
-  if (isRunning) {
-    return (
-      <div className="h-full flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-500">
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border shadow-xl">
-          <div className="flex items-center gap-4">
-            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br shadow-lg", config.color)}>
-              <Icon size={24} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-text-primary flex items-center gap-2">
-                {config.label} <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-widest">Active</span>
-              </h2>
-              <div className="text-sm text-text-secondary font-medium">{symbol} • {market.toUpperCase()} Mode</div>
-            </div>
-          </div>
-          <div className="flex gap-6 items-center">
-            <div className="text-right">
-              <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest">Realized PnL</div>
-              <NumberDisplay value={realizedPnl} prefix="$" decimals={2} trend={realizedPnl >= 0 ? "up" : "down"} className="text-xl font-black" />
-            </div>
-            <button onClick={handleStop} className="px-6 py-2.5 rounded-xl bg-red-500/10 text-red-400 font-bold border border-red-500/30 hover:bg-red-500/20 transition-colors flex items-center gap-2">
-              <StopCircle size={18} /> HALT BOT
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 flex gap-6 min-h-0">
-          <div className="flex-[2] rounded-2xl overflow-hidden border border-border bg-surface shadow-2xl relative">
-             <TradingChart symbol={symbol} market={market} />
-          </div>
-          <div className="flex-1 rounded-2xl bg-[#0a0a0c] border border-border p-4 flex flex-col shadow-2xl">
-            <h3 className="text-sm font-bold text-text-muted uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-border/50 pb-2">
-              <FileText size={16} /> Live Execution Log
-            </h3>
-            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar text-sm font-mono pr-2">
-              {logs.length === 0 && <div className="text-text-muted text-center mt-4 text-xs">Awaiting engine events...</div>}
-              {logs.map(log => (
-                 <div key={log.id} className="flex gap-3 text-xs animate-in fade-in duration-300">
-                    <span className="text-text-muted/50 shrink-0">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour12: false })}
-                    </span>
-                    <span className={cn(
-                      log.type === 'SUCCESS' ? 'text-emerald-400' :
-                      log.type === 'ACTION' ? 'text-primary' :
-                      log.type === 'WARNING' ? 'text-amber-400' : 'text-text-secondary'
-                    )}>
-                      {log.message}
-                    </span>
-                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Helper to render the universal "Investment / Budget" input
-  const renderInvestmentInput = (val: string, onChange: (v: string) => void, label = "Investment / Budget (USDT)") => (
-    <div className="space-y-2 col-span-2 mb-2">
-      <label className="text-xs font-bold text-emerald-500 uppercase tracking-wider">{label}</label>
-      <div className="relative">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted font-bold">$</span>
-        <input 
-          type="number" 
-          value={val} 
-          onChange={e => onChange(e.target.value)} 
-          className="w-full h-14 bg-background border border-emerald-500/30 shadow-inner rounded-xl pl-10 pr-4 text-text-primary text-lg font-black focus:outline-none focus:border-emerald-500 transition-colors" 
-        />
-      </div>
-    </div>
-  );
-
-  const renderBotSpecificForm = () => {
-    if (type === 'grid') {
-      const gb = store.gridBot;
-      return (
-        <>
-          {renderInvestmentInput(gb.investmentUsdt, v => gb.setField('investmentUsdt', v))}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Lower Price Bound</label>
-              <input type="number" value={gb.lowerPrice} onChange={e => gb.setField('lowerPrice', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Upper Price Bound</label>
-              <input type="number" value={gb.upperPrice} onChange={e => gb.setField('upperPrice', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Grid Count</label>
-              <input type="number" value={gb.gridCount} onChange={e => gb.setField('gridCount', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Amount per Grid (Base)</label>
-              <input type="number" value={gb.amountPerGrid} onChange={e => gb.setField('amountPerGrid', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-        </>
-      );
-    }
-    
-    if (type === 'marketmaker') {
-      const mm = store.marketMakerBot;
-      return (
-        <>
-          {renderInvestmentInput(mm.budgetUsdt, v => mm.setField('budgetUsdt', v), "Budget (USDT)")}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Order Size (USDT)</label>
-              <input type="number" value={mm.orderSizeUsdt} onChange={e => mm.setField('orderSizeUsdt', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Layers</label>
-              <input type="number" value={mm.layers} onChange={e => mm.setField('layers', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Spread BPS</label>
-              <input type="number" value={mm.spreadBps} onChange={e => mm.setField('spreadBps', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Requote BPS</label>
-              <input type="number" value={mm.requoteBps} onChange={e => mm.setField('requoteBps', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if (type === 'signal') {
-      const sb = store.signalBot;
-      return (
-        <>
-          {renderInvestmentInput(sb.investmentUsdt, v => sb.setField('investmentUsdt', v))}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Take Profit (%)</label>
-              <input type="number" value={sb.takeProfitPct} onChange={e => sb.setField('takeProfitPct', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Stop Loss (%)</label>
-              <input type="number" value={sb.stopLossPct} onChange={e => sb.setField('stopLossPct', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if (type === 'dca') {
-      const dca = store.dcaBot;
-      return (
-        <>
-          {renderInvestmentInput(dca.investmentUsdt, v => dca.setField('investmentUsdt', v))}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Order Size (USDT)</label>
-              <input type="number" value={dca.orderSizeUsdt} onChange={e => dca.setField('orderSizeUsdt', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Interval (Minutes)</label>
-              <input type="number" value={dca.intervalMinutes} onChange={e => dca.setField('intervalMinutes', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if (type === 'twap') {
-      const twap = store.twapBot;
-      return (
-        <>
-          {renderInvestmentInput(twap.investmentUsdt, v => twap.setField('investmentUsdt', v))}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Total Duration (Hours)</label>
-              <input type="number" value={twap.totalDurationHours} onChange={e => twap.setField('totalDurationHours', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Slice Count</label>
-              <input type="number" value={twap.sliceCount} onChange={e => twap.setField('sliceCount', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Price Limit</label>
-              <input type="number" value={twap.priceLimit} onChange={e => twap.setField('priceLimit', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    return null;
-  };
-
-  return (
-    <>
-      <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
-        <div className="p-8 rounded-3xl bg-surface/30 border border-border/40 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-          
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br shadow-lg", config.color)}>
-                <Icon size={28} className="text-white" />
-              </div>
-              <div>
-                <h2 className="text-3xl font-black text-text-primary tracking-tight">{config.label}</h2>
-                <p className="text-text-secondary mt-1 font-medium">{config.desc}</p>
-              </div>
-            </div>
-            
-            <button onClick={handleAutoConfigure} className="px-4 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold flex items-center gap-2 hover:bg-primary/20 transition-colors shadow-lg shadow-primary/10">
-              <Sparkles size={16} /> AI Auto Configure
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Asset Pair</label>
-                <div className="flex bg-background border border-border rounded-xl h-12 items-center px-4 font-bold text-text-primary">
-                   {symbol}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Environment</label>
-                <div className="flex bg-background border border-border rounded-xl h-12 p-1">
-                   <button className="flex-1 rounded-lg text-sm font-bold bg-primary text-background">Live / Real</button>
-                   <button disabled className="flex-1 rounded-lg text-sm font-bold text-text-muted/50 cursor-not-allowed">Mock / Demo</button>
-                </div>
-              </div>
-            </div>
-
-            {renderBotSpecificForm()}
-
-            <div className="border border-border/50 rounded-xl overflow-hidden mt-6">
-               <button 
-                 onClick={() => setAdvancedOpen(!advancedOpen)}
-                 className="w-full px-6 py-4 flex items-center justify-between bg-surface-2 hover:bg-surface transition-colors"
-               >
-                 <div className="font-bold text-sm text-text-primary">Advanced Trigger & Risk Settings</div>
-                 <ChevronDown size={18} className={cn("text-text-muted transition-transform", advancedOpen ? "rotate-180" : "")} />
-               </button>
-                 {advancedOpen && (
-                   <div className="p-6 bg-background border-t border-border/50 space-y-4">
-                      {type === 'grid' && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Spacing</label>
-                            <select className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.spacing} onChange={(e) => store.gridBot.setField('spacing', e.target.value as any)}>
-                              <option value="ARITHMETIC">Arithmetic</option>
-                              <option value="GEOMETRIC">Geometric</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Trigger Price</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.triggerPrice} onChange={(e) => store.gridBot.setField('triggerPrice', e.target.value)} placeholder="Optional" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Stop Loss Price</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.stopLossPrice} onChange={(e) => store.gridBot.setField('stopLossPrice', e.target.value)} placeholder="Optional" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Take Profit Price</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.takeProfitPrice} onChange={(e) => store.gridBot.setField('takeProfitPrice', e.target.value)} placeholder="Optional" />
-                          </div>
-                        </div>
-                      )}
-                      {type === 'marketmaker' && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Volume Target (USDT)</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.marketMakerBot.volumeTargetUsdt} onChange={(e) => store.marketMakerBot.setField('volumeTargetUsdt', e.target.value)} placeholder="Auto-stop limit" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Fee Budget (USDT)</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.marketMakerBot.feeBudgetUsdt} onChange={(e) => store.marketMakerBot.setField('feeBudgetUsdt', e.target.value)} placeholder="Optional max fee" />
-                          </div>
-                        </div>
-                      )}
-                      {type === 'signal' && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Check Interval (s)</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.signalBot.checkInterval} onChange={(e) => store.signalBot.setField('checkInterval', e.target.value)} />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Max Open Positions</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.signalBot.maxOpenPositions} onChange={(e) => store.signalBot.setField('maxOpenPositions', e.target.value)} />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Conflict Resolution</label>
-                            <select className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.signalBot.onConflictingSignal} onChange={(e) => store.signalBot.setField('onConflictingSignal', e.target.value as any)}>
-                              <option value="CLOSE_AND_REVERSE">Close & Reverse</option>
-                              <option value="CLOSE_ONLY">Close Only</option>
-                              <option value="IGNORE">Ignore</option>
-                            </select>
-                          </div>
-                        </div>
-                      )}
-                      {type === 'dca' && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-bold text-text-muted uppercase">Max Drawdown (%)</label>
-                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.dcaBot.maxDrawdownPct} onChange={(e) => store.dcaBot.setField('maxDrawdownPct', e.target.value)} placeholder="5" />
-                          </div>
-                        </div>
-                      )}
-                      {type === 'twap' && (
-                        <div className="text-xs text-text-muted font-medium">TWAP bot automatically uses internal intelligent routing to minimize slippage. No further advanced settings required.</div>
-                      )}
-                   </div>
-                 )}
-            </div>
-
-            <div className="pt-4">
-              <button onClick={handleDeployClick} className={cn("w-full h-14 rounded-xl text-white font-black text-lg transition-all shadow-xl bg-gradient-to-r", config.color, "hover:scale-[1.01]")}>
-                REVIEW & DEPLOY BOT
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      {showPreFlight && <PreFlightModal botName={config.label} onClose={() => setShowPreFlight(false)} onConfirm={handleConfirmDeploy} />}
-    </>
-  );
+const BOTS_CONFIG: Record<BotTab, { label: string; icon: React.ElementType; component: React.ComponentType | null }> = {
+  wave3: { label: 'Wave 3 Autonomous', icon: Sparkles, component: null },
+  grid: { label: 'Grid Bot', icon: Grid2X2, component: GridBot },
+  dca: { label: 'DCA Bot', icon: Clock, component: DcaBot },
+  twap: { label: 'TWAP Bot', icon: Repeat, component: TwapBot },
+  marketmaker: { label: 'Market Maker', icon: Layers, component: MarketMakerBot },
+  signal: { label: 'Signal Bot', icon: Activity, component: SignalBot },
+  news: { label: 'News Bot', icon: Newspaper, component: NewsBot },
 };
 
 export const TradingBots: React.FC = () => {
@@ -726,7 +288,14 @@ export const TradingBots: React.FC = () => {
         {currentTab === 'wave3' ? (
           <Wave3AgentConsole />
         ) : (
-          <StandardBotView type={currentTab} />
+          (() => {
+            const ActiveComponent = BOTS_CONFIG[currentTab]?.component;
+            return ActiveComponent ? (
+               <div className="w-full h-full bg-surface/30 border border-border/40 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-2xl">
+                 <ActiveComponent />
+               </div>
+            ) : null;
+          })()
         )}
       </div>
     </div>

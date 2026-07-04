@@ -8,7 +8,6 @@ import { useSettingsStore } from './store/settingsStore';
 import { Settings } from './pages/Settings';
 import { startDemoEngine, stopDemoEngine } from './api/demoEngine';
 import { startWave3Engine } from './api/wave3Engine';
-import { startBotEngine } from './api/botEngine';
 
 /**
  * Lazy-loaded route modules. Each page is a separate chunk so the first
@@ -112,7 +111,6 @@ function App() {
   useEffect(() => {
     preloadCommonPages();
     startWave3Engine();
-    startBotEngine();
   }, []);
 
   return (

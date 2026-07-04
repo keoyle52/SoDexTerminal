@@ -1,64 +1,146 @@
 import { create } from 'zustand';
 import { createDefaultSignals, type SignalConfig, type CombineMode } from '../api/signalEngine';
 
-export interface BotLog {
-  id: string;
-  timestamp: number;
-  message: string;
-  type: 'INFO' | 'ACTION' | 'SUCCESS' | 'WARNING';
-}
-
+/**
+ * Professional-grade Grid Bot configuration. Mirrors the parameter
+ * surface of the major centralised exchanges (Binance / Bybit / OKX),
+ * including arithmetic vs geometric spacing, conditional trigger price,
+ * grid-wide TP/SL, and leverage for perpetuals.
+ */
 interface GridBotState {
+  // ── Core ──────────────────────────────────────────────────────
   symbol: string;
-  investmentUsdt: string;
   lowerPrice: string;
   upperPrice: string;
   gridCount: string;
   amountPerGrid: string;
   isSpot: boolean;
   mode: 'NEUTRAL' | 'LONG' | 'SHORT';
+  /** Arithmetic = constant price step; Geometric = constant percent step. */
   spacing: 'ARITHMETIC' | 'GEOMETRIC';
+  /** Optional leverage (perps only). */
   leverage: string;
+  // ── Conditional start ─────────────────────────────────────────
+  /** When set, the bot waits until last price crosses this trigger
+   *  before placing initial orders. Empty string = start immediately. */
   triggerPrice: string;
   triggerDirection: 'CROSS_DOWN' | 'CROSS_UP';
+  // ── Stop conditions ───────────────────────────────────────────
+  /** Stop the entire grid + cancel orders if price drops to this level. */
   stopLossPrice: string;
+  /** Stop the entire grid + cancel orders if price rises to this level. */
   takeProfitPrice: string;
+  /** Stop & close everything once realized PnL hits this absolute value. */
   trailingProfitUsd: string;
+  // ── Status ────────────────────────────────────────────────────
   status: 'STOPPED' | 'RUNNING' | 'ARMED' | 'ERROR';
   activeOrders: number;
   totalInvestment: number;
   completedGrids: number;
   realizedPnl: number;
-  logs: BotLog[];
   setField: <K extends keyof GridBotState>(field: K, value: GridBotState[K]) => void;
-  bumpField: (field: 'activeOrders' | 'totalInvestment' | 'completedGrids' | 'realizedPnl', delta: number) => void;
-  addLog: (message: string, type: BotLog['type']) => void;
+  /**
+   * Atomically add `delta` to a numeric counter. Same rationale as
+   * `MarketMakerBotState.bumpField`: when multiple grid fills are
+   * detected in the same poll tick, each `setField('realizedPnl',
+   * state.realizedPnl + pnl)` would read a stale snapshot of
+   * `realizedPnl` from the closure and silently overwrite the previous
+   * call. Functional update reads the freshest store value.
+   */
+  bumpField: (
+    field: 'activeOrders' | 'totalInvestment' | 'completedGrids' | 'realizedPnl',
+    delta: number,
+  ) => void;
   resetStats: () => void;
 }
 
+/**
+ * Market Maker Bot — high-volume, low-fee farming bot.
+ *
+ * Designed to maximise traded volume per dollar of fee spent. The
+ * mechanism:
+ *  1. Posts paired buy + sell **limit orders** with `timeInForce: GTX`
+ *     (post-only). The exchange REJECTS any side that would cross the
+ *     spread, guaranteeing every fill is a MAKER fill — typically half
+ *     the fee of a TAKER order on SoDEX.
+ *  2. As the market wiggles, one side gets filled, leaving small
+ *     inventory. The bot re-posts the opposite side at the new BBO
+ *     to flatten and continue the cycle.
+ *  3. Stale orders (price moved beyond `requoteBps`) are cancelled
+ *     and re-quoted at the current BBO so we don't sit too far back
+ *     from the queue and miss fills.
+ *
+ * Caps that protect the user:
+ *  - `budgetUsdt`: collateral committed at any moment (open orders +
+ *                  unhedged inventory).
+ *  - `volumeTargetUsdt`: stops the bot when traded volume reaches this.
+ *  - `feeBudgetUsdt`: stops the bot when estimated fees reach this.
+ *
+ * The bot is spot-only — perps would add inventory leverage tracking,
+ * orthogonal complexity. SoDEX's airdrop volume metric reportedly
+ * counts spot trades equally so spot is the right surface for farming.
+ */
 interface MarketMakerBotState {
+  // ── Configuration ─────────────────────────────────────────────
+  /** Spot trading pair, e.g. BTC_USDC. */
   symbol: string;
+  /** Maximum capital (in USDT-equivalent) the bot may have committed
+   *  to open orders + inventory at any moment. Hard ceiling. */
   budgetUsdt: string;
+  /** USDT-equivalent notional per individual limit order. Each ladder
+   *  layer uses this size. Smaller = smoother cycles, more orders. */
   orderSizeUsdt: string;
+  /** Number of buy + sell layers to keep open simultaneously. 1 = pure
+   *  ping-pong; 3 = small ladder. Keep low to avoid rate-limit pressure. */
   layers: string;
+  /** Spread offset in basis points from BBO. 0 = join the queue at
+   *  current bid/ask; 5 = step inside by 5 bps (fills slower but
+   *  smaller adverse selection). */
   spreadBps: string;
+  /** Re-quote when the BBO moves more than this many bps from our
+   *  posted price. Lower = more cancel/replace cycles + more taker
+   *  risk if not careful. Higher = stale-order risk. */
   requoteBps: string;
+  /** Optional volume target (USDT). Bot auto-stops when reached.
+   *  Empty string = no cap. */
   volumeTargetUsdt: string;
+  /** Optional fee budget (USDT). Bot auto-stops when estimated cumul-
+   *  ative maker fee reaches this. Empty string = no cap. */
   feeBudgetUsdt: string;
+  /** SoDEX maker fee rate as a decimal (e.g. 0.0001 = 1bp). Used only
+   *  for the fee estimator since the API doesn't reliably echo per-fill
+   *  fee. Default 0.0001 (1bp) is a safe assumption for most makers. */
   makerFeeRate: string;
+
+  // ── Live status ───────────────────────────────────────────────
   status: 'STOPPED' | 'RUNNING' | 'ERROR';
+  /** Stats since the most recent Start press. */
   ordersPlaced: number;
   ordersFilled: number;
   ordersCancelled: number;
+  /** Cumulative traded volume in USDT (sum of fill qty × fill price). */
   volumeUsdt: number;
+  /** Estimated cumulative maker fee paid in USDT. */
   feesUsdt: number;
+  /** Net inventory (in base asset units). Positive = long, negative = short. */
   inventoryBase: number;
-  realizedPnl: number;
+  /** Wall-clock when the current run started. null = idle. */
   sessionStartedAt: number | null;
-  logs: BotLog[];
+
+  // ── Setters ───────────────────────────────────────────────────
   setField: <K extends keyof MarketMakerBotState>(field: K, value: MarketMakerBotState[K]) => void;
-  bumpField: (field: 'ordersPlaced' | 'ordersFilled' | 'ordersCancelled' | 'volumeUsdt' | 'feesUsdt' | 'inventoryBase' | 'realizedPnl', delta: number) => void;
-  addLog: (message: string, type: BotLog['type']) => void;
+  /**
+   * Atomically add `delta` to a numeric field. This is the *only*
+   * correct way to accumulate multiple increments from within the
+   * same reconcile tick — `setField('x', mm.x + delta)` reads `mm.x`
+   * from a stale closure and silently overwrites previous calls in
+   * the same pass (e.g. three fills in one tick would only count as
+   * one because the setter sees the same base value every time).
+   */
+  bumpField: (
+    field: 'ordersPlaced' | 'ordersFilled' | 'ordersCancelled' | 'volumeUsdt' | 'feesUsdt' | 'inventoryBase',
+    delta: number,
+  ) => void;
   resetStats: () => void;
 }
 
@@ -74,7 +156,11 @@ export interface SignalPosition {
   openTime: number;
   triggeredBy: string[];
   orderId?: string;
+  /** Server-side take-profit stop order id (perps only). Used so the bot can
+   *  cancel the hanging stop when the position is closed by any other path
+   *  (manual close, conflict resolution, or the sibling SL firing first). */
   tpOrderId?: string;
+  /** Server-side stop-loss stop order id (perps only). See `tpOrderId`. */
   slOrderId?: string;
   unrealizedPnl: number;
   status: 'OPEN' | 'TP_HIT' | 'SL_HIT' | 'CLOSED_BY_SIGNAL' | 'MANUAL_CLOSE';
@@ -83,20 +169,23 @@ export interface SignalPosition {
 export type ConflictResolution = 'CLOSE_AND_REVERSE' | 'CLOSE_ONLY' | 'IGNORE';
 
 interface SignalBotState {
+  // ── Config ──
   symbol: string;
-  investmentUsdt: string;
   isSpot: boolean;
   leverage: string;
   amountUsdt: string;
   takeProfitPct: string;
   stopLossPct: string;
+  // ── Signal Config ──
   signals: SignalConfig[];
   combineMode: CombineMode;
   checkInterval: string;
   klineInterval: string;
+  // ── Conflict Resolution ──
   onConflictingSignal: ConflictResolution;
   maxOpenPositions: string;
   cooldownSeconds: string;
+  // ── Status ──
   status: 'STOPPED' | 'RUNNING' | 'ERROR';
   lastSignalTime: number | null;
   lastSignalDirection: 'LONG' | 'SHORT' | null;
@@ -104,44 +193,7 @@ interface SignalBotState {
   winTrades: number;
   realizedPnl: number;
   activePositions: SignalPosition[];
-  logs: BotLog[];
   setField: <K extends keyof SignalBotState>(field: K, value: SignalBotState[K]) => void;
-  bumpField: (field: 'realizedPnl', delta: number) => void;
-  addLog: (message: string, type: BotLog['type']) => void;
-  resetStats: () => void;
-}
-
-interface DcaBotState {
-  symbol: string;
-  investmentUsdt: string;
-  orderSizeUsdt: string;
-  intervalMinutes: string;
-  maxDrawdownPct: string;
-  status: 'STOPPED' | 'RUNNING' | 'ERROR';
-  ordersPlaced: number;
-  totalAccumulated: number;
-  realizedPnl: number;
-  logs: BotLog[];
-  setField: <K extends keyof DcaBotState>(field: K, value: DcaBotState[K]) => void;
-  bumpField: (field: 'realizedPnl' | 'totalAccumulated' | 'ordersPlaced', delta: number) => void;
-  addLog: (message: string, type: BotLog['type']) => void;
-  resetStats: () => void;
-}
-
-interface TwapBotState {
-  symbol: string;
-  investmentUsdt: string;
-  totalDurationHours: string;
-  sliceCount: string;
-  priceLimit: string;
-  status: 'STOPPED' | 'RUNNING' | 'ERROR';
-  slicesExecuted: number;
-  totalAccumulated: number;
-  realizedPnl: number;
-  logs: BotLog[];
-  setField: <K extends keyof TwapBotState>(field: K, value: TwapBotState[K]) => void;
-  bumpField: (field: 'realizedPnl' | 'totalAccumulated' | 'slicesExecuted', delta: number) => void;
-  addLog: (message: string, type: BotLog['type']) => void;
   resetStats: () => void;
 }
 
@@ -149,21 +201,11 @@ interface BotStoreState {
   gridBot: GridBotState;
   marketMakerBot: MarketMakerBotState;
   signalBot: SignalBotState;
-  dcaBot: DcaBotState;
-  twapBot: TwapBotState;
 }
-
-const createLog = (message: string, type: BotLog['type']): BotLog => ({
-  id: Math.random().toString(36).substring(7),
-  timestamp: Date.now(),
-  message,
-  type
-});
 
 export const useBotStore = create<BotStoreState>((set) => ({
   gridBot: {
-    symbol: 'BTC-USD',
-    investmentUsdt: '1000',
+    symbol: 'vBTC-vUSDC',
     lowerPrice: '60000',
     upperPrice: '70000',
     gridCount: '10',
@@ -182,22 +224,44 @@ export const useBotStore = create<BotStoreState>((set) => ({
     totalInvestment: 0,
     completedGrids: 0,
     realizedPnl: 0,
-    logs: [],
-    setField: (field, value) => set((state) => ({ gridBot: { ...state.gridBot, [field]: value } })),
-    bumpField: (field, delta) => set((state) => ({ gridBot: { ...state.gridBot, [field]: (state.gridBot[field] as number) + delta } })),
-    addLog: (message, type) => set((state) => ({ gridBot: { ...state.gridBot, logs: [createLog(message, type), ...state.gridBot.logs].slice(0, 100) } })),
-    resetStats: () => set((state) => ({ gridBot: { ...state.gridBot, activeOrders: 0, totalInvestment: 0, completedGrids: 0, realizedPnl: 0, status: 'STOPPED', logs: [] } })),
+    setField: (field, value) =>
+      set((state) => ({
+        gridBot: { ...state.gridBot, [field]: value },
+      })),
+    bumpField: (field, delta) =>
+      set((state) => ({
+        gridBot: {
+          ...state.gridBot,
+          [field]: (state.gridBot[field] as number) + delta,
+        },
+      })),
+    resetStats: () =>
+      set((state) => ({
+        gridBot: {
+          ...state.gridBot,
+          activeOrders: 0,
+          totalInvestment: 0,
+          completedGrids: 0,
+          realizedPnl: 0,
+          status: 'STOPPED'
+        },
+      })),
   },
+  // Defaults tuned for a quick-start, low-risk farming session on BTC.
+  // 100 USDT budget × 10 USDT per order × 2 layers ≈ 4 active orders
+  // worth 40 USDT. With ~1bp maker fee and ~0.05% per BTC tick, the
+  // bot will turn over the budget many times per hour at fee cost
+  // well under 0.1% of farmed volume.
   marketMakerBot: {
-    symbol: 'BTC-USD',
+    symbol: 'vBTC-vUSDC',
     budgetUsdt: '100',
     orderSizeUsdt: '10',
     layers: '2',
-    spreadBps: '0',
-    requoteBps: '5',
+    spreadBps: '0',         // join the BBO
+    requoteBps: '5',        // re-quote when 5bps off
     volumeTargetUsdt: '',
     feeBudgetUsdt: '',
-    makerFeeRate: '0.0001',
+    makerFeeRate: '0.0001', // 1bp default
     status: 'STOPPED',
     ordersPlaced: 0,
     ordersFilled: 0,
@@ -205,17 +269,38 @@ export const useBotStore = create<BotStoreState>((set) => ({
     volumeUsdt: 0,
     feesUsdt: 0,
     inventoryBase: 0,
-    realizedPnl: 0,
     sessionStartedAt: null,
-    logs: [],
-    setField: (field, value) => set((state) => ({ marketMakerBot: { ...state.marketMakerBot, [field]: value } })),
-    bumpField: (field, delta) => set((state) => ({ marketMakerBot: { ...state.marketMakerBot, [field]: (state.marketMakerBot[field] as number) + delta } })),
-    addLog: (message, type) => set((state) => ({ marketMakerBot: { ...state.marketMakerBot, logs: [createLog(message, type), ...state.marketMakerBot.logs].slice(0, 100) } })),
-    resetStats: () => set((state) => ({ marketMakerBot: { ...state.marketMakerBot, status: 'STOPPED', ordersPlaced: 0, ordersFilled: 0, ordersCancelled: 0, volumeUsdt: 0, feesUsdt: 0, inventoryBase: 0, realizedPnl: 0, sessionStartedAt: null, logs: [] } })),
+    setField: (field, value) =>
+      set((state) => ({
+        marketMakerBot: { ...state.marketMakerBot, [field]: value },
+      })),
+    // Functional update — reads the *current* store value via `state`
+    // rather than a closed-over snapshot, so repeated calls in the
+    // same event loop accumulate correctly.
+    bumpField: (field, delta) =>
+      set((state) => ({
+        marketMakerBot: {
+          ...state.marketMakerBot,
+          [field]: (state.marketMakerBot[field] as number) + delta,
+        },
+      })),
+    resetStats: () =>
+      set((state) => ({
+        marketMakerBot: {
+          ...state.marketMakerBot,
+          status: 'STOPPED',
+          ordersPlaced: 0,
+          ordersFilled: 0,
+          ordersCancelled: 0,
+          volumeUsdt: 0,
+          feesUsdt: 0,
+          inventoryBase: 0,
+          sessionStartedAt: null,
+        },
+      })),
   },
   signalBot: {
     symbol: 'BTC-USD',
-    investmentUsdt: '500',
     isSpot: false,
     leverage: '5',
     amountUsdt: '50',
@@ -235,42 +320,22 @@ export const useBotStore = create<BotStoreState>((set) => ({
     winTrades: 0,
     realizedPnl: 0,
     activePositions: [],
-    logs: [],
-    setField: (field, value) => set((state) => ({ signalBot: { ...state.signalBot, [field]: value } })),
-    bumpField: (field, delta) => set((state) => ({ signalBot: { ...state.signalBot, [field]: (state.signalBot[field] as number) + delta } })),
-    addLog: (message, type) => set((state) => ({ signalBot: { ...state.signalBot, logs: [createLog(message, type), ...state.signalBot.logs].slice(0, 100) } })),
-    resetStats: () => set((state) => ({ signalBot: { ...state.signalBot, status: 'STOPPED', lastSignalTime: null, lastSignalDirection: null, totalTrades: 0, winTrades: 0, realizedPnl: 0, activePositions: [], logs: [] } })),
+    setField: (field, value) =>
+      set((state) => ({
+        signalBot: { ...state.signalBot, [field]: value },
+      })),
+    resetStats: () =>
+      set((state) => ({
+        signalBot: {
+          ...state.signalBot,
+          status: 'STOPPED',
+          lastSignalTime: null,
+          lastSignalDirection: null,
+          totalTrades: 0,
+          winTrades: 0,
+          realizedPnl: 0,
+          activePositions: [],
+        },
+      })),
   },
-  dcaBot: {
-    symbol: 'BTC-USD',
-    investmentUsdt: '1000',
-    orderSizeUsdt: '50',
-    intervalMinutes: '60',
-    maxDrawdownPct: '5',
-    status: 'STOPPED',
-    ordersPlaced: 0,
-    totalAccumulated: 0,
-    realizedPnl: 0,
-    logs: [],
-    setField: (field, value) => set((state) => ({ dcaBot: { ...state.dcaBot, [field]: value } })),
-    bumpField: (field, delta) => set((state) => ({ dcaBot: { ...state.dcaBot, [field]: (state.dcaBot[field] as number) + delta } })),
-    addLog: (message, type) => set((state) => ({ dcaBot: { ...state.dcaBot, logs: [createLog(message, type), ...state.dcaBot.logs].slice(0, 100) } })),
-    resetStats: () => set((state) => ({ dcaBot: { ...state.dcaBot, status: 'STOPPED', ordersPlaced: 0, totalAccumulated: 0, realizedPnl: 0, logs: [] } })),
-  },
-  twapBot: {
-    symbol: 'BTC-USD',
-    investmentUsdt: '5000',
-    totalDurationHours: '24',
-    sliceCount: '24',
-    priceLimit: '75000',
-    status: 'STOPPED',
-    slicesExecuted: 0,
-    totalAccumulated: 0,
-    realizedPnl: 0,
-    logs: [],
-    setField: (field, value) => set((state) => ({ twapBot: { ...state.twapBot, [field]: value } })),
-    bumpField: (field, delta) => set((state) => ({ twapBot: { ...state.twapBot, [field]: (state.twapBot[field] as number) + delta } })),
-    addLog: (message, type) => set((state) => ({ twapBot: { ...state.twapBot, logs: [createLog(message, type), ...state.twapBot.logs].slice(0, 100) } })),
-    resetStats: () => set((state) => ({ twapBot: { ...state.twapBot, status: 'STOPPED', slicesExecuted: 0, totalAccumulated: 0, realizedPnl: 0, logs: [] } })),
-  }
 }));

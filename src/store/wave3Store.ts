@@ -34,6 +34,9 @@ interface Wave3Store {
   feeDragProtection: boolean;
   setFeeDragProtection: (active: boolean) => void;
 
+  maxDrawdownPct: number;
+  setMaxDrawdownPct: (pct: number) => void;
+
   currentRegime: Wave3Regime;
   setCurrentRegime: (regime: Wave3Regime) => void;
 
@@ -64,6 +67,9 @@ export const useWave3Store = create<Wave3Store>((set) => ({
 
   feeDragProtection: true,
   setFeeDragProtection: (active) => set({ feeDragProtection: active }),
+
+  maxDrawdownPct: 5,
+  setMaxDrawdownPct: (pct) => set({ maxDrawdownPct: pct }),
 
   currentRegime: 'CONSOLIDATION',
   setCurrentRegime: (regime) => set({ currentRegime: regime }),
