@@ -140,7 +140,7 @@ const MIN_AGREEMENT = 3;
 const FEE_MARGIN_MULTIPLIER = 0.8;
 
 /** Public Fear & Greed Index proxy fallback */
-const FNG_PROXY_URL = 'https://api.allorigins.win/raw?url=https://api.alternative.me/fng/';
+const FNG_PROXY_URL = 'https://api.alternative.me/fng/';
 /** Cached F&G value (refreshed at most once per hour). */
 let _fngCache: { value: number; ts: number } | null = null;
 const FNG_CACHE_TTL = 60 * 60 * 1000;

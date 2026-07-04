@@ -77,10 +77,9 @@ export const HeaderDock: React.FC = () => {
           val = parseInt(indices.fngIndex);
           label = indices.fngClass || 'Neutral';
         } else {
-          // Fallback to allorigins proxy of alternative.me if SoSoValue fails
+          // Fallback to alternative.me if SoSoValue fails
           const targetUrl = 'https://api.alternative.me/fng/?limit=1';
-          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-          const res = await fetch(proxyUrl);
+          const res = await fetch(targetUrl);
           if (res.ok) {
             const data = await res.json();
             const item = data?.data?.[0];

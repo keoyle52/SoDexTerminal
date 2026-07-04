@@ -65,8 +65,9 @@ const Wave3AgentConsole: React.FC = () => {
   };
 
   const handleAssetChange = (c: string) => {
-    w3.setTargetCoin(c + '-USD');
-    if (c === 'SOSO') {
+    const cleanCoin = c.replace('-USD', '');
+    w3.setTargetCoin(cleanCoin + '-USD');
+    if (cleanCoin === 'SOSO') {
       w3.setMarket('spot');
     }
   };

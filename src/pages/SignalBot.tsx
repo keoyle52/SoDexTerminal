@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Play, Square, Radio, Settings2, Target, Zap, Activity } from 'lucide-react';
+import { Play, Square, Radio, Settings2, Target, Zap, Activity, X } from 'lucide-react';
 import { useBotStore, type SignalPosition, type ConflictResolution } from '../store/botStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -745,6 +745,8 @@ export const SignalBot: React.FC = () => {
 
 
   const [autoPairBusy, setAutoPairBusy] = useState(false);
+  const [signalsModalOpen, setSignalsModalOpen] = useState(false);
+  const [isSignalsModalOpen, setIsSignalsModalOpen] = useState(false);
   const handleAutoSelectPair = async () => {
     setAutoPairBusy(true);
     try {
@@ -801,35 +803,12 @@ export const SignalBot: React.FC = () => {
       </div>
 
       <div className="flex flex-col gap-3 mt-3">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-          <Zap size={12} /><span>Signal Configuration</span>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Select label="Combination Mode" value={state.combineMode} onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} disabled={isLocked} options={[{ value: 'ANY', label: 'ANY - If any signal triggers' }, { value: 'ALL', label: 'ALL - All enabled must agree' }, { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }]} />
-        </div>
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs font-semibold">Active Signals</span>
-        </div>
-        <div className="flex flex-col gap-3">
-          {state.signals.map(sig => (
-            <div key={sig.id} className={cn("border border-border rounded-xl p-3 transition-colors", sig.enabled ? "bg-primary/5 border-primary/30" : "bg-background/40 opacity-70")}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">{sig.label}</span>
-                <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
-              </div>
-              {sig.enabled && (
-                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
-                  {Object.entries(sig.params).map(([key, val]) => (
-                    <div key={key}>
-                      <label className="block text-[9px] text-text-muted uppercase mb-1">{PARAM_LABELS[key] || key}</label>
-                      <input type="number" className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:border-primary outline-none" value={val as number} onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} disabled={isLocked} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <Button variant="outline" className="w-full justify-between px-3 py-4 border-primary/30 hover:border-primary/60 transition-colors" onClick={() => setIsSignalsModalOpen(true)}>
+          <span className="flex items-center gap-2">
+            <Zap size={14} className="text-primary" /> Configure Active Signals
+          </span>
+          <span className="badge badge-primary">{state.signals.filter(s => s.enabled).length} Active</span>
+        </Button>
       </div>
 
       <div className="rounded-xl border border-border bg-background/30 mt-3">
@@ -845,6 +824,57 @@ export const SignalBot: React.FC = () => {
           </div>
         )}
       </div>
+
+      {isSignalsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[90vh] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
+            <div className="flex items-center gap-3 p-5 border-b border-border bg-background/50 shrink-0">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <Zap size={18} />
+              </div>
+              <h3 className="text-base font-semibold flex-1">Configure Signals</h3>
+              <button onClick={() => setIsSignalsModalOpen(false)} className="text-text-muted hover:text-text-primary transition-colors rounded-lg p-1 hover:bg-surface-hover">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-5 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Select label="Combination Mode" value={state.combineMode} onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} disabled={isLocked} options={[{ value: 'ANY', label: 'ANY - If any signal triggers' }, { value: 'ALL', label: 'ALL - All enabled must agree' }, { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }]} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Available Signals</span>
+              </div>
+              <div className="flex flex-col gap-3">
+                {state.signals.map(sig => (
+                  <div key={sig.id} className={cn("border border-border rounded-xl p-3 transition-colors", sig.enabled ? "bg-primary/5 border-primary/30" : "bg-background/40 opacity-70")}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">{sig.label}</span>
+                      <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
+                    </div>
+                    {sig.enabled && (
+                      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
+                        {Object.entries(sig.params).map(([key, val]) => (
+                          <div key={key}>
+                            <label className="block text-[9px] text-text-muted uppercase mb-1">{PARAM_LABELS[key] || key}</label>
+                            <input type="number" className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:border-primary outline-none" value={val as number} onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} disabled={isLocked} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-background/30 shrink-0">
+              <Button variant="primary" size="sm" fullWidth onClick={() => setIsSignalsModalOpen(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 
