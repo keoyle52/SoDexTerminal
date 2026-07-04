@@ -4,7 +4,7 @@ import {
   Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle, 
   ShieldAlert, ShieldCheck, Cpu, Brain, Newspaper, X, Zap
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { fetchTickers } from '../api/services';
 import { useWave3Store } from '../store/wave3Store';
 import { useRiskStore } from '../store/riskStore';
@@ -108,7 +108,7 @@ const Wave3AgentConsole: React.FC = () => {
                     <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Target Asset</label>
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <SymbolSelector market={w3.market} value={w3.targetCoin.replace('-USD', '')} onChange={handleAssetChange} />
+                        <SymbolSelector market={w3.market} value={w3.targetCoin} onChange={handleAssetChange} />
                       </div>
                       <button 
                         onClick={handleAutoSelectPair} 

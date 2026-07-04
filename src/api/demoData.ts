@@ -2,7 +2,7 @@
 // Used when isDemoMode = true so juries/guests can explore without API keys.
 
 export const DEMO_TICKERS = [
-  { symbol: 'SOSO-USD', lastPrice:    0.28, change24h:  5.42, volume24h:   320_000_000 },
+  { symbol: 'SOSO-USD', lastPrice:    0.2952, change24h:  5.42, volume24h:   320_000_000 },
   { symbol: 'BTC-USD', lastPrice: 84312.5,  change24h:  2.34, volume24h: 1_820_430_000 },
   { symbol: 'ETH-USD', lastPrice:  3241.8,  change24h: -1.12, volume24h:   820_150_000 },
   { symbol: 'SOL-USD', lastPrice:   178.4,  change24h:  4.87, volume24h:   412_340_000 },
