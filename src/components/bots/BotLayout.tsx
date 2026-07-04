@@ -1,7 +1,7 @@
 import React from 'react';
 import { Play, StopCircle, Zap, Activity } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { TradingChart } from '../common/TradingChart';
+// removed StatusBadge
 
 interface BotLayoutProps {
   title: string;
@@ -20,7 +20,7 @@ interface BotLayoutProps {
 }
 
 export const BotLayout: React.FC<BotLayoutProps> = ({
-  title, icon: Icon, status, symbol, market,
+  title, icon: Icon, status,
   configPanel, statsPanel, logsPanel,
   isLocked, onStart, onStop, onAutoConfig, autoConfigBusy
 }) => {
@@ -28,9 +28,6 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
     <div className="h-full flex flex-col md:flex-row bg-[#0b0b0f] text-text-primary animate-in fade-in duration-500">
       {/* LEFT: Chart & Logs */}
       <div className="flex-1 flex flex-col min-w-0 border-r border-border/40">
-        <div className="h-[50%] border-b border-border/40 p-4 relative">
-          <TradingChart symbol={symbol} market={market} />
-        </div>
         <div className="flex-1 flex flex-col p-4">
           {statsPanel}
           <div className="flex-1 overflow-hidden mt-4 bg-surface/30 p-1 rounded-xl border border-border/50">

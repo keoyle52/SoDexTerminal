@@ -669,7 +669,8 @@ export const SignalBot: React.FC = () => {
     };
   }, []);
 
-  const isLocked = state.status === 'RUNNING';
+  const isLocked = state.status !== 'STOPPED';
+  const [executionMode, setExecutionMode] = useState<'SESSION' | 'SINGLE'>('SESSION');
 
   const closePosition = useCallback(async (posId: string) => {
     // Always resolve from the freshest store snapshot so closing a position
@@ -810,6 +811,10 @@ export const SignalBot: React.FC = () => {
                 disabled={isLocked}
               />
             )}
+            <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
+              <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
+              <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3">

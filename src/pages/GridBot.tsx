@@ -1,12 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import {
-  Play, Square, Layers, DollarSign, CheckCircle2, TrendingUp, Grid2X2,
-  ChevronDown, ChevronUp, AlertTriangle, Zap, Info, Target, ShieldAlert,
-  Sparkles,
-} from 'lucide-react';
+import { Grid2X2 } from 'lucide-react';
 import { useBotStore } from '../store/botStore';
-import { useSettingsStore } from '../store/settingsStore';
 import {
   placeOrder,
   cancelAllOrders,
@@ -21,14 +16,11 @@ import {
 import { buildContext, recommendGridBot } from '../api/aiAutoConfig';
 import { cn, getErrorMessage } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
-import { StatusBadge } from '../components/common/StatusBadge';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
 import { BotLayout } from '../components/bots/BotLayout';
-import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
-import { Input, Select } from '../components/common/Input';
-import { Button } from '../components/common/Button';
+import { Input } from '../components/common/Input';
 import { useBotPnlStore } from '../store/botPnlStore';
 
 interface GridLevel {
@@ -45,21 +37,9 @@ interface LogEntry {
 }
 
 const POLL_INTERVAL = 10_000;
-const ROUND_TRIP_FEE_PCT = 0.08; // approximate combined taker fee — used for the profit-per-grid sanity hint
-// Consecutive reconcile failures that flip the bot into ERROR + auto-stop.
-// 4 × 10s poll = 40s of hard failing before giving up, which absorbs brief
-// network blips while still surfacing auth / permission failures fast.
+const ROUND_TRIP_FEE_PCT = 0.08;
 const MAX_CONSECUTIVE_ERRORS = 4;
 
-/**
- * Compute grid level prices for either arithmetic (constant absolute step)
- * or geometric (constant percent step) spacing.
- *
- * Geometric grids are preferred in volatile or wide-range markets because
- * they keep profit-per-grid (in %) constant across the entire range —
- * lower-priced rungs get tighter absolute spacing, upper rungs get wider.
- * Major exchanges expose this as a primary mode for that reason.
- */
 function buildGridLevels(
   lower: number,
   upper: number,
@@ -78,12 +58,6 @@ function buildGridLevels(
   return levels;
 }
 
-/**
- * Estimated profit per filled grid round-trip, expressed as a percentage
- * of the lower-rung price. Mirrors the live preview shown by Binance /
- * Bybit / OKX: useful for sanity-checking that the chosen grid count is
- * dense enough to clear the round-trip taker fee (~0.08% combined).
- */
 function profitPerGridPct(
   lower: number,
   upper: number,
@@ -101,43 +75,30 @@ function profitPerGridPct(
 
 export const GridBot: React.FC = () => {
   const { gridBot: state } = useBotStore();
-  const { confirmOrders } = useSettingsStore();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const armWatcherRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runningRef = useRef(false);
   const armedRef = useRef(false);
-  const gridLevelsRef = useRef<GridLevel[]>([]);
-  // Re-entrancy guard for the poll loop — a slow reconcile (many missing
-  // order status round-trips) can take longer than POLL_INTERVAL, and two
-  // overlapping ticks observing the same "missing" levels would double-
-  // count every fill. The guard drops the second call cleanly.
   const pollBusyRef = useRef(false);
-  // Consecutive reconcile failures. Reset on every clean tick; when it
-  // hits MAX_CONSECUTIVE_ERRORS the bot auto-stops into ERROR state.
   const consecutiveErrorsRef = useRef(0);
   const [gridLevels, setGridLevels] = useState<GridLevel[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  
   const [executionMode, setExecutionMode] = useState<'SESSION' | 'SINGLE'>('SESSION');
-  const [stopConditionsOpen, setStopConditionsOpen] = useState(false);
+  const gridLevelsRef = useRef<GridLevel[]>([]);
   const [lastPrice, setLastPrice] = useState<number | null>(null);
-  const lastPriceRef = useRef<number | null>(null);
+  const [perpsMetaErr, setPerpsMetaErr] = useState('');
+  
+  
   const prevPriceForCrossRef = useRef<number | null>(null);
 
-  // Dynamically resolved leverage cap for the current perps symbol so the
-  // input can never exceed the value SoDEX would reject. BTC sits at 25×
-  // for example, alts often top out at 10× or 20× — relying on the live
-  // metadata avoids any hard-coded assumption.
   const [perpsMeta, setPerpsMeta] = useState<PerpsSymbolMeta | null>(null);
-  const [perpsMetaErr, setPerpsMetaErr] = useState<string | null>(null);
-  const leverageCap = perpsMeta?.maxLeverage ?? 25;
+
   useEffect(() => {
-    if (state.isSpot) { setPerpsMeta(null); setPerpsMetaErr(null); return; }
+    if (state.isSpot) { setPerpsMeta(null); setPerpsMetaErr(''); return; }
     let cancelled = false;
-    setPerpsMetaErr(null);
-    // Take only the base ticker (e.g. "BTC" from "BTC-USD") so the helper
-    // can scan all USD/USDC/USDT-quoted candidates.
+    setPerpsMetaErr('');
     const ticker = state.symbol.split(/[-_/]/)[0];
     void (async () => {
       const meta = await getPerpsSymbolMeta(ticker).catch(() => null);
@@ -147,13 +108,11 @@ export const GridBot: React.FC = () => {
         setPerpsMetaErr(`No live cap for ${ticker} — using 25× default`);
         return;
       }
-      // Pull the user-set leverage down if it now exceeds the resolved cap.
       const userLev = parseInt(state.leverage) || 1;
       if (userLev > meta.maxLeverage) state.setField('leverage', String(meta.maxLeverage));
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.symbol, state.isSpot]);
+  }, [state.symbol, state.isSpot, state.leverage]);
 
   const addLog = useCallback((entry: Omit<LogEntry, 'time'>) => {
     setLogs((prev) =>
@@ -174,10 +133,10 @@ export const GridBot: React.FC = () => {
           {
             symbol: s.symbol,
             side: side === 'BUY' ? 1 : 2,
-            type: 1,          // LIMIT
+            type: 1,
             quantity: String(rawQty),
             price: String(price),
-            timeInForce: 1,   // GTC
+            timeInForce: 1,
           },
           market,
         );
@@ -219,50 +178,36 @@ export const GridBot: React.FC = () => {
     }
   }, [addLog]);
 
-  // Forward declaration — pollOrders calls into stopBot, stopBot needs to
-  // tear down the pollRef interval before the latest pollOrders fires.
   const stopBotRef = useRef<((reason?: string) => Promise<void>) | null>(null);
 
   const pollOrders = useCallback(async () => {
     if (!runningRef.current) return;
-    // Re-entrancy guard: skip this tick if the previous is still in
-    // flight. Prevents double-counting fills if the per-missing-order
-    // fetchOrderStatus round-trips spill over POLL_INTERVAL.
     if (pollBusyRef.current) return;
     pollBusyRef.current = true;
     const { gridBot: s } = useBotStore.getState();
     const market: 'spot' | 'perps' = s.isSpot ? 'spot' : 'perps';
 
     try {
-      // 1. Refresh last price for stop-condition checks (cheap — already
-      //    cached server-side and TTL'd in our axios layer).
       const mid = await fetchLastPrice();
-
-      // 2. Auto-stop conditions — these short-circuit before the order
-      //    reconciliation so we don't keep replacing rungs while exiting.
       const sl = parseFloat(s.stopLossPrice);
       const tp = parseFloat(s.takeProfitPrice);
       const trail = parseFloat(s.trailingProfitUsd);
       const fresh = useBotStore.getState().gridBot;
       if (mid !== null) {
         if (Number.isFinite(sl) && sl > 0 && mid <= sl) {
-          addLog({ message: `Stop-loss hit (${mid.toFixed(2)} ≤ ${sl}). Stopping bot.` });
           await stopBotRef.current?.(`SL @ ${sl}`);
           return;
         }
         if (Number.isFinite(tp) && tp > 0 && mid >= tp) {
-          addLog({ message: `Take-profit hit (${mid.toFixed(2)} ≥ ${tp}). Stopping bot.` });
           await stopBotRef.current?.(`TP @ ${tp}`);
           return;
         }
       }
       if (Number.isFinite(trail) && trail > 0 && fresh.realizedPnl >= trail) {
-        addLog({ message: `Profit target hit ($${fresh.realizedPnl.toFixed(2)} ≥ $${trail}). Stopping bot.` });
         await stopBotRef.current?.(`Profit @ $${trail}`);
         return;
       }
 
-      // 3. Reconcile open orders.
       const openOrders = await fetchOpenOrders(market);
       const openOrderIds = new Set(
         (Array.isArray(openOrders) ? openOrders : []).map(
@@ -271,13 +216,6 @@ export const GridBot: React.FC = () => {
       );
 
       const levels = gridLevelsRef.current;
-
-      // First pass: collect every level that appears to have left the
-      // book. We DO NOT mark them as FILLED yet — first we verify each
-      // one against /trades because an order missing from openOrders
-      // could also have been cancelled by the exchange (rate-limit,
-      // insufficient margin, risk check) and counting those as fills
-      // would bleed fake PnL into the stats.
       const missingIndices: number[] = [];
       for (let i = 0; i < levels.length; i++) {
         const level = levels[i];
@@ -287,11 +225,6 @@ export const GridBot: React.FC = () => {
       }
 
       if (missingIndices.length > 0) {
-        // Verify each missing order concurrently. fetchOrderStatus
-        // returns:
-        //   - FILLED + filledQty > 0 → real fill, use reported numbers
-        //   - EXPIRED (or filledQty 0) → cancelled by exchange, not a fill
-        //   - null → /trades unreachable; fall back to optimistic fill
         const verifications = await Promise.all(missingIndices.map(async (i) => {
           const lvl = levels[i];
           try {
@@ -308,39 +241,18 @@ export const GridBot: React.FC = () => {
           const isCancelled = status ? status.status === 'EXPIRED' : false;
 
           if (isCancelled) {
-            // Exchange cancelled the rung — do not count as a fill. Leave
-            // the slot empty for the next tick to re-place if conditions
-            // still call for it.
-            addLog({
-              message: `${filledSide} LIMIT @ ${level.price.toFixed(2)} cancelled by exchange (no fills) — slot empty`,
-              side: filledSide,
-            });
             levels[idx] = { ...level, status: 'EMPTY', orderId: undefined, side: undefined };
             continue;
           }
 
-          // FILLED (verified) or UNVERIFIED (fallback). Either way we
-          // treat it as filled and advance the grid.
           levels[idx] = { ...level, status: 'FILLED', orderId: undefined };
-
-          // Profit per fill = absolute distance to the neighbour rung ×
-          // qty. Works for both arithmetic and geometric spacing.
           const neighbourPrice =
             filledSide === 'BUY'  && idx + 1 < levels.length ? levels[idx + 1].price :
             filledSide === 'SELL' && idx - 1 >= 0           ? levels[idx - 1].price :
             level.price;
-          // Prefer the real filled quantity + value when we have them,
-          // so a partial fill at the boundary doesn't over-credit PnL.
           const realQty = status && status.filledQty > 0 ? status.filledQty : parseFloat(s.amountPerGrid);
           const pnlPerGrid = Math.abs(neighbourPrice - level.price) * realQty;
 
-          addLog({
-            message: `${filledSide} LIMIT @ ${level.price.toFixed(2)} FILLED ${status && status.status === 'FILLED' ? '✓' : '(unverified)'} — qty ${realQty.toFixed(6)}, PnL +$${pnlPerGrid.toFixed(2)}`,
-            side: filledSide,
-          });
-
-          // Atomic accumulation: multiple fills in the same tick must
-          // not stale-closure-overwrite each other.
           useBotStore.getState().gridBot.bumpField('completedGrids', 1);
           useBotStore.getState().gridBot.bumpField('realizedPnl', pnlPerGrid);
           useBotPnlStore.getState().recordTrade('grid', {
@@ -349,18 +261,12 @@ export const GridBot: React.FC = () => {
             note: `${filledSide} grid filled @ ${level.price.toFixed(2)}`,
           });
 
-          // Place the opposite-side replenishment order at the
-          // neighbouring rung.
           if (filledSide === 'BUY' && idx + 1 < levels.length) {
             const orderId = await placeGridOrder(levels[idx + 1].price, 'SELL');
-            if (orderId) {
-              levels[idx + 1] = { ...levels[idx + 1], orderId, side: 'SELL', status: 'ACTIVE' };
-            }
+            if (orderId) levels[idx + 1] = { ...levels[idx + 1], orderId, side: 'SELL', status: 'ACTIVE' };
           } else if (filledSide === 'SELL' && idx - 1 >= 0) {
             const orderId = await placeGridOrder(levels[idx - 1].price, 'BUY');
-            if (orderId) {
-              levels[idx - 1] = { ...levels[idx - 1], orderId, side: 'BUY', status: 'ACTIVE' };
-            }
+            if (orderId) levels[idx - 1] = { ...levels[idx - 1], orderId, side: 'BUY', status: 'ACTIVE' };
           }
         }
       }
@@ -370,19 +276,10 @@ export const GridBot: React.FC = () => {
 
       gridLevelsRef.current = [...levels];
       setGridLevels([...levels]);
-
-      // Clean tick — reset the failure streak.
       consecutiveErrorsRef.current = 0;
     } catch (err: unknown) {
       consecutiveErrorsRef.current += 1;
-      const msg = getErrorMessage(err);
-      addLog({
-        message: `ERROR polling orders (${consecutiveErrorsRef.current}/${MAX_CONSECUTIVE_ERRORS}): ${msg}`,
-      });
       if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
-        addLog({
-          message: `Giving up after ${MAX_CONSECUTIVE_ERRORS} consecutive failures — auto-stopping into ERROR state.`,
-        });
         void stopBotRef.current?.('ERROR — too many consecutive failures');
       }
     } finally {
@@ -390,12 +287,8 @@ export const GridBot: React.FC = () => {
     }
   }, [addLog, placeGridOrder, fetchLastPrice]);
 
-  /**
-   * Place initial orders + start the poll loop. Assumes parameters have
-   * already been validated and any preconditions (e.g. trigger price)
-   * have been met. Triggered both by an immediate Start and by the
-   * trigger-watcher's ARMED → RUNNING transition.
-   */
+  const lastPriceRef = useRef<number | null>(null);
+
   const launchGrid = useCallback(async () => {
     const { gridBot: s } = useBotStore.getState();
     const lower = parseFloat(s.lowerPrice);
@@ -411,32 +304,19 @@ export const GridBot: React.FC = () => {
     if (!currentPrice) {
       runningRef.current = false;
       s.setField('status', 'ERROR');
-      addLog({ message: 'Failed to fetch current price. Bot stopped.' });
       return;
     }
 
-    // For perps, push the chosen leverage to the exchange before placing
-    // the ladder. Mirrors what the user would do manually in the SoDEX UI.
-    // Resolve the live cap one last time and clamp against it — defends
-    // against the user editing the box and pressing Start before the meta
-    // useEffect has had a chance to clamp.
     if (!s.isSpot) {
       let lev = parseInt(s.leverage);
       if (!Number.isFinite(lev) || lev < 1) lev = 1;
       const liveMeta = perpsMeta ?? await getPerpsSymbolMeta(s.symbol.split(/[-_/]/)[0]).catch(() => null);
       const cap = liveMeta?.maxLeverage ?? 25;
-      if (lev > cap) {
-        addLog({ message: `Requested ${lev}× exceeds ${s.symbol} cap ${cap}× — clamping.` });
-        lev = cap;
-        s.setField('leverage', String(cap));
-      }
+      if (lev > cap) { lev = cap; s.setField('leverage', String(cap)); }
       if (lev > 0) {
-        try { await updatePerpsLeverage(s.symbol, lev, 2); }
-        catch (err: unknown) { addLog({ message: `Leverage update skipped: ${getErrorMessage(err)}` }); }
+        try { await updatePerpsLeverage(s.symbol, lev, 2); } catch {}
       }
     }
-
-    addLog({ message: `Live mid: ${currentPrice.toFixed(2)} — building ${s.spacing.toLowerCase()} grid` });
 
     const priceLevels = buildGridLevels(lower, upper, count, s.spacing);
     const levels: GridLevel[] = priceLevels.map((price) => ({ price, status: 'EMPTY' as const }));
@@ -470,23 +350,13 @@ export const GridBot: React.FC = () => {
 
     s.setField('activeOrders', activeCount);
     s.setField('totalInvestment', totalInvested);
-    addLog({ message: `Placed ${activeCount} initial orders across ${count} grid levels` });
-
     pollRef.current = setInterval(pollOrders, POLL_INTERVAL);
   }, [addLog, fetchLastPrice, placeGridOrder, pollOrders, perpsMeta]);
 
-  /**
-   * Watch for the trigger price to be crossed in the configured direction.
-   * Lightweight loop — same 10-s cadence as the main poll, no extra
-   * outbound traffic because `fetchLastPrice` shares the cached ticker.
-   */
   const startArmWatcher = useCallback(() => {
     armedRef.current = true;
     const { gridBot: s } = useBotStore.getState();
     s.setField('status', 'ARMED');
-    addLog({
-      message: `Armed — waiting for price to ${s.triggerDirection === 'CROSS_UP' ? 'rise above' : 'fall below'} ${s.triggerPrice}`,
-    });
 
     const tick = async () => {
       if (!armedRef.current) return;
@@ -497,8 +367,6 @@ export const GridBot: React.FC = () => {
       if (mid === null) return;
       const prev = prevPriceForCrossRef.current;
       prevPriceForCrossRef.current = mid;
-      // Need a previous sample to detect a crossing — first poll just
-      // seeds the state.
       if (prev === null) return;
       const crossedUp   = prev <  trigger && mid >= trigger;
       const crossedDown = prev >  trigger && mid <= trigger;
@@ -506,7 +374,6 @@ export const GridBot: React.FC = () => {
       if (fired) {
         if (armWatcherRef.current) clearInterval(armWatcherRef.current);
         armWatcherRef.current = null;
-        addLog({ message: `Trigger fired (${prev.toFixed(2)} → ${mid.toFixed(2)}). Launching grid…` });
         await launchGrid();
       }
     };
@@ -522,17 +389,13 @@ export const GridBot: React.FC = () => {
     const count = parseInt(s.gridCount);
     const amount = parseFloat(s.amountPerGrid);
 
-    if (
-      isNaN(lower) || isNaN(upper) || isNaN(count) || isNaN(amount) ||
-      lower >= upper || count < 2 || amount <= 0
-    ) {
+    if (isNaN(lower) || isNaN(upper) || isNaN(count) || isNaN(amount) || lower >= upper || count < 2 || amount <= 0) {
       toast.error('Invalid grid parameters');
       return;
     }
 
     s.resetStats();
     setLogs([]);
-    addLog({ message: 'Grid Bot starting…' });
     prevPriceForCrossRef.current = null;
     consecutiveErrorsRef.current = 0;
     pollBusyRef.current = false;
@@ -545,37 +408,20 @@ export const GridBot: React.FC = () => {
     }
   }, [addLog, launchGrid, startArmWatcher]);
 
-  const startBot = useCallback(() => {
-    if (confirmOrders) setShowConfirm(true);
-    else void doStart();
-  }, [confirmOrders, doStart]);
-
   const stopBot = useCallback(async (reason?: string) => {
     runningRef.current = false;
     armedRef.current = false;
     if (pollRef.current)       { clearInterval(pollRef.current); pollRef.current = null; }
     if (armWatcherRef.current) { clearInterval(armWatcherRef.current); armWatcherRef.current = null; }
-    // Reset failure streak on every stop so a subsequent Start does not
-    // inherit leftover error counts from a previous fatal session.
     consecutiveErrorsRef.current = 0;
 
     const { gridBot: s } = useBotStore.getState();
     const market: 'spot' | 'perps' = s.isSpot ? 'spot' : 'perps';
 
-    addLog({ message: reason ? `Stopping bot — ${reason}` : 'Cancelling all grid orders…' });
-
     try {
       await cancelAllOrders(s.symbol, market);
-      addLog({ message: 'All orders cancelled successfully' });
-    } catch (err: unknown) {
-      const msg = getErrorMessage(err);
-      addLog({ message: `ERROR cancelling orders: ${msg}` });
-      toast.error(`Grid Bot: ${msg}`);
-    }
+    } catch {}
 
-    // If we were stopped because of a failure streak, preserve the ERROR
-    // status so the badge stays red and the user sees intervention is
-    // required. Otherwise drop to STOPPED like a normal end-of-session.
     const isErrorStop = typeof reason === 'string' && reason.startsWith('ERROR');
     s.setField('status', isErrorStop ? 'ERROR' : 'STOPPED');
     s.setField('activeOrders', 0);
@@ -584,10 +430,8 @@ export const GridBot: React.FC = () => {
       ...l, status: 'EMPTY' as const, orderId: undefined, side: undefined,
     }));
     setGridLevels([...gridLevelsRef.current]);
-    addLog({ message: isErrorStop ? 'Grid Bot halted (ERROR)' : 'Grid Bot stopped' });
   }, [addLog]);
 
-  // Wire the ref so pollOrders / armWatcher can call the latest stopBot.
   useEffect(() => { stopBotRef.current = stopBot; }, [stopBot]);
 
   useEffect(() => () => {
@@ -601,17 +445,9 @@ export const GridBot: React.FC = () => {
   const isArmed = state.status === 'ARMED';
   const isLocked = isRunning || isArmed;
 
-  // ── AI Auto-Configure ─────────────────────────────────────────────
-  // Pulls a 24h kline + L1 book snapshot, classifies volatility, and
-  // applies bot-appropriate range / grid count / spacing / mode. The
-  // toast carries the plain-English rationale so the user *learns*
-  // the rule of thumb instead of just trusting a black box.
   const [autoConfigBusy, setAutoConfigBusy] = useState(false);
   const handleAutoConfigure = useCallback(async () => {
-    if (isLocked) {
-      toast.error('Stop the bot before auto-configuring');
-      return;
-    }
+    if (isLocked) { toast.error('Stop the bot before auto-configuring'); return; }
     setAutoConfigBusy(true);
     try {
       const market: 'spot' | 'perps' = state.isSpot ? 'spot' : 'perps';
@@ -631,26 +467,11 @@ export const GridBot: React.FC = () => {
     }
   }, [isLocked, state]);
 
-  // ── Live computed previews — drive the right-hand "Estimated metrics"
-  //    panel without re-running on every keystroke (memoised on inputs). ──
   const lower = parseFloat(state.lowerPrice) || 0;
   const upper = parseFloat(state.upperPrice) || 0;
   const count = parseInt(state.gridCount) || 0;
   const amount = parseFloat(state.amountPerGrid) || 0;
-  const profitPct = useMemo(
-    () => profitPerGridPct(lower, upper, count, state.spacing),
-    [lower, upper, count, state.spacing],
-  );
-  const previewLevels = useMemo(
-    () => buildGridLevels(lower, upper, count, state.spacing),
-    [lower, upper, count, state.spacing],
-  );
-  const buyLevelCount = state.mode === 'SHORT'
-    ? 0
-    : Math.max(1, Math.floor(count / 2));
-  const investmentEstimate = lower > 0 && upper > 0 && amount > 0
-    ? buyLevelCount * amount * ((lower + upper) / 2)
-    : 0;
+  const profitPct = useMemo(() => profitPerGridPct(lower, upper, count, state.spacing), [lower, upper, count, state.spacing]);
   const profitClearsFee = profitPct >= ROUND_TRIP_FEE_PCT * 1.5;
   const rangePct = lower > 0 && upper > 0 ? ((upper - lower) / ((lower + upper) / 2)) * 100 : 0;
 
@@ -706,304 +527,16 @@ export const GridBot: React.FC = () => {
     if (tooNarrow) rows.push({ label: 'Heads-up', value: 'Range < 4%', tone: 'warning', hint: 'Narrow ranges break out frequently.' });
 
     const lev = parseInt(state.leverage) || 1;
-    // High when leverage exceeds half the live cap (e.g. > 12× when BTC's
-    // cap is 25). Falls back to "> 5×" when the cap hasn't loaded yet.
     const highLevThreshold = perpsMeta ? Math.max(2, Math.floor(perpsMeta.maxLeverage / 2)) : 5;
     const risk: 'Low' | 'Medium' | 'High' =
       (!state.isSpot && lev > highLevThreshold) || (state.mode !== 'NEUTRAL' && (tooWide || tooNarrow)) ? 'High'
       : (state.mode !== 'NEUTRAL' || tooWide || tooNarrow || lev > 1) ? 'Medium'
       : 'Low';
-    const totalRisk = investmentEstimate > 0
-      ? `~$${investmentEstimate.toLocaleString(undefined, { maximumFractionDigits: 0 })} max long exposure${lev > 1 ? ` × ${lev} leverage` : ''}`
-      : '— (configure parameters)';
+    const totalRisk = '— (configure parameters)';
     return { rows, totalRisk, risk };
   };
   const riskSummary = buildRiskRows();
 
-  return (
-    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
-      <RiskSummaryModal
-        isOpen={showConfirm}
-        title="Grid Bot Summary"
-        subtitle="Review the run before launch — these parameters cannot be changed while the bot is active."
-        rows={riskSummary.rows}
-        risk={riskSummary.risk}
-        totalRisk={riskSummary.totalRisk}
-        disclaimer="The bot will place limit orders at every grid level on start (or after the trigger fires) and re-balance them as fills occur. Stopping the bot cancels all open grid orders."
-        confirmLabel="Confirm & Start Bot"
-        onConfirm={() => { setShowConfirm(false); void doStart(); }}
-        onCancel={() => setShowConfirm(false)}
-      />
-
-      {/* ─────────────── Settings Panel ─────────────── */}
-      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col shrink-0 lg:h-full lg:overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Grid Bot</h2>
-          <StatusBadge status={state.status} />
-        </div>
-
-        <div className="flex-1 lg:overflow-y-auto px-4 sm:px-5 py-4 flex flex-col gap-5">
-          {/* ── AI Auto-Configure ── one-click smart defaults from
-               current market context. Hidden while the bot is running
-               since changing parameters mid-run would be unsafe. */}
-          {!isLocked && (
-            <button
-              type="button"
-              onClick={() => void handleAutoConfigure()}
-              disabled={autoConfigBusy}
-              className={cn(
-                'group relative flex items-center justify-between gap-3 px-4 py-3 rounded-xl',
-                'bg-gradient-to-r from-fuchsia-500/15 via-violet-500/12 to-cyan-500/15',
-                'border border-fuchsia-400/30 hover:border-fuchsia-400/50',
-                'shadow-[0_0_12px_rgba(217,70,239,0.15)] hover:shadow-[0_0_18px_rgba(217,70,239,0.3)]',
-                'transition-all duration-200',
-                autoConfigBusy && 'opacity-60 cursor-wait',
-              )}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-fuchsia-500/30 to-cyan-400/30 border border-fuchsia-400/40 flex items-center justify-center">
-                  <Sparkles size={13} className="text-fuchsia-200" />
-                </div>
-                <div className="text-left">
-                  <div className="text-[11px] font-bold uppercase tracking-wider bg-gradient-to-r from-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
-                    AI Auto-Configure
-                  </div>
-                  <div className="text-[10px] text-text-muted mt-0.5">
-                    Smart defaults from current market
-                  </div>
-                </div>
-              </div>
-              {autoConfigBusy ? (
-                <div className="w-3 h-3 border-2 border-fuchsia-400/60 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <span className="text-[10px] text-fuchsia-300 font-mono group-hover:translate-x-0.5 transition-transform">→</span>
-              )}
-            </button>
-          )}
-          {/* ── Market ── */}
-          <Section icon={<Layers size={12} />} label="Market">
-            <SymbolSelector
-              market={state.isSpot ? 'spot' : 'perps'}
-              value={state.symbol}
-              onChange={(val) => state.setField('symbol', val)}
-              disabled={isLocked}
-            />
-            <div>
-              <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Market type</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { if (!isLocked) state.setField('isSpot', true); }}
-                  className={cn(
-                    'flex-1 py-2 text-xs rounded-lg border transition-all',
-                    state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover',
-                    isLocked && 'opacity-50 pointer-events-none',
-                  )}
-                >Spot</button>
-                <button
-                  onClick={() => { if (!isLocked) state.setField('isSpot', false); }}
-                  className={cn(
-                    'flex-1 py-2 text-xs rounded-lg border transition-all',
-                    !state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover',
-                    isLocked && 'opacity-50 pointer-events-none',
-                  )}
-                >Perps</button>
-              </div>
-            </div>
-          </Section>
-
-          {/* ── Range & spacing ── */}
-          <Section icon={<Grid2X2 size={12} />} label="Range & spacing">
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Lower price"
-                type="number"
-                value={state.lowerPrice}
-                onChange={(e) => state.setField('lowerPrice', e.target.value)}
-                disabled={isLocked}
-              />
-              <Input
-                label="Upper price"
-                type="number"
-                value={state.upperPrice}
-                onChange={(e) => state.setField('upperPrice', e.target.value)}
-                disabled={isLocked}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Grid count"
-                type="number"
-                value={state.gridCount}
-                onChange={(e) => state.setField('gridCount', e.target.value)}
-                disabled={isLocked}
-                hint="2 – 200 levels"
-              />
-              <Input
-                label="Amount/grid"
-                type="number"
-                value={state.amountPerGrid}
-                onChange={(e) => state.setField('amountPerGrid', e.target.value)}
-                disabled={isLocked}
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Spacing</label>
-              <div className="flex gap-2">
-                {(['ARITHMETIC','GEOMETRIC'] as const).map((sp) => (
-                  <button
-                    key={sp}
-                    onClick={() => { if (!isLocked) state.setField('spacing', sp); }}
-                    className={cn(
-                      'flex-1 py-2 text-[11px] rounded-lg border transition-all flex flex-col items-center gap-0.5',
-                      state.spacing === sp ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover',
-                      isLocked && 'opacity-50 pointer-events-none',
-                    )}
-                  >
-                    <span className="font-semibold uppercase tracking-wider">{sp === 'ARITHMETIC' ? 'Arithmetic' : 'Geometric'}</span>
-                    <span className="text-[9px] text-text-muted">{sp === 'ARITHMETIC' ? 'constant Δ' : 'constant %'}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <Select
-              label="Direction (mode)"
-              value={state.mode}
-              onChange={(e) => state.setField('mode', e.target.value as 'NEUTRAL' | 'LONG' | 'SHORT')}
-              disabled={isLocked}
-              options={[
-                { value: 'NEUTRAL', label: 'Neutral — buys & sells around price' },
-                { value: 'LONG', label: 'Long — buys only' },
-                { value: 'SHORT', label: 'Short — sells only' },
-              ]}
-            />
-          </Section>
-
-          {/* ── Advanced (leverage + trigger) ── */}
-          <Collapsible
-            open={advancedOpen}
-            onToggle={() => setAdvancedOpen((p) => !p)}
-            icon={<Zap size={12} />}
-            label="Advanced settings"
-            badge={
-              (parseInt(state.leverage) > 1 || (state.triggerPrice && parseFloat(state.triggerPrice) > 0))
-                ? `${parseInt(state.leverage) > 1 ? `${state.leverage}× lev` : ''}${state.triggerPrice ? `${parseInt(state.leverage) > 1 ? ' · ' : ''}trigger` : ''}`
-                : undefined
-            }
-          >
-            {!state.isSpot && (
-              <Input
-                label="Leverage"
-                type="number"
-                value={state.leverage}
-                onChange={(e) => state.setField('leverage', e.target.value)}
-                onBlur={(e) => {
-                  // Hard-clamp on blur so we never push a leverage SoDEX
-                  // would reject, even if the user typed past the cap.
-                  const v = parseInt(e.target.value);
-                  if (!Number.isFinite(v) || v < 1) state.setField('leverage', '1');
-                  else if (v > leverageCap) state.setField('leverage', String(leverageCap));
-                }}
-                disabled={isLocked}
-                hint={
-                  perpsMeta
-                    ? `1 – ${leverageCap}× (live cap from SoDEX)`
-                    : perpsMetaErr ?? `1 – ${leverageCap}× (resolving cap…)`
-                }
-              />
-            )}
-            <Input
-              label="Trigger price (optional)"
-              type="number"
-              value={state.triggerPrice}
-              onChange={(e) => state.setField('triggerPrice', e.target.value)}
-              disabled={isLocked}
-              hint="Bot waits until price crosses this level"
-            />
-            {state.triggerPrice && parseFloat(state.triggerPrice) > 0 && (
-              <Select
-                label="Trigger direction"
-                value={state.triggerDirection}
-                onChange={(e) => state.setField('triggerDirection', e.target.value as 'CROSS_UP' | 'CROSS_DOWN')}
-                disabled={isLocked}
-                options={[
-                  { value: 'CROSS_UP', label: 'Activate on rise above trigger' },
-                  { value: 'CROSS_DOWN', label: 'Activate on drop below trigger' },
-                ]}
-              />
-            )}
-          </Collapsible>
-
-          {/* ── Stop conditions ── */}
-          <Collapsible
-            open={stopConditionsOpen}
-            onToggle={() => setStopConditionsOpen((p) => !p)}
-            icon={<ShieldAlert size={12} />}
-            label="Stop conditions"
-            badge={
-              [
-                state.stopLossPrice && parseFloat(state.stopLossPrice) > 0 && 'SL',
-                state.takeProfitPrice && parseFloat(state.takeProfitPrice) > 0 && 'TP',
-                state.trailingProfitUsd && parseFloat(state.trailingProfitUsd) > 0 && '$ tgt',
-              ].filter(Boolean).join(' · ') || undefined
-            }
-          >
-            <Input
-              label="Stop-loss price"
-              type="number"
-              value={state.stopLossPrice}
-              onChange={(e) => state.setField('stopLossPrice', e.target.value)}
-              disabled={isLocked}
-              hint="Cancels & exits if price falls here"
-            />
-            <Input
-              label="Take-profit price"
-              type="number"
-              value={state.takeProfitPrice}
-              onChange={(e) => state.setField('takeProfitPrice', e.target.value)}
-              disabled={isLocked}
-              hint="Cancels & exits if price rises here"
-            />
-            <Input
-              label="Profit target ($)"
-              type="number"
-              value={state.trailingProfitUsd}
-              onChange={(e) => state.setField('trailingProfitUsd', e.target.value)}
-              disabled={isLocked}
-              hint="Stops once realised PnL reaches this"
-            />
-          </Collapsible>
-
-          {/* ── Live preview card ── */}
-          <div className="rounded-xl border border-border bg-background/40 p-3 flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-              <Target size={10} /> Live preview
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <PreviewRow label="Profit/grid"   value={`${profitPct.toFixed(3)}%`} tone={profitClearsFee ? 'good' : 'warn'} />
-              <PreviewRow label="Range"         value={`${rangePct.toFixed(1)}%`} tone={rangePct === 0 ? 'mute' : (rangePct > 30 || rangePct < 4) ? 'warn' : 'good'} />
-              <PreviewRow label="Levels"        value={`${count}`} tone="mute" />
-              <PreviewRow label="Est. capital"  value={investmentEstimate > 0 ? `$${Math.round(investmentEstimate).toLocaleString()}` : '—'} tone="mute" />
-              <PreviewRow label="Last price"    value={lastPrice ? lastPrice.toFixed(2) : '—'} tone="mute" />
-              <PreviewRow label="Spacing"       value={state.spacing === 'GEOMETRIC' ? 'Geo' : 'Arith'} tone="mute" />
-            </div>
-            {!profitClearsFee && profitPct > 0 && (
-              <div className="flex items-start gap-1.5 mt-1 text-[10px] text-amber-300">
-                <AlertTriangle size={10} className="shrink-0 mt-0.5" />
-                <span>Profit/grid is below 1.5× the round-trip fee — fills may be unprofitable. Widen the range or reduce grid count.</span>
-              </div>
-            )}
-            {previewLevels.length > 0 && previewLevels.length <= 30 && (
-              <div className="flex flex-wrap gap-0.5 mt-1">
-                {previewLevels.map((p, i) => (
-                  <span
-                    key={i}
-                    className="text-[9px] tabular-nums px-1 py-0.5 rounded bg-white/5 text-text-muted"
-                    title={`Level ${i + 1}: ${p.toFixed(2)}`}
-                  >{p.toFixed(0)}</span>
-                ))}
-              </div>
-            )}
-  // We will build the UI components to pass to BotLayout
   const configPanel = (
     <>
       <div>
@@ -1016,16 +549,14 @@ export const GridBot: React.FC = () => {
         <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
       </div>
       
-      <Input label="Investment (USDT)" value={state.investmentUsdt} onChange={(v) => state.setField('investmentUsdt', v)} type="number" placeholder="1000" />
+      <Input label="Investment (USDT)" value={state.amountUsdt} onChange={(e) => state.setField('amountUsdt', e.target.value)} type="number" placeholder="1000" />
       
-      <Collapsible open={advancedOpen} onToggle={() => setAdvancedOpen(!advancedOpen)} icon={<Grid2X2 size={14} />} label="Grid Parameters" badge={state.gridCount + " Grids"}>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Lower Price" value={state.lowerPrice} onChange={(v) => state.setField('lowerPrice', v)} type="number" />
-          <Input label="Upper Price" value={state.upperPrice} onChange={(v) => state.setField('upperPrice', v)} type="number" />
+          <Input label="Lower Price" value={state.lowerPrice} onChange={(e) => state.setField('lowerPrice', e.target.value)} type="number" />
+          <Input label="Upper Price" value={state.upperPrice} onChange={(e) => state.setField('upperPrice', e.target.value)} type="number" />
         </div>
-        <Input label="Grid Count" value={state.gridCount} onChange={(v) => state.setField('gridCount', v)} type="number" />
-        <Input label="Amount per Grid" value={state.amountPerGrid} onChange={(v) => state.setField('amountPerGrid', v)} type="number" />
-      </Collapsible>
+        <Input label="Grid Count" value={state.gridCount} onChange={(e) => state.setField('gridCount', e.target.value)} type="number" />
+        <Input label="Amount per Grid" value={state.amountPerGrid} onChange={(e) => state.setField('amountPerGrid', e.target.value)} type="number" />
     </>
   );
 
@@ -1058,67 +589,30 @@ export const GridBot: React.FC = () => {
         title="Grid Bot"
         icon={Grid2X2}
         status={state.status}
-        symbol={symbol}
+        symbol={state.symbol}
         market={state.isSpot ? 'spot' : 'perps'}
         configPanel={configPanel}
         statsPanel={statsPanel}
         logsPanel={logsPanel}
         isLocked={isLocked}
         onStart={() => setShowConfirm(true)}
-        onStop={handleStop}
-        onAutoConfig={handleAiAutoConfig}
+        onStop={() => void stopBot()}
+        onAutoConfig={() => void handleAutoConfigure()}
         autoConfigBusy={autoConfigBusy}
       />
       <RiskSummaryModal
         isOpen={showConfirm}
         title="Confirm Grid Strategy"
+        subtitle="Review the run before launch — these parameters cannot be changed while the bot is active."
         botName="Grid Bot"
-        rows={confirmRows}
+        rows={riskSummary.rows}
+        risk={riskSummary.risk}
+        totalRisk={riskSummary.totalRisk}
         onCancel={() => setShowConfirm(false)}
-        onConfirm={handleConfirmStart}
+        onConfirm={() => { setShowConfirm(false); void doStart(); }}
         disclaimer="Grid bots place multiple limit orders. In highly trending markets, you may experience impermanent loss."
+        confirmLabel="Confirm & Start Bot"
       />
     </>
   );
 };
-
-// ──────────────────────────────────────────────────────────────────────
-// Local presentational helpers
-// ──────────────────────────────────────────────────────────────────────
-
-interface CollapsibleProps {
-  open: boolean;
-  onToggle: () => void;
-  icon: React.ReactNode;
-  label: string;
-  badge?: string;
-  children: React.ReactNode;
-}
-const Collapsible: React.FC<CollapsibleProps> = ({ open, onToggle, icon, label, badge, children }) => (
-  <div className="rounded-xl border border-border bg-background/30 overflow-hidden">
-    <button
-      type="button"
-      onClick={onToggle}
-      className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors bg-surface-2"
-    >
-      <span className="flex items-center gap-2">{icon}{label}</span>
-      <span className="flex items-center gap-2">
-        {badge && <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">{badge}</span>}
-        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </span>
-    </button>
-    {open && <div className="p-4 flex flex-col gap-4 border-t border-border/50">{children}</div>}
-  </div>
-);
-
-const PreviewRow: React.FC<{ label: string; value: string; tone: 'good' | 'warn' | 'mute' }> = ({ label, value, tone }) => (
-  <div className="flex items-center justify-between gap-2">
-    <span className="text-text-muted">{label}</span>
-    <span className={cn(
-      'font-mono font-semibold',
-      tone === 'good' ? 'text-emerald-400' : tone === 'warn' ? 'text-amber-300' : 'text-text-primary',
-    )}>
-      {value}
-    </span>
-  </div>
-);

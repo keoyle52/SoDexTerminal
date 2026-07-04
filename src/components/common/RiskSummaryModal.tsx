@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, AlertTriangle, Play, Zap, TrendingUp, X } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, Play, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 export interface RiskSummaryRow {
@@ -55,9 +55,6 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
   onCancel,
   botName,
 }) => {
-  const [flash, setFlash] = useState(true);
-  const [feeDrag, setFeeDrag] = useState(true);
-  const [drawdown, setDrawdown] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
 
   if (!isOpen) return null;
@@ -123,46 +120,6 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
               <span className="text-lg font-black font-mono text-primary">{totalRisk}</span>
             </div>
           )}
-
-          {/* Pre-Flight Safeties */}
-          <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border group hover:border-emerald-500/50 transition-colors cursor-pointer" onClick={() => setFlash(!flash)}>
-            <div className="flex items-center gap-3">
-              <ShieldCheck className={cn("transition-colors", flash ? "text-emerald-400" : "text-text-muted")} />
-              <div>
-                <div className="text-sm font-bold text-text-primary">Flash Crash Protection <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full uppercase tracking-widest">Recommended</span></div>
-                <div className="text-xs text-text-secondary">Auto-halt if market drops &gt;3% instantly.</div>
-              </div>
-            </div>
-            <div className={cn("w-10 h-5 rounded-full transition-colors relative", flash ? "bg-emerald-500" : "bg-border")}>
-              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", flash ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border group hover:border-emerald-500/50 transition-colors cursor-pointer" onClick={() => setFeeDrag(!feeDrag)}>
-            <div className="flex items-center gap-3">
-              <Zap className={cn("transition-colors", feeDrag ? "text-emerald-400" : "text-text-muted")} />
-              <div>
-                <div className="text-sm font-bold text-text-primary">Fee Drag Prevention <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full uppercase tracking-widest">Recommended</span></div>
-                <div className="text-xs text-text-secondary">Skip trades where fees exceed expected profit.</div>
-              </div>
-            </div>
-            <div className={cn("w-10 h-5 rounded-full transition-colors relative", feeDrag ? "bg-emerald-500" : "bg-border")}>
-              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", feeDrag ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border group hover:border-primary/50 transition-colors cursor-pointer" onClick={() => setDrawdown(!drawdown)}>
-            <div className="flex items-center gap-3">
-              <TrendingUp className={cn("transition-colors", drawdown ? "text-primary" : "text-text-muted")} />
-              <div>
-                <div className="text-sm font-bold text-text-primary">Max Drawdown Limit (5%)</div>
-                <div className="text-xs text-text-secondary">Liquidate position if PnL hits -5%.</div>
-              </div>
-            </div>
-            <div className={cn("w-10 h-5 rounded-full transition-colors relative", drawdown ? "bg-primary" : "bg-border")}>
-              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", drawdown ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </div>
           
           {rows.length > 0 && (
             <label className="flex items-start gap-2 cursor-pointer text-xs text-text-secondary mt-4">

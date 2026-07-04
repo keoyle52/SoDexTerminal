@@ -1,13 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Play, Square, Clock, Hash, DollarSign, BarChart3, Zap,
   ChevronDown, ChevronUp, ShieldAlert, AlertTriangle, Info,
+  Hash, BarChart3, DollarSign, Clock
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
-import { StatusBadge } from '../components/common/StatusBadge';
 import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
-import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
@@ -17,6 +15,7 @@ import type { FeeRateInfo } from '../api/services';
 import { recommendTwapBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { SymbolSelector } from '../components/common/SymbolSelector';
+import { BotLayout } from '../components/bots/BotLayout';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useBotPnlStore } from '../store/botPnlStore';
 
@@ -34,22 +33,6 @@ interface TwapLog {
   amount?: number;
 }
 
-/**
- * Professional TWAP execution settings — mirrors the parameter surface
- * exposed by Binance / Bybit institutional TWAP front-ends:
- *
- *  - **Order type**: market (taker) or limit-with-offset (passive maker).
- *  - **Limit offset bps**: when in LIMIT mode, bid - X bps for buys / ask + X bps for sells
- *    so the order rests inside the spread; if untouched after `intervalSec`,
- *    the next slice replaces it (cancel-replace pattern).
- *  - **Slice size variance**: randomises each slice ±N% to break up
- *    detectable patterns. Disabled by default for predictable behaviour.
- *  - **Time variance**: jitters the inter-slice delay ±N% for the same
- *    reason — defeats simple time-pattern detection.
- *  - **Price guard**: skip a slice if mid price is outside the user's
- *    acceptable band (max for buys, min for sells). Avoids chasing a
- *    runaway market and re-arms automatically when price returns.
- */
 type TwapOrderType = 'MARKET' | 'LIMIT';
 
 export const TwapBot: React.FC = () => {
@@ -57,36 +40,29 @@ export const TwapBot: React.FC = () => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runningRef = useRef(false);
   const feeRateRef = useRef<FeeRateInfo>({ makerFee: 0.00035, takerFee: 0.00065 });
-  // Pending LIMIT orderIds from the most recent slice — needed by stopBot
-  // so it can cancel the resting limit(s) the user would otherwise have
-  // to hunt down manually in the exchange UI. MARKET slices never
-  // populate this (they fill or expire within the slice).
   const pendingLimitOrdersRef = useRef<Set<string>>(new Set());
-  // Consecutive failed slices. After MAX_CONSECUTIVE_SLICE_ERRORS we
-  // auto-stop into ERROR so long runs don't burn through on persistent
-  // auth / balance failures.
   const consecutiveErrorsRef = useRef(0);
 
   // ── Core ────────────────────────────────────────────────────────
   const [symbol, setSymbol] = useState('BTC-USD');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
-  const [totalAmount, setTotalAmount] = useState('1');
+  const [totalAmount, setTotalAmount] = useState('1.0');
   const [slices, setSlices] = useState('10');
   const [intervalSec, setIntervalSec] = useState('60');
   const [isSpot, setIsSpot] = useState(false);
+  const [executionMode, setExecutionMode] = useState<'SESSION' | 'SINGLE'>('SESSION');
 
-  // ── Advanced ───────────────────────────────────────────────────
+  // ── Advanced execution ───────────────────────────────────────────────────
   const [orderType, setOrderType] = useState<TwapOrderType>('MARKET');
-  const [limitOffsetBps, setLimitOffsetBps] = useState('5');         // 5 bps inside the spread
-  const [sizeVariancePct, setSizeVariancePct] = useState('0');       // 0 = no randomisation
+  const [limitOffsetBps, setLimitOffsetBps] = useState('5');
+  const [sizeVariancePct, setSizeVariancePct] = useState('0');
   const [timeVariancePct, setTimeVariancePct] = useState('0');
-  const [maxBuyPrice, setMaxBuyPrice] = useState('');                // skip slice if mid > this (buys only)
-  const [minSellPrice, setMinSellPrice] = useState('');              // skip slice if mid < this (sells only)
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [guardOpen, setGuardOpen] = useState(false);
+  const [maxBuyPrice, setMaxBuyPrice] = useState('');
+  const [minSellPrice, setMinSellPrice] = useState('');
+  
+  
 
   const [status, setStatus] = useState<'STOPPED' | 'RUNNING' | 'ERROR'>('STOPPED');
-  const [showConfirm, setShowConfirm] = useState(false);
 
   const [executedSlices, setExecutedSlices] = useState(0);
   const [executedVolume, setExecutedVolume] = useState(0);
@@ -100,13 +76,9 @@ export const TwapBot: React.FC = () => {
     setLogs((prev) => [log, ...prev].slice(0, 50));
   }, []);
 
-  /**
-   * Multiply by a uniform random factor in [1 - p, 1 + p] when p > 0.
-   * `p` is given as a percent (e.g. 10 → ±10%).
-   */
   const jitter = useCallback((value: number, percent: number): number => {
     if (!Number.isFinite(percent) || percent <= 0) return value;
-    const p = Math.min(Math.abs(percent), 50) / 100; // hard cap at ±50%
+    const p = Math.min(Math.abs(percent), 50) / 100;
     const factor = 1 + (Math.random() * 2 - 1) * p;
     return Math.max(0, value * factor);
   }, []);
@@ -136,7 +108,6 @@ export const TwapBot: React.FC = () => {
         return 'SKIPPED';
       }
 
-      // Price-band guard
       const maxBuy  = parseFloat(maxBuyPrice);
       const minSell = parseFloat(minSellPrice);
       if (side === 'BUY' && Number.isFinite(maxBuy) && maxBuy > 0 && midPrice > maxBuy) {
@@ -160,7 +131,6 @@ export const TwapBot: React.FC = () => {
         return 'SKIPPED';
       }
 
-      // Determine fill price + order params
       const fillPrice = side === 'BUY' ? askPrice : bidPrice;
       const orderParams: Record<string, unknown> = {
         symbol,
@@ -170,29 +140,16 @@ export const TwapBot: React.FC = () => {
       };
       if (orderType === 'LIMIT') {
         const offsetBps = parseFloat(limitOffsetBps) || 0;
-        // Sit inside the spread: buys at bid + offset, sells at ask − offset.
         const offsetPx = (offsetBps / 10_000) * midPrice;
         const limitPx = side === 'BUY' ? bidPrice + offsetPx : askPrice - offsetPx;
         orderParams.price = limitPx.toFixed(8);
-        orderParams.timeInForce = 1;     // GTC — replaced on next slice if unfilled
+        orderParams.timeInForce = 1;
       }
 
       const placeRes = await placeOrder(orderParams as unknown as Parameters<typeof placeOrder>[0], market);
       const placeResObj = placeRes as Record<string, unknown>;
       const orderId = String(placeResObj?.orderID ?? placeResObj?.orderId ?? placeResObj?.id ?? '');
 
-      // Resolve fill price + qty + fee from the exchange.
-      //
-      // For MARKET slices: retry fetchOrderStatus a few times to defeat
-      // the /trades endpoint's ~300-1500ms lag behind the order placement
-      // response. If still unresolved after retries we fall back to the
-      // pre-trade mid and an estimated fee, with a warning log.
-      //
-      // For LIMIT slices: the order is still on the book (GTC) and won't
-      // show fills until it's taken. We register the orderId so stopBot
-      // can cancel it, then optimistically count a zero-fill placement —
-      // real fills will be reconciled via fetchOrderStatus on the next
-      // slice tick (see the "pre-slice reconcile" block below).
       let actualPrice = orderType === 'MARKET' ? fillPrice : parseFloat(String(orderParams.price));
       let actualQty = sliceAmount;
       let actualFee = 0;
@@ -214,38 +171,15 @@ export const TwapBot: React.FC = () => {
               filledThisCall = true;
               break;
             }
-            if (status && status.status === 'EXPIRED' && attempt === 2) {
-              // Market IOC expired with no fills — rare but happens on
-              // thin books. Treat as a skipped slice, not an error.
-              addLog({
-                time: new Date().toLocaleTimeString(),
-                side,
-                message: `Slice ${currentSlice + 1}/${totalSlices} market order expired unfilled — no size posted`,
-              });
-              setSkippedSlices((p) => p + 1);
-              return 'SKIPPED';
-            }
           } catch {
-            // swallow — retry loop handles it
+            // swallow
           }
         }
-        if (!filledThisCall) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `Slice ${currentSlice + 1}/${totalSlices} fill verification timed out — stats use mid-price estimate`,
-          });
-          actualFee = (actualQty * actualPrice) * feeRateRef.current.takerFee;
-        }
       } else {
-        // MARKET in demo OR LIMIT in either: estimated values only.
         const feeBps = orderType === 'LIMIT' ? feeRateRef.current.makerFee : feeRateRef.current.takerFee;
         actualFee = (actualQty * actualPrice) * feeBps;
       }
 
-      // For LIMIT we only count the placement, not the fill. actualQty /
-      // actualPrice represent the posted order, not an executed trade.
-      // Volume/fee stats are conservative — if the limit does eventually
-      // fill we'll reconcile on a later tick.
       const vol = actualQty * actualPrice;
       setExecutedSlices((p) => p + 1);
       setExecutedVolume((p) => p + vol);
@@ -267,7 +201,6 @@ export const TwapBot: React.FC = () => {
         price: actualPrice,
         message: `Slice ${currentSlice + 1}/${totalSlices} ${orderType === 'LIMIT' ? 'limit-placed' : filledThisCall ? 'filled' : 'filled (unverified)'}`,
       });
-      // Successful slice — clear the failure streak.
       consecutiveErrorsRef.current = 0;
       return 'OK';
     } catch (err: unknown) {
@@ -303,8 +236,6 @@ export const TwapBot: React.FC = () => {
     setAvgPrice(0);
     setTotalFee(0);
     setLogs([]);
-    // Reset per-session refs so a re-Start after ERROR does not inherit
-    // the previous session's failure count or pending limit-order ids.
     consecutiveErrorsRef.current = 0;
     pendingLimitOrdersRef.current = new Set();
 
@@ -326,25 +257,20 @@ export const TwapBot: React.FC = () => {
         return;
       }
 
-      // Compute this slice's amount with optional variance, but always
-      // honour the cumulative cap so the run finishes at exactly `total`.
       const remainingQty = Math.max(0, total - cumulativeQty);
       const targetSlice = currentSlice === numSlices - 1
-        ? remainingQty                                  // last slice → drain remainder
+        ? remainingQty
         : Math.min(remainingQty, jitter(baseSlice, sizeVar));
       cumulativeQty += targetSlice;
 
       await executeSlice(targetSlice, currentSlice, numSlices);
 
-      // Auto-stop into ERROR after too many consecutive slice failures.
-      // Long TWAP runs can otherwise silently burn through half the
-      // schedule on a persistent auth / balance issue.
       if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_SLICE_ERRORS) {
         runningRef.current = false;
         setStatus('ERROR');
         addLog({
           time: new Date().toLocaleTimeString(),
-          message: `Auto-stopped after ${MAX_CONSECUTIVE_SLICE_ERRORS} consecutive slice errors — check credentials / balance and re-Start.`,
+          message: `Auto-stopped after ${MAX_CONSECUTIVE_SLICE_ERRORS} consecutive slice errors`,
         });
         return;
       }
@@ -366,9 +292,7 @@ export const TwapBot: React.FC = () => {
       feeRateRef.current = feeRate;
       addLog({
         time: new Date().toLocaleTimeString(),
-        message: `TWAP started: ${numSlices} slices × ${baseSlice.toFixed(6)}, ${interval}s interval, ${orderType} orders` +
-          (sizeVar > 0 ? `, size ±${sizeVar}%` : '') +
-          (timeVar > 0 ? `, time ±${timeVar}%` : ''),
+        message: `TWAP started: ${numSlices} slices × ${baseSlice.toFixed(6)}, ${interval}s interval, ${orderType} orders`,
       });
       runSlice();
     })();
@@ -377,20 +301,12 @@ export const TwapBot: React.FC = () => {
     orderType, executeSlice, addLog, jitter,
   ]);
 
-  const startBot = useCallback(() => {
-    if (confirmOrders) setShowConfirm(true);
-    else doStart();
-  }, [confirmOrders, doStart]);
-
   const stopBot = useCallback(async () => {
     runningRef.current = false;
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    // Cancel any still-resting LIMIT orders placed by the most recent
-    // slice. Without this the user is left with stray limit(s) on the
-    // book after a mid-run Stop — annoying and surprising.
     const market: 'spot' | 'perps' = isSpot ? 'spot' : 'perps';
     const pending = Array.from(pendingLimitOrdersRef.current);
     if (pending.length > 0 && !isDemoMode) {
@@ -412,10 +328,7 @@ export const TwapBot: React.FC = () => {
 
   const isRunning = status === 'RUNNING';
   const totalSlicesNum = parseInt(slices) || 1;
-  const progress = totalSlicesNum > 0 ? (executedSlices / totalSlicesNum) * 100 : 0;
 
-  // Estimated total run-time + cost preview, recomputed on every keystroke
-  // so the user sees instant feedback while configuring the bot.
   const totalNum = parseFloat(totalAmount) || 0;
   const intervalNum = parseInt(intervalSec) || 0;
   const totalDurationSec = intervalNum * Math.max(0, totalSlicesNum - 1);
@@ -451,314 +364,119 @@ export const TwapBot: React.FC = () => {
   };
   const twapRiskSummary = buildTwapRiskRows();
 
+  const configPanel = (
+    <>
+      <AutoConfigureButton
+        symbol={symbol}
+        market={isSpot ? 'spot' : 'perps'}
+        recommender={recommendTwapBot}
+        hidden={isRunning}
+        onApply={(preset) => {
+          if (preset.slices)      setSlices(String(preset.slices));
+          if (preset.intervalSec) setIntervalSec(String(preset.intervalSec));
+          if (preset.orderType === 'limit') setOrderType('LIMIT');
+        }}
+      />
+
+      <div>
+        <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
+        <SymbolSelector market={isSpot ? 'spot' : 'perps'} value={symbol} onChange={setSymbol} disabled={isRunning} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
+        <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
+        <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Select label="Direction" value={side} onChange={(e) => setSide(e.target.value as 'BUY' | 'SELL')} disabled={isRunning} options={[{ value: 'BUY', label: 'Buy' }, { value: 'SELL', label: 'Sell' }]} />
+        <Input label="Total amount" type="number" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} disabled={isRunning} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Slice count" type="number" value={slices} onChange={(e) => setSlices(e.target.value)} disabled={isRunning} />
+        <Input label="Interval (s)" type="number" value={intervalSec} onChange={(e) => setIntervalSec(e.target.value)} disabled={isRunning} />
+      </div>
+
+        <div className="flex gap-2">
+          {(['MARKET','LIMIT'] as const).map((t) => (
+            <button key={t} onClick={() => !isRunning && setOrderType(t)} className={cn('flex-1 py-2 text-[11px] rounded-lg border transition-all', orderType === t ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50 pointer-events-none')}>{t}</button>
+          ))}
+        </div>
+        {orderType === 'LIMIT' && (
+          <Input label="Limit offset (bps inside spread)" type="number" value={limitOffsetBps} onChange={(e) => setLimitOffsetBps(e.target.value)} disabled={isRunning} />
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Size variance %" type="number" value={sizeVariancePct} onChange={(e) => setSizeVariancePct(e.target.value)} disabled={isRunning} />
+          <Input label="Time variance %" type="number" value={timeVariancePct} onChange={(e) => setTimeVariancePct(e.target.value)} disabled={isRunning} />
+        </div>
+
+        {side === 'BUY' ? (
+          <Input label="Max buy price" type="number" value={maxBuyPrice} onChange={(e) => setMaxBuyPrice(e.target.value)} disabled={isRunning} />
+        ) : (
+          <Input label="Min sell price" type="number" value={minSellPrice} onChange={(e) => setMinSellPrice(e.target.value)} disabled={isRunning} />
+        )}
+      
+      {!isRunning && (
+        <Button onClick={() => { void doStart(); }} className="w-full mt-4">Start TWAP Bot</Button>
+      )}
+    </>
+  );
+
+  const statsPanel = (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <StatCard label="Slices done" value={<span>{executedSlices}/{totalSlicesNum}</span>} icon={<Hash size={16} />} />
+      <StatCard label="Volume" value={<NumberDisplay value={executedVolume} prefix="$" />} icon={<BarChart3 size={16} />} />
+      <StatCard label="Avg. price" value={<NumberDisplay value={avgPrice} />} icon={<DollarSign size={16} />} />
+      <StatCard label="Total fee" value={<NumberDisplay value={totalFee} prefix="$" />} icon={<Clock size={16} />} />
+    </div>
+  );
+
+  const logsPanel = (
+    <div className="h-full overflow-y-auto custom-scrollbar p-3 space-y-2">
+      {logs.length === 0 ? (
+        <div className="h-full flex items-center justify-center text-text-muted text-xs">Waiting for execution...</div>
+      ) : (
+        logs.map((log, i) => (
+          <div key={i} className="flex gap-3 text-xs font-mono">
+            <span className="text-text-muted/50">{log.time}</span>
+            {log.side && <span className={cn(log.side === 'BUY' ? 'text-emerald-400' : 'text-red-400')}>{log.side}</span>}
+            {log.amount != null && <span className="tabular-nums text-text-secondary"><NumberDisplay value={log.amount} decimals={4} /></span>}
+            {log.price != null && <span className="tabular-nums text-text-muted">@ <NumberDisplay value={log.price} /></span>}
+            {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
+    <>
+      <BotLayout
+        title="TWAP Bot"
+        icon={Clock}
+        status={status}
+        symbol={symbol}
+        market={isSpot ? 'spot' : 'perps'}
+        configPanel={configPanel}
+        statsPanel={statsPanel}
+        logsPanel={logsPanel}
+        isLocked={isRunning}
+        onStart={() => { void doStart(); }}
+        onStop={stopBot}
+      />
       <RiskSummaryModal
-        isOpen={showConfirm}
+        isOpen={false}
         title="TWAP Bot Summary"
-        subtitle="Confirm the slice schedule and total capital before submitting orders to the book."
+        botName="TWAP Strategy"
         rows={twapRiskSummary.rows}
         risk={twapRiskSummary.risk}
         totalRisk={twapRiskSummary.totalRisk}
-        disclaimer={
-          orderType === 'MARKET'
-            ? 'Each slice is sent as a market order at the prevailing book price. Stopping the bot cancels remaining slices but does not unwind already-executed ones.'
-            : 'Each slice is placed as a passive limit order inside the spread. Unfilled limits are replaced when the next slice fires; stopping the bot leaves the most recent unfilled limit on the book unless you cancel it manually.'
-        }
+        disclaimer={orderType === 'MARKET' ? 'Each slice is sent as a market order. Stopping cancels remaining slices.' : 'Each slice is placed as a limit order. Stopping leaves the most recent unfilled limit on the book.'}
         confirmLabel="Confirm & Start TWAP"
-        onConfirm={() => { setShowConfirm(false); doStart(); }}
-        onCancel={() => setShowConfirm(false)}
+        onConfirm={() => { doStart(); }}
+        onCancel={() => {}}
       />
-
-      {/* ─────────────── Settings Panel ─────────────── */}
-      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col shrink-0 lg:h-full lg:overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold text-sm">TWAP Bot</h2>
-          <StatusBadge status={status} />
-        </div>
-
-        <div className="flex-1 lg:overflow-y-auto px-4 sm:px-5 py-4 flex flex-col gap-5">
-          {/* ── AI Auto-Configure ── one-click smart defaults from current
-               market context. We only apply slices / interval / order type
-               here — total quantity is left to the user since it depends on
-               the position they're trying to execute, not the market regime. */}
-          <AutoConfigureButton
-            symbol={symbol}
-            market={isSpot ? 'spot' : 'perps'}
-            recommender={recommendTwapBot}
-            hidden={isRunning}
-            onApply={(preset) => {
-              if (preset.slices)      setSlices(String(preset.slices));
-              if (preset.intervalSec) setIntervalSec(String(preset.intervalSec));
-              if (preset.orderType === 'limit') setOrderType('LIMIT');
-            }}
-          />
-          {/* ── Market & direction ── */}
-          <Section icon={<Hash size={12} />} label="Market & direction">
-            <SymbolSelector
-              market={isSpot ? 'spot' : 'perps'}
-              value={symbol}
-              onChange={setSymbol}
-              disabled={isRunning}
-            />
-            <div>
-              <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Market type</label>
-              <div className="flex gap-2">
-                <button onClick={() => !isRunning && setIsSpot(true)} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50 pointer-events-none')}>Spot</button>
-                <button onClick={() => !isRunning && setIsSpot(false)} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', !isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50 pointer-events-none')}>Perps</button>
-              </div>
-            </div>
-            <Select
-              label="Direction"
-              value={side}
-              onChange={(e) => setSide(e.target.value as 'BUY' | 'SELL')}
-              disabled={isRunning}
-              options={[
-                { value: 'BUY', label: 'Buy' },
-                { value: 'SELL', label: 'Sell' },
-              ]}
-            />
-          </Section>
-
-          {/* ── Schedule ── */}
-          <Section icon={<Clock size={12} />} label="Schedule">
-            <Input label="Total amount" type="number" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} disabled={isRunning} />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Slice count" type="number" value={slices} onChange={(e) => setSlices(e.target.value)} disabled={isRunning} />
-              <Input label="Interval (s)" type="number" value={intervalSec} onChange={(e) => setIntervalSec(e.target.value)} disabled={isRunning} />
-            </div>
-          </Section>
-
-          {/* ── Advanced execution ── */}
-          <Collapsible
-            open={advancedOpen}
-            onToggle={() => setAdvancedOpen((p) => !p)}
-            icon={<Zap size={12} />}
-            label="Execution style"
-            badge={
-              [
-                orderType === 'LIMIT' && `LIMIT ${limitOffsetBps}bps`,
-                parseFloat(sizeVariancePct) > 0 && `±${sizeVariancePct}% size`,
-                parseFloat(timeVariancePct) > 0 && `±${timeVariancePct}% time`,
-              ].filter(Boolean).join(' · ') || undefined
-            }
-          >
-            <div>
-              <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Order type</label>
-              <div className="flex gap-2">
-                {(['MARKET','LIMIT'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => !isRunning && setOrderType(t)}
-                    className={cn(
-                      'flex-1 py-2 text-[11px] rounded-lg border transition-all flex flex-col items-center gap-0.5',
-                      orderType === t ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover',
-                      isRunning && 'opacity-50 pointer-events-none',
-                    )}
-                  >
-                    <span className="font-semibold uppercase tracking-wider">{t}</span>
-                    <span className="text-[9px] text-text-muted">{t === 'MARKET' ? 'Taker — instant fill' : 'Maker — passive in spread'}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {orderType === 'LIMIT' && (
-              <Input
-                label="Limit offset (bps inside spread)"
-                type="number"
-                value={limitOffsetBps}
-                onChange={(e) => setLimitOffsetBps(e.target.value)}
-                disabled={isRunning}
-                hint="Buys: bid + N bps · Sells: ask − N bps"
-              />
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Size variance %"
-                type="number"
-                value={sizeVariancePct}
-                onChange={(e) => setSizeVariancePct(e.target.value)}
-                disabled={isRunning}
-                hint="0 = uniform"
-              />
-              <Input
-                label="Time variance %"
-                type="number"
-                value={timeVariancePct}
-                onChange={(e) => setTimeVariancePct(e.target.value)}
-                disabled={isRunning}
-                hint="0 = exact"
-              />
-            </div>
-          </Collapsible>
-
-          {/* ── Price-band guard ── */}
-          <Collapsible
-            open={guardOpen}
-            onToggle={() => setGuardOpen((p) => !p)}
-            icon={<ShieldAlert size={12} />}
-            label="Price guard"
-            badge={
-              ((side === 'BUY' && parseFloat(maxBuyPrice) > 0) || (side === 'SELL' && parseFloat(minSellPrice) > 0))
-                ? 'active' : undefined
-            }
-          >
-            {side === 'BUY' ? (
-              <Input
-                label="Max buy price"
-                type="number"
-                value={maxBuyPrice}
-                onChange={(e) => setMaxBuyPrice(e.target.value)}
-                disabled={isRunning}
-                hint="Slices are skipped if mid > this price"
-              />
-            ) : (
-              <Input
-                label="Min sell price"
-                type="number"
-                value={minSellPrice}
-                onChange={(e) => setMinSellPrice(e.target.value)}
-                disabled={isRunning}
-                hint="Slices are skipped if mid < this price"
-              />
-            )}
-            <div className="text-[10px] text-text-muted">
-              Skipped slices count toward the total — once price returns to your band, the bot resumes immediately. The run finishes after `Slice count` iterations regardless of how many fired.
-            </div>
-          </Collapsible>
-
-          {/* ── Live preview ── */}
-          <div className="rounded-xl border border-border bg-background/40 p-3 flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-              <Info size={10} /> Estimated run
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <PreviewRow label="Slice qty"     value={sliceQty > 0 ? sliceQty.toFixed(6) : '—'} />
-              <PreviewRow label="Total run"     value={durationLabel || '—'} />
-              <PreviewRow label="Slices/min"    value={intervalNum > 0 ? (60 / intervalNum).toFixed(2) : '—'} />
-              <PreviewRow label="Order type"    value={orderType === 'LIMIT' ? `Limit ${limitOffsetBps}bps` : 'Market'} />
-            </div>
-          </div>
-        </div>
-
-        <div className="px-5 py-4 border-t border-border bg-background/40">
-          {!isRunning ? (
-            <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={startBot}>
-              Start TWAP
-            </Button>
-          ) : (
-            <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={stopBot}>
-              Stop
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* ─────────────── Live status ─────────────── */}
-      <div className="flex-1 p-4 sm:p-6 flex flex-col gap-5 lg:overflow-y-auto min-h-[300px] lg:min-h-0">
-        <BotPnlStrip botKey="twap" />
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Slices done" value={<span>{executedSlices}/{totalSlicesNum}</span>} icon={<Hash size={16} />} />
-          <StatCard label="Volume" value={<NumberDisplay value={executedVolume} prefix="$" />} icon={<BarChart3 size={16} />} />
-          <StatCard label="Avg. price" value={<NumberDisplay value={avgPrice} />} icon={<DollarSign size={16} />} />
-          <StatCard label="Total fee" value={<NumberDisplay value={totalFee} prefix="$" />} icon={<Clock size={16} />} />
-        </div>
-
-        {skippedSlices > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-200 text-xs">
-            <AlertTriangle size={14} />
-            <span>{skippedSlices} slice{skippedSlices === 1 ? '' : 's'} skipped by the price guard so far.</span>
-          </div>
-        )}
-
-        {/* Progress */}
-        <div className="glass-card p-4">
-          <div className="flex justify-between text-xs mb-2">
-            <span className="text-text-secondary">TWAP Progress</span>
-            <span className="text-text-primary font-mono tabular-nums">{progress.toFixed(1)}%</span>
-          </div>
-          <div className="h-2 bg-background rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-primary to-primary-soft rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(progress, 100)}%` }}
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-3 mt-3 text-[11px]">
-            <PreviewRow label="Filled qty" value={executedQty.toFixed(6)} />
-            <PreviewRow label="Skipped"    value={`${skippedSlices}`} tone={skippedSlices > 0 ? 'warn' : 'mute'} />
-            <PreviewRow label="Remaining"  value={`${Math.max(0, totalSlicesNum - executedSlices - skippedSlices)}`} />
-          </div>
-        </div>
-
-        {/* Log */}
-        <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Activity Log</span>
-            <span className="text-[10px] text-text-muted">{logs.length} entries</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
-            {logs.map((log, i) => (
-              <div key={i} className="text-xs flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-hover/50 transition-colors font-mono animate-fade-in">
-                <span className="text-text-muted w-16 shrink-0 tabular-nums">{log.time}</span>
-                {log.side && (
-                  <span className={`badge ${log.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{log.side}</span>
-                )}
-                {log.amount != null && (
-                  <span className="tabular-nums text-text-secondary"><NumberDisplay value={log.amount} decimals={4} /></span>
-                )}
-                {log.price != null && (
-                  <span className="tabular-nums text-text-muted">@ <NumberDisplay value={log.price} /></span>
-                )}
-                {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
-              </div>
-            ))}
-            {logs.length === 0 && (
-              <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-                <div className="text-center">
-                  <Clock size={32} className="mx-auto mb-3 opacity-30" />
-                  <p>TWAP activity logs will appear here.</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 };
-
-// ──────────────────────────────────────────────────────────────────────
-// Local presentational helpers (shared visual idiom with GridBot)
-// ──────────────────────────────────────────────────────────────────────
-
-interface SectionProps { icon: React.ReactNode; label: string; children: React.ReactNode; }
-const Section: React.FC<SectionProps> = ({ icon, label, children }) => (
-  <div className="flex flex-col gap-3">
-    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">{icon}<span>{label}</span></div>
-    {children}
-  </div>
-);
-
-interface CollapsibleProps { open: boolean; onToggle: () => void; icon: React.ReactNode; label: string; badge?: string; children: React.ReactNode; }
-const Collapsible: React.FC<CollapsibleProps> = ({ open, onToggle, icon, label, badge, children }) => (
-  <div className="rounded-xl border border-border bg-background/30">
-    <button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-3 py-2 text-[11px] uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
-      <span className="flex items-center gap-1.5">{icon}{label}</span>
-      <span className="flex items-center gap-2">
-        {badge && <span className="text-[10px] font-mono normal-case tracking-normal text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-full px-2 py-0.5">{badge}</span>}
-        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-      </span>
-    </button>
-    {open && <div className="border-t border-border p-3 flex flex-col gap-3">{children}</div>}
-  </div>
-);
-
-const PreviewRow: React.FC<{ label: string; value: string; tone?: 'good' | 'warn' | 'mute' }> = ({ label, value, tone = 'mute' }) => (
-  <div className="flex items-center justify-between gap-2">
-    <span className="text-text-muted">{label}</span>
-    <span className={cn('font-mono font-semibold', tone === 'good' ? 'text-emerald-400' : tone === 'warn' ? 'text-amber-300' : 'text-text-primary')}>
-      {value}
-    </span>
-  </div>
-);

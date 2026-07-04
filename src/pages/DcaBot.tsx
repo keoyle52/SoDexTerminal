@@ -1,16 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Play, Square, Repeat, Hash, DollarSign, TrendingUp, Activity,
-  ChevronDown, ChevronUp, ShieldAlert, Zap, Info, AlertTriangle,
+  Repeat, Hash, DollarSign, TrendingUp, Activity,
+  ChevronDown, ChevronUp, ShieldAlert, Zap
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
-import { StatusBadge } from '../components/common/StatusBadge';
 import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
-import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
-import { Button } from '../components/common/Button';
 import { useSettingsStore } from '../store/settingsStore';
 import { placeOrder, fetchBookTickers, fetchOrderStatus, normalizeSymbol } from '../api/services';
 import { recommendDcaBot } from '../api/aiAutoConfig';
@@ -341,11 +338,6 @@ export const DcaBot: React.FC = () => {
     })();
   }, [executeDcaOrder, addLog, condition, dipPercent]);
 
-  const startBot = useCallback(() => {
-    if (confirmOrders) setShowConfirm(true);
-    else doStart();
-  }, [confirmOrders, doStart]);
-
   useEffect(() => () => {
     runningRef.current = false;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -530,7 +522,7 @@ export const DcaBot: React.FC = () => {
         statsPanel={statsPanel}
         logsPanel={logsPanel}
         isLocked={isRunning}
-        onStart={() => setShowConfirm(true)}
+        onStart={() => { void doStart(); }}
         onStop={stopBot}
       />
       <RiskSummaryModal

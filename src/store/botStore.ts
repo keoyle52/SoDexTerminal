@@ -13,7 +13,7 @@ interface GridBotState {
   lowerPrice: string;
   upperPrice: string;
   gridCount: string;
-  amountPerGrid: string;
+  amountPerGrid: string; amountUsdt: string;
   isSpot: boolean;
   mode: 'NEUTRAL' | 'LONG' | 'SHORT';
   /** Arithmetic = constant price step; Geometric = constant percent step. */
@@ -215,11 +215,12 @@ interface BotStoreState {
 
 export const useBotStore = create<BotStoreState>((set) => ({
   gridBot: {
-    symbol: 'vBTC-vUSDC',
-    lowerPrice: '60000',
-    upperPrice: '70000',
-    gridCount: '10',
-    amountPerGrid: '0.01',
+    symbol: 'BTCUSDT',
+    lowerPrice: '',
+    upperPrice: '',
+    gridCount: '',
+    amountPerGrid: '',
+    amountUsdt: '',
     isSpot: true,
     mode: 'NEUTRAL',
     spacing: 'ARITHMETIC',
@@ -313,6 +314,7 @@ export const useBotStore = create<BotStoreState>((set) => ({
     symbol: 'BTC-USD',
     isSpot: false,
     leverage: '5',
+    executionMode: 'SESSION',
     amountUsdt: '50',
     takeProfitPct: '3',
     stopLossPct: '2',
