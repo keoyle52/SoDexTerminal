@@ -63,6 +63,7 @@ export const TwapBot: React.FC = () => {
   
 
   const [status, setStatus] = useState<'STOPPED' | 'RUNNING' | 'ERROR'>('STOPPED');
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const [executedSlices, setExecutedSlices] = useState(0);
   const [executedVolume, setExecutedVolume] = useState(0);
@@ -417,9 +418,6 @@ export const TwapBot: React.FC = () => {
           <Input label="Min sell price" type="number" value={minSellPrice} onChange={(e) => setMinSellPrice(e.target.value)} disabled={isRunning} />
         )}
       
-      {!isRunning && (
-        <Button onClick={() => { void doStart(); }} className="w-full mt-4">Start TWAP Bot</Button>
-      )}
     </>
   );
 
@@ -462,11 +460,11 @@ export const TwapBot: React.FC = () => {
         statsPanel={statsPanel}
         logsPanel={logsPanel}
         isLocked={isRunning}
-        onStart={() => { void doStart(); }}
+        onStart={() => setShowConfirm(true)}
         onStop={stopBot}
       />
       <RiskSummaryModal
-        isOpen={false}
+        isOpen={showConfirm}
         title="TWAP Bot Summary"
         botName="TWAP Strategy"
         rows={twapRiskSummary.rows}
@@ -474,8 +472,8 @@ export const TwapBot: React.FC = () => {
         totalRisk={twapRiskSummary.totalRisk}
         disclaimer={orderType === 'MARKET' ? 'Each slice is sent as a market order. Stopping cancels remaining slices.' : 'Each slice is placed as a limit order. Stopping leaves the most recent unfilled limit on the book.'}
         confirmLabel="Confirm & Start TWAP"
-        onConfirm={() => { doStart(); }}
-        onCancel={() => {}}
+        onConfirm={() => { setShowConfirm(false); doStart(); }}
+        onCancel={() => setShowConfirm(false)}
       />
     </>
   );

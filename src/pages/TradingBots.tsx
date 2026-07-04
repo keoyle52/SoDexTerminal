@@ -311,7 +311,7 @@ export const TradingBots: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 relative z-10 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-2 md:p-8 relative z-10 custom-scrollbar">
         {currentTab === 'wave3' ? (
           <Wave3AgentConsole />
         ) : (

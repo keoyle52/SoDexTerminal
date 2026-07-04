@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Sparkles } from 'lucide-react';
 import { cn, getErrorMessage } from '../../lib/utils';
-import { buildContext, type RecommendationResult } from '../../api/aiAutoConfig';
+import { buildContext, type RecommendationResult, type Preset } from '../../api/aiAutoConfig';
 
 /**
  * Reusable "AI Auto-Configure" button for every bot page.
@@ -36,7 +36,7 @@ interface AutoConfigureButtonProps {
   /** Bot-specific preset recommender. Pure function — no side effects. */
   recommender: (ctx: Awaited<ReturnType<typeof buildContext>>) => RecommendationResult;
   /** Owner-supplied applier — called with the preset on success. */
-  onApply: (preset: Record<string, string | number>) => void;
+  onApply: (preset: Preset) => void;
   /** When true (e.g. while the bot is running), the button is hidden
    *  entirely. Hiding rather than disabling avoids the visual noise
    *  of a permanently-greyed button on a running-bot screen. */

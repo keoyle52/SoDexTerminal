@@ -22,6 +22,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import { recommendMarketMakerBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
+import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
 import { BotLayout } from '../components/bots/BotLayout';
 
 /**
@@ -390,9 +391,11 @@ export const MarketMakerBot: React.FC = () => {
 
   useEffect(() => { stopBotInternalRef.current = stopBotInternal; }, [stopBotInternal]);
 
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const startBot = useCallback(async () => {
     if (mm.status === 'RUNNING') return;
-    if (!isDemoMode && !privateKey) { toast.error('Set API keys'); return; }
+    
     sessionIdRef.current = Math.random().toString(36).slice(2, 8);
     setField('status', 'RUNNING');
     setField('sessionStartedAt', nowMs());
@@ -501,9 +504,23 @@ export const MarketMakerBot: React.FC = () => {
     </div>
   );
 
+
+  const buildRiskRows = () => {
+    return {
+      rows: [
+        { label: 'Agent Strategy', value: 'Autonomous Execution', tone: 'default' as const },
+        { label: 'Market Condition', value: 'Unpredictable', tone: 'warning' as const },
+      ],
+      totalRisk: 'AI agents execute actions automatically based on configured parameters.',
+      risk: 'High' as const
+    };
+  };
+  const riskSummary = buildRiskRows();
+
   return (
     <>
       <BotLayout
+
         title="Market Maker Bot"
         icon={Layers}
         status={isRunning ? 'RUNNING' : mm.status === 'ERROR' ? 'ERROR' : 'STOPPED'}
@@ -513,8 +530,20 @@ export const MarketMakerBot: React.FC = () => {
         statsPanel={statsPanel}
         logsPanel={logsPanel}
         isLocked={isRunning}
-        onStart={() => void startBot()}
+        onStart={() => setShowConfirm(true)}
         onStop={() => { void stopBotInternal(); }}
+      />
+      <RiskSummaryModal
+        isOpen={showConfirm}
+        onCancel={() => setShowConfirm(false)}
+        title="Market Maker Bot Risk Summary"
+        botName="Market Maker Bot"
+        rows={riskSummary.rows}
+        risk={riskSummary.risk}
+        totalRisk={riskSummary.totalRisk}
+        disclaimer="AI Agents execute independently. Monitor closely."
+        confirmLabel="Confirm & Deploy"
+        onConfirm={() => { setShowConfirm(false); startBot(); }}
       />
     </>
   );

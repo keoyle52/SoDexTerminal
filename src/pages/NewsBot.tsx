@@ -17,7 +17,10 @@ import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
+import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
 import { BotLayout } from '../components/bots/BotLayout';
+import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
+import { recommendNewsBot } from '../api/aiAutoConfig';
 import { Radio } from 'lucide-react';
 import { cn, getErrorMessage } from '../lib/utils';
 import { analyzeSentiment } from '../api/geminiClient';
@@ -486,6 +489,8 @@ export const NewsBot: React.FC = () => {
     void poll();
   }, [poll, addLog]);
 
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const start = useCallback(() => {
     if (!sosoApiKey) { toast.error('Set SosoValue API key in Settings'); return; }
     if (useAi && !geminiApiKey) { toast.error('Set Gemini API key in Settings for AI mode'); return; }
@@ -598,6 +603,20 @@ export const NewsBot: React.FC = () => {
 
   const configPanel = (
     <>
+
+        <AutoConfigureButton
+          symbol={fallbackCoin}
+          market="perps"
+          recommender={recommendNewsBot}
+          hidden={running}
+          onApply={(preset) => {
+            if (preset.leverage)           setLeverage(Number(preset.leverage));
+            if (preset.marginUsdt)         setMarginUsdt(String(preset.marginUsdt));
+            if (preset.takeProfitPct)      setTakeProfitPct(Number(preset.takeProfitPct));
+            if (preset.stopLossPct)        setStopLossPct(Number(preset.stopLossPct));
+            if (preset.holdMinutes)        setHoldMinutes(Number(preset.holdMinutes));
+          }}
+        />
       <div className="flex items-center justify-between mb-4 p-2 bg-surface rounded-lg">
         <div className="flex items-center gap-2">
           <div className={cn('w-2 h-2 rounded-full', useAi ? 'bg-gradient-to-tr from-blue-500 to-purple-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-text-muted')} />
@@ -758,8 +777,21 @@ export const NewsBot: React.FC = () => {
     </div>
   );
 
+  const buildRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
+    return {
+      rows: [
+        { label: 'Agent Strategy', value: 'News Trigger', tone: 'default' as const },
+        { label: 'Market Condition', value: 'Unpredictable', tone: 'warning' as const },
+      ],
+      totalRisk: 'AI agents execute actions automatically based on configured parameters.',
+      risk: 'High' as const
+    };
+  };
+  const riskSummary = buildRiskRows();
+
   return (
-    <BotLayout
+    <>
+      <BotLayout
       title="News Bot"
       icon={Radio}
       status={running ? 'RUNNING' : 'STOPPED'}
@@ -769,8 +801,21 @@ export const NewsBot: React.FC = () => {
       statsPanel={statsPanel}
       logsPanel={logsPanel}
       isLocked={running}
-      onStart={start}
+      onStart={() => setShowConfirm(true)}
       onStop={stop}
     />
+      <RiskSummaryModal
+        isOpen={showConfirm}
+        onCancel={() => setShowConfirm(false)}
+        title="News Bot Risk Summary"
+        botName="News Bot"
+        rows={riskSummary.rows}
+        risk={riskSummary.risk}
+        totalRisk={riskSummary.totalRisk}
+        disclaimer="AI Agents execute independently. Monitor closely."
+        confirmLabel="Confirm & Deploy"
+        onConfirm={() => { setShowConfirm(false); start(); }}
+      />
+    </>
   );
 };

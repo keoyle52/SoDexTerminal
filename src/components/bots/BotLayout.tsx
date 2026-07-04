@@ -27,7 +27,7 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
   return (
     <div className="h-full flex flex-col md:flex-row bg-[#0b0b0f] text-text-primary animate-in fade-in duration-500">
       {/* LEFT: Chart & Logs */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-border/40">
+      <div className="flex-1 flex flex-col min-w-0 border-b md:border-b-0 md:border-r border-border/40 min-h-[500px] md:min-h-0">
         <div className="flex-1 flex flex-col p-4">
           {statsPanel}
           <div className="flex-1 overflow-hidden mt-4 bg-surface/30 p-1 rounded-xl border border-border/50">

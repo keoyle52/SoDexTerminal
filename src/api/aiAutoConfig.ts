@@ -65,7 +65,7 @@ export interface MarketContext {
 /** Generic preset shape returned by `recommend*` helpers. The actual
  *  field names match each bot store; renderers spread these straight
  *  into `setField()` calls. */
-export type Preset = Record<string, string | number>;
+export type Preset = Record<string, string | number | boolean | undefined>;
 
 export interface RecommendationResult<P extends Preset = Preset> {
   preset: P;
@@ -594,5 +594,43 @@ export function recommendSignalBot(ctx: MarketContext): RecommendationResult<Sig
       `Enabled: ${enabledNames.join(', ')}. ` +
       `TP ${tp.toFixed(1)}% / SL ${sl.toFixed(1)}% (ATR-scaled). ` +
       `Leverage ${leverage}×, checking every ${checkInterval}s.`,
+  };
+}
+
+export interface NewsBotPreset extends Preset {
+  marginUsdt?: number | string;
+  leverage?: number | string;
+  holdMinutes?: number | string;
+  takeProfitPct?: number | string;
+  stopLossPct?: number | string;
+  fallbackCoin?: string;
+}
+
+export function recommendNewsBot(ctx: MarketContext): RecommendationResult<NewsBotPreset> {
+  const vol = bucketVolatility(ctx.atrPct);
+  const trending = Math.abs(ctx.change24hPct) > 2;
+
+  let leverage = 5;
+  let tp = 2.0;
+  let sl = 1.0;
+  let hold = 60;
+
+  if (vol === 'high' || trending) {
+    leverage = 2;
+    tp = 4.0;
+    sl = 2.0;
+    hold = 30;
+  }
+
+  return {
+    preset: {
+      marginUsdt: 200,
+      leverage,
+      holdMinutes: hold,
+      takeProfitPct: tp,
+      stopLossPct: sl,
+      fallbackCoin: 'BTC-USD'
+    },
+    regimeLabel: 'News Auto', rationale: `Market volatility is ${vol}. We recommend ${leverage}x leverage with a ${tp}% take profit and ${hold} minute hold time.`
   };
 }

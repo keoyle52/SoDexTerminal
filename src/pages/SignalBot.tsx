@@ -15,6 +15,7 @@ import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { Input, Select, Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
+import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
 import { BotLayout } from '../components/bots/BotLayout';
 import { fetchTickers } from '../api/services';
 import { type SeriesMarker, type Time } from 'lightweight-charts';
@@ -639,6 +640,8 @@ export const SignalBot: React.FC = () => {
   }, [addLog, executeTrade, isDemoMode]);
 
   // Start Bot
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const startBot = useCallback(async () => {
     if (runningRef.current) return;
     
@@ -826,8 +829,8 @@ export const SignalBot: React.FC = () => {
       </div>
 
       {isSignalsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
-          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[90vh] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-backdrop" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[85vh] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
             <div className="flex items-center gap-3 p-5 border-b border-border bg-background/50 shrink-0">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                 <Zap size={18} />
@@ -954,8 +957,21 @@ export const SignalBot: React.FC = () => {
     </div>
   );
 
+  const buildRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
+    return {
+      rows: [
+        { label: 'Agent Strategy', value: 'Technical Signals', tone: 'default' as const },
+        { label: 'Market Condition', value: 'Unpredictable', tone: 'warning' as const },
+      ],
+      totalRisk: 'AI agents execute actions automatically based on configured parameters.',
+      risk: 'High' as const
+    };
+  };
+  const riskSummary = buildRiskRows();
+
   return (
-    <BotLayout
+    <>
+      <BotLayout
       title="Wave 3 Signal Bot"
       icon={Radio}
       status={state.status}
@@ -994,8 +1010,21 @@ export const SignalBot: React.FC = () => {
       statsPanel={statsPanel}
       logsPanel={logsPanel}
       isLocked={isLocked}
-      onStart={startBot}
+      onStart={() => setShowConfirm(true)}
       onStop={() => void stopBot()}
     />
+      <RiskSummaryModal
+        isOpen={showConfirm}
+        onCancel={() => setShowConfirm(false)}
+        title="Signal Bot Risk Summary"
+        botName="Signal Bot"
+        rows={riskSummary.rows}
+        risk={riskSummary.risk}
+        totalRisk={riskSummary.totalRisk}
+        disclaimer="AI Agents execute independently. Monitor closely."
+        confirmLabel="Confirm & Deploy"
+        onConfirm={() => { setShowConfirm(false); startBot(); }}
+      />
+    </>
   );
 };

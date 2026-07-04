@@ -200,7 +200,7 @@ export const HeaderDock: React.FC = () => {
 
         <div className="h-3 w-[1px] bg-border/60 shrink-0" />
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-auto md:ml-0">
           <span className="text-text-muted uppercase tracking-wider text-[10px]">SSI Sentiment:</span>
           <span className={cn(
             "px-1.5 py-0.5 rounded font-bold text-[10px]",
@@ -222,7 +222,7 @@ export const HeaderDock: React.FC = () => {
       </div>
 
       {/* 2. MAIN HEADER NAVIGATION DOCK */}
-      <div className="h-14 px-4 flex items-center justify-between gap-4">
+      <div className="min-h-14 py-2 px-2 md:px-4 flex flex-wrap md:flex-nowrap items-center justify-between gap-2 md:gap-4">
         {/* Brand Logo */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="relative w-8 h-8 rounded-xl bg-surface-2 border border-primary/30 p-1 flex items-center justify-center shadow-md shadow-primary/10 group cursor-pointer">
@@ -238,7 +238,7 @@ export const HeaderDock: React.FC = () => {
         </div>
 
         {/* Navigation Tabs (Top Dock Navigation) */}
-        <nav className="flex items-center gap-1.5 p-1 bg-background/60 border border-border/80 rounded-xl shrink-0 overflow-x-auto max-w-full">
+        <nav className="flex items-center gap-1.5 p-1 bg-background/60 border border-border/80 rounded-xl shrink-0 overflow-x-auto w-full md:w-auto order-last md:order-none mt-2 md:mt-0 no-scrollbar">
           {NAV_TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = location.pathname === tab.to || (tab.to === '/terminal' && location.pathname === '/dashboard');
@@ -269,7 +269,7 @@ export const HeaderDock: React.FC = () => {
         </nav>
 
         {/* Right Action Controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-auto md:ml-0">
           {/* Quick Tour */}
           <button
             onClick={() => setShowTour(true)}

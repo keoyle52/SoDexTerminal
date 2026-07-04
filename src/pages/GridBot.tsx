@@ -14,6 +14,7 @@ import {
   type PerpsSymbolMeta,
 } from '../api/services';
 import { buildContext, recommendGridBot } from '../api/aiAutoConfig';
+import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { cn, getErrorMessage } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { SymbolSelector } from '../components/common/SymbolSelector';
@@ -539,6 +540,18 @@ export const GridBot: React.FC = () => {
 
   const configPanel = (
     <>
+      <AutoConfigureButton
+        symbol={state.symbol}
+        market={state.isSpot ? 'spot' : 'perps'}
+        recommender={recommendGridBot}
+        hidden={isRunning}
+        onApply={(preset) => {
+          if (preset.upperPrice) state.setField('upperPrice', String(preset.upperPrice));
+          if (preset.lowerPrice) state.setField('lowerPrice', String(preset.lowerPrice));
+          if (preset.gridLevels) state.setField('gridCount', String(preset.gridLevels));
+          if (preset.leverage && !state.isSpot) state.setField('leverage', String(preset.leverage));
+        }}
+      />
       <div>
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
         <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(c: string) => state.setField('symbol', c)} disabled={isRunning} />

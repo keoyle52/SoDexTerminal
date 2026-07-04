@@ -522,7 +522,7 @@ export const DcaBot: React.FC = () => {
         statsPanel={statsPanel}
         logsPanel={logsPanel}
         isLocked={isRunning}
-        onStart={() => { void doStart(); }}
+        onStart={() => setShowConfirm(true)}
         onStop={stopBot}
       />
       <RiskSummaryModal
