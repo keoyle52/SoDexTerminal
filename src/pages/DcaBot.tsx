@@ -16,6 +16,7 @@ import { placeOrder, fetchBookTickers, fetchOrderStatus, normalizeSymbol } from 
 import { recommendDcaBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { SymbolSelector } from '../components/common/SymbolSelector';
+import { BotLayout } from '../components/bots/BotLayout';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useBotPnlStore } from '../store/botPnlStore';
 
@@ -71,6 +72,7 @@ export const DcaBot: React.FC = () => {
   const [intervalSec, setIntervalSec] = useState('3600');
   const [maxOrders, setMaxOrders] = useState('20');
   const [isSpot, setIsSpot] = useState(false);
+  const [executionMode, setExecutionMode] = useState<'SESSION' | 'SINGLE'>('SESSION');
 
   // ── Conditional buy ───────────────────────────────────────────
   const [condition, setCondition] = useState<DcaCondition>('NONE');
@@ -411,305 +413,153 @@ export const DcaBot: React.FC = () => {
   };
   const dcaRiskSummary = buildDcaRiskRows();
 
+  // Build UI panels for BotLayout
+  const configPanel = (
+    <>
+      {/* Auto-Configure */}
+      <AutoConfigureButton
+        symbol={symbol}
+        market={isSpot ? 'spot' : 'perps'}
+        recommender={recommendDcaBot}
+        hidden={isRunning}
+        onApply={(preset) => {
+          if (preset.intervalMin) setIntervalSec(String(parseInt(String(preset.intervalMin)) * 60));
+          if (preset.maxOrders)   setMaxOrders(String(preset.maxOrders));
+          if (preset.amountPerOrder) {
+            const px = currentPrice > 0 ? currentPrice : 0;
+            if (px > 0) {
+              const baseAmt = parseFloat(String(preset.amountPerOrder)) / px;
+              setAmountPerOrder(baseAmt.toFixed(6));
+            }
+          }
+          if (preset.mode === 'buy-the-dip') {
+            setCondition('BUY_THE_DIP');
+            if (preset.dipPct) setDipPercent(String(preset.dipPct));
+          } else if (preset.mode === 'fixed') {
+            setCondition('NONE');
+          }
+        }}
+      />
+      
+      {/* Market */}
+      <div>
+        <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
+        <SymbolSelector market={isSpot ? 'spot' : 'perps'} value={symbol} onChange={setSymbol} disabled={isRunning} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
+        <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
+        <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
+      </div>
+      
+      {/* Direction & Amount */}
+      <div className="grid grid-cols-2 gap-3">
+        <Select label="Direction" value={side} onChange={(e) => setSide(e.target.value as 'BUY' | 'SELL')} disabled={isRunning} options={[{ value: 'BUY', label: 'Buy' }, { value: 'SELL', label: 'Sell' }]} />
+        <Input label="Amount per order" type="number" value={amountPerOrder} onChange={(e) => setAmountPerOrder(e.target.value)} disabled={isRunning} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Interval (s)" type="number" value={intervalSec} onChange={(e) => setIntervalSec(e.target.value)} disabled={isRunning} hint="3600 = 1h" />
+        <Input label="Max orders" type="number" value={maxOrders} onChange={(e) => setMaxOrders(e.target.value)} disabled={isRunning} hint="0 = unbounded" />
+      </div>
+
+      {/* Conditions */}
+      <Collapsible open={advancedOpen} onToggle={() => setAdvancedOpen((p) => !p)} icon={<Zap size={14} />} label="Conditional fire" badge={condition !== 'NONE' ? `${condition === 'BUY_THE_DIP' ? `Dip ≥${dipPercent}%` : ''}` : undefined}>
+        <div>
+          <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Mode</label>
+          <div className="flex gap-2">
+            {(['NONE','BUY_THE_DIP'] as const).map((c) => (
+              <button key={c} onClick={() => !isRunning && setCondition(c)} className={cn('flex-1 py-2 text-[11px] rounded-lg border transition-all flex flex-col items-center gap-0.5', condition === c ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50 pointer-events-none')}>
+                <span className="font-semibold uppercase tracking-wider">{c === 'NONE' ? 'Always fire' : 'Buy the dip'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {condition === 'BUY_THE_DIP' && (
+          <Input label="Dip % required" type="number" value={dipPercent} onChange={(e) => setDipPercent(e.target.value)} disabled={isRunning} />
+        )}
+      </Collapsible>
+
+      <Collapsible open={stopOpen} onToggle={() => setStopOpen((p) => !p)} icon={<ShieldAlert size={14} />} label="Stop conditions">
+        <Input label="Take-profit price" type="number" value={takeProfitPrice} onChange={(e) => setTakeProfitPrice(e.target.value)} disabled={isRunning} />
+        <Input label="Stop-loss price" type="number" value={stopLossPrice} onChange={(e) => setStopLossPrice(e.target.value)} disabled={isRunning} />
+        <Input label="Profit % target" type="number" value={takeProfitPct} onChange={(e) => setTakeProfitPct(e.target.value)} disabled={isRunning} />
+      </Collapsible>
+    </>
+  );
+
+  const statsPanel = (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <StatCard label="Orders done" value={<NumberDisplay value={executedOrders} decimals={0} />} icon={<Hash size={16} />} />
+      <StatCard label="Total invested" value={<NumberDisplay value={totalInvested} prefix="$" />} icon={<DollarSign size={16} />} />
+      <StatCard label="Avg. price" value={<NumberDisplay value={avgPrice} />} icon={<Repeat size={16} />} />
+      <StatCard label="Unrealised PnL" value={<NumberDisplay value={Math.abs(pnlPercent)} suffix="%" prefix={pnlPercent >= 0 ? '+' : '-'} trend={pnlPercent >= 0 ? 'up' : 'down'} />} icon={<TrendingUp size={16} />} trend={pnlPercent >= 0 ? (pnlPercent > 0 ? 'up' : 'neutral') : 'down'} />
+    </div>
+  );
+
+  const logsPanel = (
+    <div className="h-full overflow-y-auto custom-scrollbar p-3 space-y-2">
+      {logs.length === 0 ? (
+        <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs gap-2">
+          <Activity size={24} className="opacity-30" />
+          <span>Waiting for execution...</span>
+        </div>
+      ) : (
+        logs.map((log, i) => (
+          <div key={i} className="flex gap-3 text-xs font-mono">
+            <span className="text-text-muted/50">{log.time}</span>
+            {log.side && <span className={cn(log.side === 'BUY' ? 'text-emerald-400' : 'text-red-400')}>{log.side}</span>}
+            {log.amount != null && <span className="tabular-nums text-text-secondary"><NumberDisplay value={log.amount} decimals={4} /></span>}
+            {log.price != null && <span className="tabular-nums text-text-muted">@ <NumberDisplay value={log.price} /></span>}
+            {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
+    <>
+      <BotLayout
+        title="DCA Bot"
+        icon={Repeat}
+        status={status}
+        symbol={symbol}
+        market={isSpot ? 'spot' : 'perps'}
+        configPanel={configPanel}
+        statsPanel={statsPanel}
+        logsPanel={logsPanel}
+        isLocked={isRunning}
+        onStart={() => setShowConfirm(true)}
+        onStop={stopBot}
+      />
       <RiskSummaryModal
         isOpen={showConfirm}
         title="DCA Bot Summary"
-        subtitle="Confirm the DCA cadence, conditions, and exposure before the bot starts placing orders."
+        botName="DCA Bot"
         rows={dcaRiskSummary.rows}
         risk={dcaRiskSummary.risk}
         totalRisk={dcaRiskSummary.totalRisk}
-        disclaimer="Each tick evaluates stop conditions then places a market order if the conditional trigger (if any) is met. Stopping the bot prevents future orders but does not unwind already-filled positions."
+        disclaimer="Each tick evaluates stop conditions then places a market order. Stopping the bot prevents future orders but does not unwind already-filled positions."
         confirmLabel="Confirm & Start DCA"
         onConfirm={() => { setShowConfirm(false); doStart(); }}
         onCancel={() => setShowConfirm(false)}
       />
-
-      {/* ─────────────── Settings Panel ─────────────── */}
-      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col shrink-0 lg:h-full lg:overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold text-sm">DCA Bot</h2>
-          <StatusBadge status={status} />
-        </div>
-
-        <div className="flex-1 lg:overflow-y-auto px-4 sm:px-5 py-4 flex flex-col gap-5">
-          {/* ── AI Auto-Configure ── one-click smart defaults from current
-               market context. The DCA store keeps fields as separate
-               useState hooks (no setField API), so onApply maps the
-               generic preset onto the right setters here. */}
-          <AutoConfigureButton
-            symbol={symbol}
-            market={isSpot ? 'spot' : 'perps'}
-            recommender={recommendDcaBot}
-            hidden={isRunning}
-            onApply={(preset) => {
-              if (preset.intervalMin) setIntervalSec(String(parseInt(String(preset.intervalMin)) * 60));
-              if (preset.maxOrders)   setMaxOrders(String(preset.maxOrders));
-              if (preset.amountPerOrder) {
-                // Convert USDT-notional → base-asset amount when we
-                // have a price snapshot. Fall back to leaving the
-                // user's current amountPerOrder untouched if not.
-                const px = currentPrice > 0 ? currentPrice : 0;
-                if (px > 0) {
-                  const baseAmt = parseFloat(String(preset.amountPerOrder)) / px;
-                  setAmountPerOrder(baseAmt.toFixed(6));
-                }
-              }
-              if (preset.mode === 'buy-the-dip') {
-                setCondition('BUY_THE_DIP');
-                if (preset.dipPct) setDipPercent(String(preset.dipPct));
-              } else if (preset.mode === 'fixed') {
-                setCondition('NONE');
-              }
-            }}
-          />
-          {/* ── Market & direction ── */}
-          <Section icon={<Hash size={12} />} label="Market & direction">
-            <SymbolSelector
-              market={isSpot ? 'spot' : 'perps'}
-              value={symbol}
-              onChange={setSymbol}
-              disabled={isRunning}
-            />
-            <div>
-              <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Market type</label>
-              <div className="flex gap-2">
-                <button onClick={() => !isRunning && setIsSpot(true)} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50 pointer-events-none')}>Spot</button>
-                <button onClick={() => !isRunning && setIsSpot(false)} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', !isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50 pointer-events-none')}>Perps</button>
-              </div>
-            </div>
-            <Select
-              label="Direction"
-              value={side}
-              onChange={(e) => setSide(e.target.value as 'BUY' | 'SELL')}
-              disabled={isRunning}
-              options={[
-                { value: 'BUY', label: 'Buy' },
-                { value: 'SELL', label: 'Sell' },
-              ]}
-            />
-          </Section>
-
-          {/* ── Schedule ── */}
-          <Section icon={<Repeat size={12} />} label="Schedule">
-            <Input label="Amount per order" type="number" value={amountPerOrder} onChange={(e) => setAmountPerOrder(e.target.value)} disabled={isRunning} />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Interval (s)" type="number" value={intervalSec} onChange={(e) => setIntervalSec(e.target.value)} disabled={isRunning} hint="3600 = 1h" />
-              <Input label="Max orders" type="number" value={maxOrders} onChange={(e) => setMaxOrders(e.target.value)} disabled={isRunning} hint="0 = unbounded" />
-            </div>
-          </Section>
-
-          {/* ── Conditional buy ── */}
-          <Collapsible
-            open={advancedOpen}
-            onToggle={() => setAdvancedOpen((p) => !p)}
-            icon={<Zap size={12} />}
-            label="Conditional fire"
-            badge={condition !== 'NONE' ? `${condition === 'BUY_THE_DIP' ? `Dip ≥${dipPercent}%` : ''}` : undefined}
-          >
-            <div>
-              <label className="block text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-1.5">Mode</label>
-              <div className="flex gap-2">
-                {(['NONE','BUY_THE_DIP'] as const).map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => !isRunning && setCondition(c)}
-                    className={cn(
-                      'flex-1 py-2 text-[11px] rounded-lg border transition-all flex flex-col items-center gap-0.5',
-                      condition === c ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover',
-                      isRunning && 'opacity-50 pointer-events-none',
-                    )}
-                  >
-                    <span className="font-semibold uppercase tracking-wider">{c === 'NONE' ? 'Always fire' : 'Buy the dip'}</span>
-                    <span className="text-[9px] text-text-muted">{c === 'NONE' ? 'Every interval places an order' : 'Only fire on price drops'}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {condition === 'BUY_THE_DIP' && (
-              <Input
-                label="Dip % required"
-                type="number"
-                value={dipPercent}
-                onChange={(e) => setDipPercent(e.target.value)}
-                disabled={isRunning}
-                hint="Drop from prior fill (or session start) before the next buy fires"
-              />
-            )}
-          </Collapsible>
-
-          {/* ── Stop conditions ── */}
-          <Collapsible
-            open={stopOpen}
-            onToggle={() => setStopOpen((p) => !p)}
-            icon={<ShieldAlert size={12} />}
-            label="Stop conditions"
-            badge={
-              [
-                parseFloat(takeProfitPrice) > 0 && 'TP',
-                parseFloat(stopLossPrice) > 0 && 'SL',
-                parseFloat(takeProfitPct) > 0 && '%',
-              ].filter(Boolean).join(' · ') || undefined
-            }
-          >
-            <Input label="Take-profit price" type="number" value={takeProfitPrice} onChange={(e) => setTakeProfitPrice(e.target.value)} disabled={isRunning} hint="Stops once mid ≥ this" />
-            <Input label="Stop-loss price" type="number" value={stopLossPrice} onChange={(e) => setStopLossPrice(e.target.value)} disabled={isRunning} hint="Stops once mid ≤ this" />
-            <Input label="Profit % target" type="number" value={takeProfitPct} onChange={(e) => setTakeProfitPct(e.target.value)} disabled={isRunning} hint="Stops when unrealised PnL hits this %" />
-          </Collapsible>
-
-          {/* ── Live preview ── */}
-          <div className="rounded-xl border border-border bg-background/40 p-3 flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-              <Info size={10} /> Estimated run
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <PreviewRow label="Cadence"      value={`every ${intervalLabel}`} />
-              <PreviewRow label="Total run"    value={totalDurationLabel} />
-              <PreviewRow label="Total qty"    value={maxOrd > 0 ? `${totalAmount} ${symbol.split(/[_-]/)[0]}` : 'unbounded'} />
-              <PreviewRow label="Mode"         value={condition === 'BUY_THE_DIP' ? `Dip ≥${dipPercent}%` : 'Always fire'} />
-            </div>
-            {maxOrd === 0 && (
-              <div className="flex items-start gap-1.5 mt-1 text-[10px] text-amber-300">
-                <AlertTriangle size={10} className="shrink-0 mt-0.5" />
-                <span>Unbounded run — capital deployed grows until you stop the bot. Set a Max-orders cap for a known ceiling.</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="px-5 py-4 border-t border-border bg-background/40">
-          {!isRunning ? (
-            <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={startBot}>
-              Start DCA
-            </Button>
-          ) : (
-            <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={() => stopBot()}>
-              Stop
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* ─────────────── Live status ─────────────── */}
-      <div className="flex-1 p-4 sm:p-6 flex flex-col gap-5 lg:overflow-y-auto min-h-[300px] lg:min-h-0">
-        <BotPnlStrip botKey="dca" />
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Orders done" value={<NumberDisplay value={executedOrders} decimals={0} />} icon={<Hash size={16} />} />
-          <StatCard label="Total invested" value={<NumberDisplay value={totalInvested} prefix="$" />} icon={<DollarSign size={16} />} />
-          <StatCard label="Avg. price" value={<NumberDisplay value={avgPrice} />} icon={<Repeat size={16} />} />
-          <StatCard
-            label="Unrealised PnL"
-            value={<NumberDisplay value={Math.abs(pnlPercent)} suffix="%" prefix={pnlPercent >= 0 ? '+' : '-'} trend={pnlPercent >= 0 ? 'up' : 'down'} />}
-            icon={<TrendingUp size={16} />}
-            trend={pnlPercent >= 0 ? (pnlPercent > 0 ? 'up' : 'neutral') : 'down'}
-          />
-        </div>
-
-        {skippedOrders > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-200 text-xs">
-            <AlertTriangle size={14} />
-            <span>{skippedOrders} tick{skippedOrders === 1 ? '' : 's'} skipped — waiting for the configured dip before the next fire.</span>
-          </div>
-        )}
-
-        {/* DCA Summary */}
-        <div className="glass-card p-4">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-[10px] text-text-muted uppercase mb-1">Current Price</div>
-              <NumberDisplay value={currentPrice} className="text-lg font-semibold" />
-            </div>
-            <div>
-              <div className="text-[10px] text-text-muted uppercase mb-1">Avg. Entry</div>
-              <NumberDisplay value={avgPrice} className="text-lg font-semibold" />
-            </div>
-            <div>
-              <div className="text-[10px] text-text-muted uppercase mb-1">Difference</div>
-              <NumberDisplay
-                value={Math.abs(currentPrice - avgPrice)}
-                prefix={currentPrice >= avgPrice ? '+' : '-'}
-                trend={currentPrice >= avgPrice ? 'up' : 'down'}
-                className="text-lg font-semibold"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3 mt-3 text-[11px]">
-            <PreviewRow label="Filled qty"  value={totalQty > 0 ? totalQty.toFixed(6) : '—'} />
-            <PreviewRow label="Skipped"     value={`${skippedOrders}`} tone={skippedOrders > 0 ? 'warn' : 'mute'} />
-            <PreviewRow label="Cap"         value={maxOrd > 0 ? `${executedOrders}/${maxOrd}` : 'unbounded'} />
-          </div>
-        </div>
-
-        {/* Log */}
-        <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Activity Log</span>
-            <span className="text-[10px] text-text-muted">{logs.length} entries</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
-            {logs.map((log, i) => (
-              <div key={i} className="text-xs flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-hover/50 transition-colors font-mono animate-fade-in">
-                <span className="text-text-muted w-16 shrink-0 tabular-nums">{log.time}</span>
-                {log.side && (
-                  <span className={`badge ${log.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{log.side}</span>
-                )}
-                {log.amount != null && (
-                  <span className="tabular-nums text-text-secondary"><NumberDisplay value={log.amount} decimals={4} /></span>
-                )}
-                {log.price != null && (
-                  <span className="tabular-nums text-text-muted">@ <NumberDisplay value={log.price} /></span>
-                )}
-                {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
-              </div>
-            ))}
-            {logs.length === 0 && (
-              <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-                <div className="text-center">
-                  <Activity size={32} className="mx-auto mb-3 opacity-30" />
-                  <p>DCA activity logs will appear here.</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 };
 
-// ──────────────────────────────────────────────────────────────────────
-// Local presentational helpers (shared visual idiom with Grid + TWAP)
-// ──────────────────────────────────────────────────────────────────────
-
-interface SectionProps { icon: React.ReactNode; label: string; children: React.ReactNode; }
-const Section: React.FC<SectionProps> = ({ icon, label, children }) => (
-  <div className="flex flex-col gap-3">
-    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">{icon}<span>{label}</span></div>
-    {children}
-  </div>
-);
-
+// Local helpers
 interface CollapsibleProps { open: boolean; onToggle: () => void; icon: React.ReactNode; label: string; badge?: string; children: React.ReactNode; }
 const Collapsible: React.FC<CollapsibleProps> = ({ open, onToggle, icon, label, badge, children }) => (
-  <div className="rounded-xl border border-border bg-background/30">
-    <button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-3 py-2 text-[11px] uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
-      <span className="flex items-center gap-1.5">{icon}{label}</span>
+  <div className="rounded-xl border border-border bg-background/30 overflow-hidden">
+    <button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors bg-surface-2">
+      <span className="flex items-center gap-2">{icon}{label}</span>
       <span className="flex items-center gap-2">
-        {badge && <span className="text-[10px] font-mono normal-case tracking-normal text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-full px-2 py-0.5">{badge}</span>}
-        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        {badge && <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">{badge}</span>}
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </span>
     </button>
-    {open && <div className="border-t border-border p-3 flex flex-col gap-3">{children}</div>}
-  </div>
-);
-
-const PreviewRow: React.FC<{ label: string; value: string; tone?: 'good' | 'warn' | 'mute' }> = ({ label, value, tone = 'mute' }) => (
-  <div className="flex items-center justify-between gap-2">
-    <span className="text-text-muted">{label}</span>
-    <span className={cn('font-mono font-semibold', tone === 'good' ? 'text-emerald-400' : tone === 'warn' ? 'text-amber-300' : 'text-text-primary')}>
-      {value}
-    </span>
+    {open && <div className="p-4 flex flex-col gap-4 border-t border-border/50">{children}</div>}
   </div>
 );

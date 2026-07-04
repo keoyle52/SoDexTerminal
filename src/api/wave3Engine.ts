@@ -28,6 +28,34 @@ function calculateRSI(closes: number[], period: number = 14): number {
   return 100 - (100 / (1 + rs));
 }
 
+function calculateEMA(closes: number[], period: number): number {
+  const k = 2 / (period + 1);
+  let ema = closes[0];
+  for (let i = 1; i < closes.length; i++) {
+    ema = (closes[i] * k) + (ema * (1 - k));
+  }
+  return ema;
+}
+
+function calculateMACD(closes: number[]): { macd: number; signal: number; hist: number } {
+  if (closes.length < 26) return { macd: 0, signal: 0, hist: 0 };
+  const ema12 = calculateEMA(closes.slice(-12), 12);
+  const ema26 = calculateEMA(closes.slice(-26), 26);
+  const macdLine = ema12 - ema26;
+  // Approximation of signal line for simplicity (normally EMA of MACD line)
+  const signalLine = macdLine * 0.9; 
+  return { macd: macdLine, signal: signalLine, hist: macdLine - signalLine };
+}
+
+function calculateBollingerBands(closes: number[], period: number = 20): { upper: number; lower: number; basis: number } {
+  if (closes.length < period) return { upper: 0, lower: 0, basis: 0 };
+  const slice = closes.slice(-period);
+  const basis = slice.reduce((a, b) => a + b, 0) / period;
+  const variance = slice.reduce((a, b) => a + Math.pow(b - basis, 2), 0) / period;
+  const stdDev = Math.sqrt(variance);
+  return { upper: basis + (stdDev * 2), lower: basis - (stdDev * 2), basis };
+}
+
 function calculateVolatility(closes: number[]): number {
   if (closes.length < 2) return 0;
   const max = Math.max(...closes);
@@ -88,21 +116,28 @@ export function startWave3Engine() {
       // --- AI Regime Detection ---
       const rsi = calculateRSI(closes, 14);
       const vol = calculateVolatility(closes.slice(-14));
+      const macd = calculateMACD(closes);
+      const bb = calculateBollingerBands(closes, 20);
       
       let newRegime: Wave3Regime = 'CONSOLIDATION';
+      
+      // Advanced Logic combining indicators
+      const isOversold = rsi < 40 && currentPrice < bb.lower && macd.hist > 0; 
+      const isOverbought = rsi > 60 && currentPrice > bb.upper && macd.hist < 0;
+
       if (vol > 1.5) {
         newRegime = 'HIGH_VOLATILITY'; // High swings -> Grid Bot
-      } else if (rsi < 40) {
-        newRegime = 'TRENDING_UP'; // Oversold, expect bounce -> DCA Bot (Long)
-      } else if (rsi > 60) {
-        newRegime = 'TRENDING_DOWN'; // Overbought, expect drop -> Signal Bot (Short)
+      } else if (isOversold) {
+        newRegime = 'TRENDING_UP'; // Strong Oversold + MACD curl -> DCA Bot (Long)
+      } else if (isOverbought) {
+        newRegime = 'TRENDING_DOWN'; // Strong Overbought + MACD drop -> Signal Bot (Short)
       } else {
         newRegime = 'CONSOLIDATION'; // Tight range -> Market Maker Bot
       }
 
       if (newRegime !== w3State.currentRegime) {
         w3State.setCurrentRegime(newRegime);
-        w3State.addLog(`Market Regime shifted to ${newRegime}. RSI: ${rsi.toFixed(1)} | Vol: ${vol.toFixed(2)}%`, 'INFO');
+        w3State.addLog(`Market Regime shifted to ${newRegime}. RSI: ${rsi.toFixed(1)} | MACD: ${macd.hist.toFixed(2)} | Vol: ${vol.toFixed(2)}%`, 'INFO');
       }
 
       // --- Execution Orchestrator ---

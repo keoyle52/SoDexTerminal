@@ -109,14 +109,6 @@ const Wave3AgentConsole: React.FC = () => {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted font-bold">%</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between bg-background/40 border border-border/50 rounded-xl px-4 mt-6">
-                  <div>
-                    <div className="text-xs font-bold text-text-primary">Fee Drag Prot.</div>
-                  </div>
-                  <button onClick={() => w3.setFeeDragProtection(!w3.feeDragProtection)} className={cn("w-10 h-5 rounded-full transition-colors relative", w3.feeDragProtection ? "bg-emerald-500" : "bg-border")}>
-                    <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-300", w3.feeDragProtection ? "translate-x-5" : "translate-x-0")} />
-                  </button>
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

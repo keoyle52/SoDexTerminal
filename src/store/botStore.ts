@@ -168,11 +168,21 @@ export interface SignalPosition {
 
 export type ConflictResolution = 'CLOSE_AND_REVERSE' | 'CLOSE_ONLY' | 'IGNORE';
 
+export interface BaseBotState {
+  status: 'IDLE' | 'ARMED' | 'RUNNING' | 'ERROR';
+  isSpot: boolean;
+  symbol: string;
+  leverage: string;
+  executionMode: 'SESSION' | 'SINGLE';
+  setField: <K extends keyof this>(key: K, value: this[K]) => void;
+}
+
 interface SignalBotState {
   // ── Config ──
   symbol: string;
   isSpot: boolean;
   leverage: string;
+  executionMode: 'SESSION' | 'SINGLE';
   amountUsdt: string;
   takeProfitPct: string;
   stopLossPct: string;

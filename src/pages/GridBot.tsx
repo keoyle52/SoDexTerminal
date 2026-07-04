@@ -24,6 +24,7 @@ import { NumberDisplay } from '../components/common/NumberDisplay';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotLayout } from '../components/bots/BotLayout';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
@@ -118,6 +119,7 @@ export const GridBot: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [executionMode, setExecutionMode] = useState<'SESSION' | 'SINGLE'>('SESSION');
   const [stopConditionsOpen, setStopConditionsOpen] = useState(false);
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const lastPriceRef = useRef<number | null>(null);
@@ -1001,149 +1003,88 @@ export const GridBot: React.FC = () => {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-
-        <div className="px-5 py-4 border-t border-border bg-background/40">
-          {!isLocked ? (
-            <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={startBot}>
-              Start Bot
-            </Button>
-          ) : (
-            <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={() => stopBot()}>
-              {isArmed ? 'Cancel (waiting)' : 'Stop'}
-            </Button>
-          )}
-        </div>
+  // We will build the UI components to pass to BotLayout
+  const configPanel = (
+    <>
+      <div>
+        <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
+        <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol.replace('-USD', '').replace('-USDC', '')} onChange={(c) => state.setField('symbol', c + (state.isSpot ? '-USDC' : '-USD'))} />
       </div>
-
-      {/* ─────────────── Live status ─────────────── */}
-      <div className="flex-1 p-4 sm:p-6 flex flex-col gap-5 lg:overflow-y-auto min-h-[300px] lg:min-h-0">
-        <BotPnlStrip botKey="grid" />
-
-        {/* Status banners */}
-        {isArmed && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-200 text-xs">
-            <Info size={14} />
-            <span>
-              Armed — waiting for last price to {state.triggerDirection === 'CROSS_UP' ? 'rise above' : 'drop below'} <strong>{state.triggerPrice}</strong>.
-              Live mid: {lastPrice ? lastPrice.toFixed(2) : '…'}
-            </span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Active orders"   value={<NumberDisplay value={state.activeOrders} decimals={0} />} icon={<Layers size={16} />} />
-          <StatCard label="Total invested"  value={<NumberDisplay value={state.totalInvestment} prefix="$" />} icon={<DollarSign size={16} />} />
-          <StatCard label="Completed grids" value={<NumberDisplay value={state.completedGrids} decimals={0} />} icon={<CheckCircle2 size={16} />} />
-          <StatCard
-            label="Realized PnL"
-            value={<NumberDisplay value={state.realizedPnl} prefix="$" trend={state.realizedPnl >= 0 ? (state.realizedPnl > 0 ? 'up' : 'neutral') : 'down'} />}
-            icon={<TrendingUp size={16} />}
-            trend={state.realizedPnl >= 0 ? (state.realizedPnl > 0 ? 'up' : 'neutral') : 'down'}
-          />
-        </div>
-
-        {/* Grid Levels */}
-        <div className="glass-card flex flex-col overflow-hidden p-0" style={{ maxHeight: '260px' }}>
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Grid Levels</span>
-            <span className="badge badge-primary">
-              <Grid2X2 size={10} />
-              {gridLevels.filter((l) => l.status === 'ACTIVE').length} active
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3">
-            {gridLevels.length > 0 ? (
-              <div className="flex flex-col gap-0.5">
-                {[...gridLevels].reverse().map((level, i) => {
-                  const pct = gridLevels.length > 1
-                    ? ((level.price - gridLevels[0].price) / (gridLevels[gridLevels.length - 1].price - gridLevels[0].price)) * 100
-                    : 50;
-                  return (
-                    <div key={i} className="flex items-center gap-3 px-3 py-1.5 text-xs font-mono rounded-lg hover:bg-surface-hover/50 transition-colors group">
-                      <span className="w-24 tabular-nums text-text-primary">{level.price.toFixed(2)}</span>
-                      {level.side ? (
-                        <span className={`badge ${level.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{level.side}</span>
-                      ) : (
-                        <span className="w-12 text-text-muted">—</span>
-                      )}
-                      <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            level.status === 'ACTIVE' ? 'bg-primary/60' :
-                            level.status === 'FILLED' ? 'bg-success/60' :
-                            'bg-border'
-                          }`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span className={`text-[10px] font-sans ${
-                        level.status === 'ACTIVE' ? 'text-primary' :
-                        level.status === 'FILLED' ? 'text-success' :
-                        'text-text-muted'
-                      }`}>
-                        {level.status === 'ACTIVE' ? '● Active' :
-                         level.status === 'FILLED' ? '✓ Filled' :
-                         '○ Empty'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center text-text-muted pt-6 text-sm">
-                Grid levels will appear here once the bot starts.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Logs */}
-        <div className="flex-1 glass-card flex flex-col overflow-hidden p-0">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Activity Log</span>
-            <span className="text-[10px] text-text-muted">{logs.length} entries</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
-            {logs.map((log, i) => (
-              <div key={i} className="text-xs flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-hover/50 transition-colors font-mono animate-fade-in">
-                <span className="text-text-muted w-16 shrink-0 tabular-nums">{log.time}</span>
-                {log.side && (
-                  <span className={`badge ${log.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{log.side}</span>
-                )}
-                {log.message && <span className="text-text-secondary truncate">{log.message}</span>}
-              </div>
-            ))}
-            {logs.length === 0 && (
-              <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-                Bot activity logs will appear here.
-              </div>
-            )}
-          </div>
-        </div>
+      
+      <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
+        <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
+        <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
       </div>
+      
+      <Input label="Investment (USDT)" value={state.investmentUsdt} onChange={(v) => state.setField('investmentUsdt', v)} type="number" placeholder="1000" />
+      
+      <Collapsible open={advancedOpen} onToggle={() => setAdvancedOpen(!advancedOpen)} icon={<Grid2X2 size={14} />} label="Grid Parameters" badge={state.gridCount + " Grids"}>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Lower Price" value={state.lowerPrice} onChange={(v) => state.setField('lowerPrice', v)} type="number" />
+          <Input label="Upper Price" value={state.upperPrice} onChange={(v) => state.setField('upperPrice', v)} type="number" />
+        </div>
+        <Input label="Grid Count" value={state.gridCount} onChange={(v) => state.setField('gridCount', v)} type="number" />
+        <Input label="Amount per Grid" value={state.amountPerGrid} onChange={(v) => state.setField('amountPerGrid', v)} type="number" />
+      </Collapsible>
+    </>
+  );
+
+  const statsPanel = (
+    <div className="grid grid-cols-2 gap-3">
+      <StatCard label="Realized PnL" value={<NumberDisplay value={state.realizedPnl} prefix="$" trend={state.realizedPnl >= 0 ? 'up' : 'down'} />} />
+      <StatCard label="Active Orders" value={state.activeOrders} />
     </div>
+  );
+
+  const logsPanel = (
+    <div className="h-full overflow-y-auto custom-scrollbar p-3 space-y-2">
+      {logs.length === 0 ? (
+        <div className="h-full flex items-center justify-center text-text-muted text-xs">Waiting for execution...</div>
+      ) : (
+        logs.map((log, i) => (
+          <div key={i} className="flex gap-3 text-xs font-mono">
+            <span className="text-text-muted/50">{log.time}</span>
+            <span className={cn(log.side === 'BUY' ? 'text-emerald-400' : 'text-red-400')}>{log.side}</span>
+            <span>{log.message}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <BotLayout
+        title="Grid Bot"
+        icon={Grid2X2}
+        status={state.status}
+        symbol={symbol}
+        market={state.isSpot ? 'spot' : 'perps'}
+        configPanel={configPanel}
+        statsPanel={statsPanel}
+        logsPanel={logsPanel}
+        isLocked={isLocked}
+        onStart={() => setShowConfirm(true)}
+        onStop={handleStop}
+        onAutoConfig={handleAiAutoConfig}
+        autoConfigBusy={autoConfigBusy}
+      />
+      <RiskSummaryModal
+        isOpen={showConfirm}
+        title="Confirm Grid Strategy"
+        botName="Grid Bot"
+        rows={confirmRows}
+        onCancel={() => setShowConfirm(false)}
+        onConfirm={handleConfirmStart}
+        disclaimer="Grid bots place multiple limit orders. In highly trending markets, you may experience impermanent loss."
+      />
+    </>
   );
 };
 
 // ──────────────────────────────────────────────────────────────────────
 // Local presentational helpers
 // ──────────────────────────────────────────────────────────────────────
-
-interface SectionProps {
-  icon: React.ReactNode;
-  label: string;
-  children: React.ReactNode;
-}
-const Section: React.FC<SectionProps> = ({ icon, label, children }) => (
-  <div className="flex flex-col gap-3">
-    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-      {icon}<span>{label}</span>
-    </div>
-    {children}
-  </div>
-);
 
 interface CollapsibleProps {
   open: boolean;
@@ -1154,19 +1095,19 @@ interface CollapsibleProps {
   children: React.ReactNode;
 }
 const Collapsible: React.FC<CollapsibleProps> = ({ open, onToggle, icon, label, badge, children }) => (
-  <div className="rounded-xl border border-border bg-background/30">
+  <div className="rounded-xl border border-border bg-background/30 overflow-hidden">
     <button
       type="button"
       onClick={onToggle}
-      className="w-full flex items-center justify-between px-3 py-2 text-[11px] uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors"
+      className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors bg-surface-2"
     >
-      <span className="flex items-center gap-1.5">{icon}{label}</span>
+      <span className="flex items-center gap-2">{icon}{label}</span>
       <span className="flex items-center gap-2">
-        {badge && <span className="text-[10px] font-mono normal-case tracking-normal text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-full px-2 py-0.5">{badge}</span>}
-        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        {badge && <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">{badge}</span>}
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </span>
     </button>
-    {open && <div className="border-t border-border p-3 flex flex-col gap-3">{children}</div>}
+    {open && <div className="p-4 flex flex-col gap-4 border-t border-border/50">{children}</div>}
   </div>
 );
 
