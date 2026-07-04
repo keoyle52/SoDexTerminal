@@ -49,6 +49,12 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
         </div>
         
         <div className="p-5 flex-1 flex flex-col gap-6">
+          {onAutoConfig && !isLocked && (
+             <button onClick={onAutoConfig} disabled={autoConfigBusy} className="w-full py-3 border border-purple-500/30 text-purple-400 font-bold rounded-xl hover:bg-purple-500/10 transition-colors flex items-center justify-center gap-2 text-xs">
+               {autoConfigBusy ? <Activity size={14} className="animate-spin" /> : <Zap size={14} />} 
+               {autoConfigBusy ? "Analyzing..." : "AI Auto-Configure"}
+             </button>
+          )}
           <div className="space-y-4">
             {configPanel}
           </div>
@@ -64,12 +70,6 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
                </button>
             )}
             
-            {onAutoConfig && !isLocked && (
-               <button onClick={onAutoConfig} disabled={autoConfigBusy} className="w-full py-3 border border-purple-500/30 text-purple-400 font-bold rounded-xl hover:bg-purple-500/10 transition-colors flex items-center justify-center gap-2 text-xs">
-                 {autoConfigBusy ? <Activity size={14} className="animate-spin" /> : <Zap size={14} />} 
-                 {autoConfigBusy ? "Analyzing..." : "AI Auto-Configure"}
-               </button>
-            )}
           </div>
         </div>
       </div>

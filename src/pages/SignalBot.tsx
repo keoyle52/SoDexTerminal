@@ -15,6 +15,8 @@ import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { Input, Select, Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
+import { BotLayout } from '../components/bots/BotLayout';
+import { fetchTickers } from '../api/services';
 import { type SeriesMarker, type Time } from 'lightweight-charts';
 
 // Polling intervals
@@ -741,29 +743,202 @@ export const SignalBot: React.FC = () => {
     state.setField('signals', updated);
   };
 
-  return (
-    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-0 p-3 sm:p-5 md:p-6">
-      {/* ─────────────── Settings Panel ─────────────── */}
-      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-border bg-surface/30 backdrop-blur-sm flex flex-col shrink-0 lg:h-full lg:overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold text-sm flex items-center gap-2">
-            <Radio size={16} className="text-primary" />
-            Signal Bot
-          </h2>
-          <StatusBadge status={state.status} />
-        </div>
 
-        <div className="flex-1 lg:overflow-y-auto px-4 sm:px-5 py-4 flex flex-col gap-6">
-          {/* ── AI Auto-Configure ── one-click smart defaults for beginners.
-               Analyzes current market (ATR, trend, volatility) and picks the
-               best signal strategy, parameters, TP/SL, and timing. */}
+  const [autoPairBusy, setAutoPairBusy] = useState(false);
+  const handleAutoSelectPair = async () => {
+    setAutoPairBusy(true);
+    try {
+      const tickers = await fetchTickers(state.isSpot ? 'spot' : 'perps');
+      if (Array.isArray(tickers) && tickers.length > 0) {
+        const sorted = tickers.sort((a: any, b: any) => (parseFloat(b.quoteVolume) || 0) - (parseFloat(a.quoteVolume) || 0));
+        const top = sorted[0] as any;
+        if (top && top.symbol) {
+          state.setField('symbol', top.symbol);
+          toast.success(`Auto-selected highest volume pair: ${top.symbol}`);
+        }
+      }
+    } catch (e) {
+      toast.error('Failed to auto-select pair');
+    } finally {
+      setAutoPairBusy(false);
+    }
+  };
+
+  const configPanel = (
+    <>
+      <div className="flex flex-col gap-3">
+        <label className="text-xs font-bold text-text-muted uppercase tracking-wider block">Trading Pair</label>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(val) => state.setField('symbol', val)} disabled={isLocked} />
+          </div>
+          <Button variant="outline" onClick={handleAutoSelectPair} disabled={isLocked || autoPairBusy} className="px-3" title="Auto-Select High Volume Pair">
+            {autoPairBusy ? <Activity className="animate-spin" size={16} /> : <Zap size={16} />}
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { if (!isLocked) state.setField('isSpot', true); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}>Spot</button>
+          <button onClick={() => { if (!isLocked) state.setField('isSpot', false); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', !state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}>Perps</button>
+        </div>
+        {!state.isSpot && (
+          <Input label="Leverage (x)" type="number" value={state.leverage} onChange={(e) => state.setField('leverage', e.target.value)} disabled={isLocked} />
+        )}
+        <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
+          <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
+          <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 mt-3">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
+          <Target size={12} /><span>Position Settings</span>
+        </div>
+        <Input label="Order Size (USDT)" type="number" value={state.amountUsdt} onChange={(e) => state.setField('amountUsdt', e.target.value)} disabled={isLocked} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Take Profit (%)" type="number" value={state.takeProfitPct} onChange={(e) => state.setField('takeProfitPct', e.target.value)} disabled={isLocked} hint="0 = disabled" />
+          <Input label="Stop Loss (%)" type="number" value={state.stopLossPct} onChange={(e) => state.setField('stopLossPct', e.target.value)} disabled={isLocked} hint="0 = disabled" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 mt-3">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
+          <Zap size={12} /><span>Signal Configuration</span>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Select label="Combination Mode" value={state.combineMode} onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} disabled={isLocked} options={[{ value: 'ANY', label: 'ANY - If any signal triggers' }, { value: 'ALL', label: 'ALL - All enabled must agree' }, { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }]} />
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-xs font-semibold">Active Signals</span>
+        </div>
+        <div className="flex flex-col gap-3">
+          {state.signals.map(sig => (
+            <div key={sig.id} className={cn("border border-border rounded-xl p-3 transition-colors", sig.enabled ? "bg-primary/5 border-primary/30" : "bg-background/40 opacity-70")}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">{sig.label}</span>
+                <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
+              </div>
+              {sig.enabled && (
+                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
+                  {Object.entries(sig.params).map(([key, val]) => (
+                    <div key={key}>
+                      <label className="block text-[9px] text-text-muted uppercase mb-1">{PARAM_LABELS[key] || key}</label>
+                      <input type="number" className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:border-primary outline-none" value={val as number} onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} disabled={isLocked} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background/30 mt-3">
+        <button onClick={() => setAdvancedOpen(!advancedOpen)} className="w-full flex items-center justify-between px-3 py-2 text-[11px] uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors">
+          <span className="flex items-center gap-1.5"><Settings2 size={12} />Advanced</span>
+        </button>
+        {advancedOpen && (
+          <div className="border-t border-border p-3 flex flex-col gap-3">
+            <Select label="Kline Interval" value={state.klineInterval} onChange={(e) => state.setField('klineInterval', e.target.value)} disabled={isLocked} options={[{ value: '1m', label: '1 Minute' }, { value: '5m', label: '5 Minutes' }, { value: '15m', label: '15 Minutes' }, { value: '1h', label: '1 Hour' }, { value: '4h', label: '4 Hours' }]} />
+            <Input label="Check Interval (sec)" type="number" value={state.checkInterval} onChange={(e) => state.setField('checkInterval', e.target.value)} disabled={isLocked} />
+            <Select label="On Conflict" value={state.onConflictingSignal} onChange={(e) => state.setField('onConflictingSignal', e.target.value as ConflictResolution)} disabled={isLocked} options={[{ value: 'CLOSE_AND_REVERSE', label: 'Close & Reverse' }, { value: 'CLOSE_ONLY', label: 'Close Only' }, { value: 'IGNORE', label: 'Ignore Signal' }]} />
+            <Input label="Max Open Positions" type="number" value={state.maxOpenPositions} onChange={(e) => state.setField('maxOpenPositions', e.target.value)} disabled={isLocked} />
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  const statsPanel = (
+    <div className="flex flex-col gap-4">
+      <BotPnlStrip botKey="signal" />
+      {isLocked && activeSignals.length > 0 && (
+        <div className="glass-card p-4 mt-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3 flex items-center gap-2">
+            <Activity size={14} /> Live Signal Status
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {activeSignals.map((sig, i) => (
+              <div key={i} className="border border-border/50 rounded-lg p-2.5 bg-background/50">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-medium">{sig.label}</span>
+                  <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", sig.direction === 'LONG' ? "bg-success/20 text-success" : sig.direction === 'SHORT' ? "bg-danger/20 text-danger" : "bg-text-muted/20 text-text-muted")}>{sig.direction}</span>
+                </div>
+                <div className="text-[10px] text-text-muted truncate" title={sig.description}>{sig.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="h-[400px] border border-border bg-background flex flex-col shrink-0 mt-2 rounded-xl overflow-hidden">
+        <TradingChart symbol={state.symbol} market={state.isSpot ? 'spot' : 'perps'} height={400} markers={chartMarkers} className="border-none rounded-none" />
+      </div>
+    </div>
+  );
+
+  const logsPanel = (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto p-2">
+        {state.activePositions.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Open Positions</div>
+            <div className="flex flex-col gap-2">
+              {state.activePositions.map(pos => (
+                <div key={pos.id} className="border border-border rounded-lg p-3 bg-surface hover:bg-surface-hover transition-colors">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("badge", pos.side === 'LONG' ? "badge-success" : "badge-danger")}>{pos.side} {pos.leverage}x</span>
+                      <span className="font-semibold text-sm">{pos.symbol}</span>
+                    </div>
+                    <button onClick={() => closePosition(pos.id)} className="text-[10px] px-2 py-1 bg-danger/10 text-danger hover:bg-danger/20 rounded">Close</button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mt-2">
+                    <div><div className="text-text-muted mb-0.5">Entry</div><div className="font-mono">{pos.entryPrice.toFixed(2)}</div></div>
+                    <div><div className="text-text-muted mb-0.5">Size</div><div className="font-mono">{pos.quantity.toFixed(4)}</div></div>
+                    <div><div className="text-text-muted mb-0.5">TP/SL</div><div className="font-mono">{pos.tpPrice ? pos.tpPrice.toFixed(1) : '-'} / {pos.slPrice ? pos.slPrice.toFixed(1) : '-'}</div></div>
+                    <div>
+                      <div className="text-text-muted mb-0.5">PnL</div>
+                      <div className={cn("font-mono font-medium", pos.unrealizedPnl >= 0 ? "text-success" : "text-danger")}>
+                        {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Activity Log</div>
+        {logs.length === 0 ? (
+          <div className="flex items-center justify-center text-sm text-text-muted py-4">Logs will appear here</div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {logs.map((log, i) => (
+              <div key={i} className="flex gap-3 text-[11px] p-2 rounded hover:bg-white/5">
+                <span className="text-text-muted shrink-0 tabular-nums">{log.time}</span>
+                <span className={cn(log.type === 'error' ? 'text-danger' : log.type === 'warn' ? 'text-amber-400' : log.type === 'success' ? 'text-success' : 'text-text-primary')}>{log.msg}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <BotLayout
+      title="Wave 3 Signal Bot"
+      icon={Radio}
+      status={state.status}
+      symbol={state.symbol}
+      market={state.isSpot ? 'spot' : 'perps'}
+      configPanel={
+        <>
           <AutoConfigureButton
             symbol={state.symbol}
             market={state.isSpot ? 'spot' : 'perps'}
             recommender={recommendSignalBot}
             hidden={isLocked}
             onApply={(preset) => {
-              // Apply simple string/number fields
               if (preset.leverage)           state.setField('leverage', String(preset.leverage));
               if (preset.amountUsdt)         state.setField('amountUsdt', String(preset.amountUsdt));
               if (preset.takeProfitPct)      state.setField('takeProfitPct', String(preset.takeProfitPct));
@@ -775,331 +950,22 @@ export const SignalBot: React.FC = () => {
               if (preset.maxOpenPositions)   state.setField('maxOpenPositions', String(preset.maxOpenPositions));
               if (preset.onConflictingSignal) state.setField('onConflictingSignal', preset.onConflictingSignal as ConflictResolution);
               if (preset.isSpot !== undefined) state.setField('isSpot', preset.isSpot === 'true');
-              // Deserialise and apply signal configs
               if (preset.signalsJson) {
                 try {
                   const parsed = JSON.parse(String(preset.signalsJson));
                   if (Array.isArray(parsed)) state.setField('signals', parsed);
-                } catch { /* ignore malformed JSON */ }
+                } catch { }
               }
             }}
           />
-
-          <div className="flex flex-col gap-3">
-            <SymbolSelector
-              market={state.isSpot ? 'spot' : 'perps'}
-              value={state.symbol}
-              onChange={(val) => state.setField('symbol', val)}
-              disabled={isLocked}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => { if (!isLocked) state.setField('isSpot', true); }}
-                className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}
-              >Spot</button>
-              <button
-                onClick={() => { if (!isLocked) state.setField('isSpot', false); }}
-                className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', !state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}
-              >Perps</button>
-            </div>
-            {!state.isSpot && (
-              <Input
-                label="Leverage (x)"
-                type="number"
-                value={state.leverage}
-                onChange={(e) => state.setField('leverage', e.target.value)}
-                disabled={isLocked}
-              />
-            )}
-            <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
-              <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
-              <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-              <Target size={12} /><span>Position Settings</span>
-            </div>
-            <Input
-              label="Order Size (USDT)"
-              type="number"
-              value={state.amountUsdt}
-              onChange={(e) => state.setField('amountUsdt', e.target.value)}
-              disabled={isLocked}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Take Profit (%)"
-                type="number"
-                value={state.takeProfitPct}
-                onChange={(e) => state.setField('takeProfitPct', e.target.value)}
-                disabled={isLocked}
-                hint="0 = disabled"
-              />
-              <Input
-                label="Stop Loss (%)"
-                type="number"
-                value={state.stopLossPct}
-                onChange={(e) => state.setField('stopLossPct', e.target.value)}
-                disabled={isLocked}
-                hint="0 = disabled"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
-              <Zap size={12} /><span>Signal Configuration</span>
-            </div>
-            
-            <div className="flex flex-col gap-2">
-              <Select
-                label="Combination Mode"
-                value={state.combineMode}
-                onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)}
-                disabled={isLocked}
-                options={[
-                  { value: 'ANY', label: 'ANY - If any signal triggers' },
-                  { value: 'ALL', label: 'ALL - All enabled must agree' },
-                  { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }
-                ]}
-              />
-            </div>
-
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-xs font-semibold">Active Signals</span>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {state.signals.map(sig => (
-                <div key={sig.id} className={cn("border border-border rounded-xl p-3 transition-colors", sig.enabled ? "bg-primary/5 border-primary/30" : "bg-background/40 opacity-70")}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">{sig.label}</span>
-                    <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
-                  </div>
-                  {sig.enabled && (
-                    <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
-                      {Object.entries(sig.params).map(([key, val]) => (
-                        <div key={key}>
-                          <label className="block text-[9px] text-text-muted uppercase mb-1">{PARAM_LABELS[key] || key}</label>
-                          <input 
-                            type="number" 
-                            className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:border-primary outline-none"
-                            value={val}
-                            onChange={(e) => updateSignalParam(sig.id, key, e.target.value)}
-                            disabled={isLocked}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border bg-background/30">
-            <button
-              onClick={() => setAdvancedOpen(!advancedOpen)}
-              className="w-full flex items-center justify-between px-3 py-2 text-[11px] uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <span className="flex items-center gap-1.5"><Settings2 size={12} />Advanced</span>
-            </button>
-            {advancedOpen && (
-              <div className="border-t border-border p-3 flex flex-col gap-3">
-                 <Select
-                  label="Kline Interval"
-                  value={state.klineInterval}
-                  onChange={(e) => state.setField('klineInterval', e.target.value)}
-                  disabled={isLocked}
-                  options={[
-                    { value: '1m', label: '1 Minute' },
-                    { value: '5m', label: '5 Minutes' },
-                    { value: '15m', label: '15 Minutes' },
-                    { value: '1h', label: '1 Hour' },
-                    { value: '4h', label: '4 Hours' },
-                  ]}
-                />
-                <Input
-                  label="Check Interval (sec)"
-                  type="number"
-                  value={state.checkInterval}
-                  onChange={(e) => state.setField('checkInterval', e.target.value)}
-                  disabled={isLocked}
-                />
-                <Select
-                  label="On Conflict"
-                  value={state.onConflictingSignal}
-                  onChange={(e) => state.setField('onConflictingSignal', e.target.value as ConflictResolution)}
-                  disabled={isLocked}
-                  options={[
-                    { value: 'CLOSE_AND_REVERSE', label: 'Close & Reverse' },
-                    { value: 'CLOSE_ONLY', label: 'Close Only' },
-                    { value: 'IGNORE', label: 'Ignore Signal' },
-                  ]}
-                />
-                <Input
-                  label="Max Open Positions"
-                  type="number"
-                  value={state.maxOpenPositions}
-                  onChange={(e) => state.setField('maxOpenPositions', e.target.value)}
-                  disabled={isLocked}
-                />
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        <div className="px-5 py-4 border-t border-border bg-background/40 shrink-0">
-          {!isLocked ? (
-            <Button variant="primary" fullWidth size="lg" icon={<Play size={16} />} onClick={startBot}>
-              Start Bot
-            </Button>
-          ) : (
-            <Button variant="danger" fullWidth size="lg" icon={<Square size={16} />} onClick={() => stopBot()}>
-              Stop Bot
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* ─────────────── Dashboard ─────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        
-        {/* Chart Area */}
-        <div className="h-[400px] border-b border-border bg-background flex flex-col shrink-0">
-           <TradingChart symbol={state.symbol} market={state.isSpot ? 'spot' : 'perps'} height={400} markers={chartMarkers} className="border-none rounded-none" />
-        </div>
-
-        {/* Status Area */}
-        <div className="flex-1 p-4 sm:p-5 flex flex-col gap-5 lg:overflow-y-auto min-h-[300px] lg:min-h-0">
-          <BotPnlStrip botKey="signal" />
-
-          {/* Demo Quick-Test panel — only in demo mode + while bot is running.
-              Lets the user fire a synthetic LONG/SHORT to exercise the trade
-              + TP/SL pipeline without waiting for an organic signal. */}
-          {isDemoMode && isLocked && (
-            <div className="glass-card p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2 flex items-center gap-2">
-                <Zap size={14} className="text-primary" /> Demo Quick-Test
-              </h3>
-              <p className="text-[11px] text-text-muted mb-3">
-                Open a synthetic position immediately to verify the trade pipeline + TP/SL detection. Bypasses signal evaluation.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => void forceTestSignal('LONG')}
-                  className="flex-1 py-2 text-xs font-medium rounded-lg border border-success/40 bg-success/10 text-success hover:bg-success/20 transition-colors"
-                >
-                  Test LONG
-                </button>
-                <button
-                  onClick={() => void forceTestSignal('SHORT')}
-                  className="flex-1 py-2 text-xs font-medium rounded-lg border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
-                >
-                  Test SHORT
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Active Signals Mini Dashboard */}
-          {isLocked && activeSignals.length > 0 && (
-            <div className="glass-card p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3 flex items-center gap-2">
-                <Activity size={14} /> Live Signal Status
-              </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {activeSignals.map((sig, i) => (
-                  <div key={i} className="border border-border/50 rounded-lg p-2.5 bg-background/50">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs font-medium">{sig.label}</span>
-                      <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", 
-                        sig.direction === 'LONG' ? "bg-success/20 text-success" : 
-                        sig.direction === 'SHORT' ? "bg-danger/20 text-danger" : "bg-text-muted/20 text-text-muted"
-                      )}>{sig.direction}</span>
-                    </div>
-                    <div className="text-[10px] text-text-muted truncate" title={sig.description}>{sig.description}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Active Positions */}
-            <div className="glass-card p-0 flex flex-col h-64">
-              <div className="px-4 py-3 border-b border-border flex justify-between items-center bg-background/30">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Open Positions</span>
-                <span className="badge badge-primary">{state.activePositions.length}</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {state.activePositions.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-sm text-text-muted">No open positions</div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {state.activePositions.map(pos => (
-                      <div key={pos.id} className="border border-border rounded-lg p-3 bg-surface hover:bg-surface-hover transition-colors">
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("badge", pos.side === 'LONG' ? "badge-success" : "badge-danger")}>{pos.side} {pos.leverage}x</span>
-                            <span className="font-semibold text-sm">{pos.symbol}</span>
-                          </div>
-                          <button onClick={() => closePosition(pos.id)} className="text-[10px] px-2 py-1 bg-danger/10 text-danger hover:bg-danger/20 rounded">Close</button>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mt-2">
-                          <div><div className="text-text-muted mb-0.5">Entry</div><div className="font-mono">{pos.entryPrice.toFixed(2)}</div></div>
-                          <div><div className="text-text-muted mb-0.5">Size</div><div className="font-mono">{pos.quantity.toFixed(4)}</div></div>
-                          <div><div className="text-text-muted mb-0.5">TP/SL</div><div className="font-mono">{pos.tpPrice ? pos.tpPrice.toFixed(1) : '-'} / {pos.slPrice ? pos.slPrice.toFixed(1) : '-'}</div></div>
-                          <div>
-                            <div className="text-text-muted mb-0.5">PnL</div>
-                            <div className={cn("font-mono font-medium", pos.unrealizedPnl >= 0 ? "text-success" : "text-danger")}>
-                              {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(2)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[9px] text-text-muted flex gap-1 items-center">
-                           <Activity size={10} /> Triggered by: {pos.triggeredBy.join(', ')}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Logs */}
-            <div className="glass-card p-0 flex flex-col h-64">
-              <div className="px-4 py-3 border-b border-border bg-background/30">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Activity Log</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {logs.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-sm text-text-muted">Logs will appear here</div>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    {logs.map((log, i) => (
-                      <div key={i} className="flex gap-3 text-[11px] p-2 rounded hover:bg-white/5">
-                        <span className="text-text-muted shrink-0 tabular-nums">{log.time}</span>
-                        <span className={cn(
-                          log.type === 'error' ? 'text-danger' : 
-                          log.type === 'warn' ? 'text-amber-400' :
-                          log.type === 'success' ? 'text-success' : 'text-text-primary'
-                        )}>
-                          {log.msg}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-        </div>
-      </div>
-    </div>
+          {configPanel}
+        </>
+      }
+      statsPanel={statsPanel}
+      logsPanel={logsPanel}
+      isLocked={isLocked}
+      onStart={startBot}
+      onStop={() => void stopBot()}
+    />
   );
 };

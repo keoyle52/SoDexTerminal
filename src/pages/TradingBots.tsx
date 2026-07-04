@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle, 
-  ShieldAlert, ShieldCheck, Cpu, Brain, Newspaper, X
+  ShieldAlert, ShieldCheck, Cpu, Brain, Newspaper, X, Zap
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { fetchTickers } from '../api/services';
 import { useWave3Store } from '../store/wave3Store';
 import { useRiskStore } from '../store/riskStore';
 import { SymbolSelector } from '../components/common/SymbolSelector';
@@ -28,6 +30,26 @@ const Wave3AgentConsole: React.FC = () => {
   const isSoso = w3.targetCoin.startsWith('SOSO');
 
   const [showInfo, setShowInfo] = useState(false);
+  const [autoPairBusy, setAutoPairBusy] = useState(false);
+
+  const handleAutoSelectPair = async () => {
+    setAutoPairBusy(true);
+    try {
+      const tickers = await fetchTickers(w3.market);
+      if (Array.isArray(tickers) && tickers.length > 0) {
+        const sorted = tickers.sort((a: any, b: any) => (parseFloat(b.quoteVolume) || 0) - (parseFloat(a.quoteVolume) || 0));
+        const top = sorted[0] as any;
+        if (top && top.symbol) {
+          handleAssetChange(top.symbol.replace('-USD', ''));
+          toast.success(`Auto-selected highest volume pair: ${top.symbol}`);
+        }
+      }
+    } catch (e) {
+      toast.error('Failed to auto-select pair');
+    } finally {
+      setAutoPairBusy(false);
+    }
+  };
 
   const handleStartRequest = () => {
     if (w3.isAgentRunning) {
@@ -81,10 +103,22 @@ const Wave3AgentConsole: React.FC = () => {
 
             <div className="space-y-6 relative z-10">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Target Asset</label>
-                  <SymbolSelector market={w3.market} value={w3.targetCoin.replace('-USD', '')} onChange={handleAssetChange} />
-                </div>
+                  <div>
+                    <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Target Asset</label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <SymbolSelector market={w3.market} value={w3.targetCoin.replace('-USD', '')} onChange={handleAssetChange} />
+                      </div>
+                      <button 
+                        onClick={handleAutoSelectPair} 
+                        disabled={w3.isAgentRunning || autoPairBusy} 
+                        className="px-3 bg-surface-2 hover:bg-surface border border-border rounded-xl text-text-primary transition-colors flex items-center justify-center disabled:opacity-50" 
+                        title="Auto-Select High Volume Pair"
+                      >
+                        {autoPairBusy ? <Activity className="animate-spin" size={16} /> : <Zap size={16} />}
+                      </button>
+                    </div>
+                  </div>
                 <div>
                   <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Market</label>
                   <div className="flex bg-background/50 p-1 rounded-xl border border-border">

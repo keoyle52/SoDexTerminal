@@ -17,6 +17,8 @@ import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
+import { BotLayout } from '../components/bots/BotLayout';
+import { Radio } from 'lucide-react';
 import { cn, getErrorMessage } from '../lib/utils';
 import { analyzeSentiment } from '../api/geminiClient';
 
@@ -593,371 +595,182 @@ export const NewsBot: React.FC = () => {
 
   const removeRule = (idx: number) => setRules((prev) => prev.filter((_, i) => i !== idx));
 
-  return (
-    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden gap-4 p-3 sm:p-5 md:p-6">
-      {/* Config panel */}
-      <div className="w-full lg:w-80 shrink-0 space-y-4 lg:overflow-y-auto lg:h-full">
-        {/* Live PnL strip — shows live aggregate of every News Bot close */}
-        <BotPnlStrip botKey="news" compact />
-        {/* Status */}
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Zap size={15} className={cn('text-primary', running && 'animate-pulse')} />
-              <h3 className="text-sm font-semibold">News Trading Bot</h3>
+
+  const configPanel = (
+    <>
+      <div className="flex items-center justify-between mb-4 p-2 bg-surface rounded-lg">
+        <div className="flex items-center gap-2">
+          <div className={cn('w-2 h-2 rounded-full', useAi ? 'bg-gradient-to-tr from-blue-500 to-purple-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-text-muted')} />
+          <span className="text-xs font-medium">{useAi ? 'Gemini AI Mode' : 'Keyword Mode'}</span>
+        </div>
+        <button disabled={running} onClick={() => setUseAi(!useAi)} className={cn('w-9 h-5 rounded-full transition-colors relative flex items-center', useAi ? 'bg-primary' : 'bg-border', running && 'opacity-50 cursor-not-allowed')}>
+          <div className={cn('w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform', useAi ? 'translate-x-4.5' : 'translate-x-1')} />
+        </button>
+      </div>
+      
+      {!sosoApiKey && (
+        <div className="flex items-start gap-2 p-2 bg-danger/5 border border-danger/20 rounded-lg mb-3 text-[10px] text-danger">
+          <AlertCircle size={12} className="shrink-0 mt-0.5" /> SosoValue API key required
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
+          <Settings2 size={12} /><span>Trade Settings</span>
+        </div>
+        <Input label="Margin per trade (USDT)" type="number" min="1" step="1" value={marginUsdt} onChange={(e) => setMarginUsdt(e.target.value)} placeholder="10" />
+        
+        {(() => {
+          const m  = parseFloat(marginUsdt) || 0;
+          const lv = Math.min(leverage, effectiveLeverageCap);
+          const pos = m * lv;
+          return (
+            <div className="flex items-center justify-between text-[10px] -mt-1.5 px-1">
+              <span className="text-text-muted">Position size on book</span>
+              <span className="font-mono font-bold text-primary">{m.toFixed(2)} × {lv}× = {pos.toFixed(2)} USDT</span>
             </div>
-            <span className={cn(
-              'text-[10px] font-semibold px-2 py-0.5 rounded-full',
-              running ? 'text-success bg-success/10' : 'text-text-muted bg-surface',
-            )}>
-              {running ? 'LIVE' : 'IDLE'}
-            </span>
-          </div>
+          );
+        })()}
 
-          {!sosoApiKey && (
-            <div className="flex items-start gap-2 p-2 bg-danger/5 border border-danger/20 rounded-lg mb-3 text-[10px] text-danger">
-              <AlertCircle size={12} className="shrink-0 mt-0.5" />
-              SosoValue API key required
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold">Leverage</span>
+            <span className="text-xs font-mono font-bold text-primary">{leverage}×</span>
+          </div>
+          <input type="range" min={LEVERAGE_MIN} max={effectiveLeverageCap} step={1} value={Math.min(leverage, effectiveLeverageCap)} onChange={(e) => setLeverage(parseInt(e.target.value, 10))} className="w-full accent-primary" />
+          <div className="flex items-center justify-between text-[9px] text-text-muted mt-0.5">
+            <span>{LEVERAGE_MIN}×</span>
+            <span>{fallbackMeta ? <>{fallbackCoin} cap: <span className="text-text-secondary font-semibold">{fallbackMeta.maxLeverage}×</span> · default {fallbackMeta.initLeverage}×</> : fallbackMetaErr ? <span className="text-amber-400">{fallbackMetaErr}</span> : 'Resolving cap from SoDEX…'}</span>
+            <span>{effectiveLeverageCap}×</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <Input label="TP %" type="number" step="0.1" value={takeProfitPct} onChange={(e) => setTakeProfitPct(parseFloat(e.target.value) || 0)} />
+          <Input label="SL %" type="number" step="0.1" value={stopLossPct} onChange={(e) => setStopLossPct(parseFloat(e.target.value) || 0)} />
+          <Input label="Hold (m)" type="number" step="1" value={holdMinutes} onChange={(e) => setHoldMinutes(parseInt(e.target.value, 10) || 1)} />
+        </div>
+
+        <Select label="Fallback coin" value={fallbackCoin} onChange={(e) => setFallbackCoin(e.target.value.toUpperCase())} disabled={running} options={[{ value: 'BTC', label: 'BTC' }, { value: 'ETH', label: 'ETH' }, { value: 'SOL', label: 'SOL' }, { value: 'SOSO', label: 'SOSO' }]} />
+        <Select label="News filter (optional)" value={filterCoin} onChange={(e) => setFilterCoin(e.target.value)} options={[{ value: '', label: 'All Coins' }, ...coins.slice(0, 30).map((c) => ({ value: c.id, label: `${c.name.toUpperCase()} — ${c.fullName}` }))]} />
+        <div className="text-[10px] text-text-muted leading-relaxed bg-white/[0.02] rounded-md p-2 border border-white/5">
+          <span className="text-primary font-semibold">How it works:</span> headline → ticker (e.g. "SOL ETF approved" → SOL) → SoDEX perps symbol → leverage applied → MARKET open with <span className="text-text-secondary">{marginUsdt || 0} USDT</span> margin × <span className="text-text-secondary">{leverage}×</span> = <span className="text-text-secondary">{((parseFloat(marginUsdt) || 0) * leverage).toFixed(2)} USDT</span> position. Auto-closes on <span className="text-emerald-400">+{takeProfitPct}%</span> TP, <span className="text-red-400">−{stopLossPct}%</span> SL, or after <span className="text-text-secondary">{holdMinutes}m</span>.
+        </div>
+      </div>
+
+      <div className={cn("flex flex-col gap-3 mt-3", useAi && 'opacity-50 pointer-events-none grayscale')}>
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
+          <Zap size={12} /><span>Trigger Rules</span>
+          {useAi && <span className="ml-auto text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">Paused</span>}
+        </div>
+        <div className="space-y-2 mb-2">
+          {rules.map((r, i) => (
+            <div key={i} className="flex items-center gap-2 p-2 bg-surface rounded-lg text-xs border border-border">
+              <span className={cn('font-semibold px-1.5 py-0.5 rounded text-[10px]', r.side === 'BUY' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger')}>{r.side}</span>
+              <span className="flex-1 truncate text-text-secondary">"{r.keyword}"</span>
+              {r.category !== 0 && <span className="text-[9px] text-text-muted">{NEWS_CATEGORIES[r.category]?.label}</span>}
+              <button onClick={() => removeRule(i)} className="text-text-muted hover:text-danger transition-colors">✕</button>
             </div>
-          )}
-
-          {/* Mode Toggle */}
-          <div className="flex items-center justify-between mb-4 p-2 bg-surface rounded-lg">
-            <div className="flex items-center gap-2">
-              <div className={cn(
-                'w-2 h-2 rounded-full',
-                useAi ? 'bg-gradient-to-tr from-blue-500 to-purple-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-text-muted'
-              )} />
-              <span className="text-xs font-medium">{useAi ? 'Gemini AI Mode' : 'Keyword Mode'}</span>
-            </div>
-            <button
-              disabled={running}
-              onClick={() => setUseAi(!useAi)}
-              className={cn(
-                'w-9 h-5 rounded-full transition-colors relative flex items-center',
-                useAi ? 'bg-primary' : 'bg-border',
-                running && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              <div className={cn(
-                'w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform',
-                useAi ? 'translate-x-4.5' : 'translate-x-1'
-              )} />
-            </button>
+          ))}
+        </div>
+        <div className="space-y-2 border-t border-border pt-2">
+          <Input label="Keyword" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder='e.g. "ETF approved"' onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && addRule()} />
+          <div className="grid grid-cols-2 gap-2">
+            <Select label="Action" value={newSide} onChange={(e) => setNewSide(e.target.value as 'BUY' | 'SELL')} options={[{ value: 'BUY', label: 'BUY' }, { value: 'SELL', label: 'SELL' }]} />
+            <Select label="Category" value={String(newCat)} onChange={(e) => setNewCat(parseInt(e.target.value))} options={[{ value: '0', label: 'Any' }, ...Object.entries(NEWS_CATEGORIES).map(([k, v]) => ({ value: k, label: v.label }))]} />
           </div>
+          <Button variant="outline" className="w-full" onClick={addRule} disabled={!newKeyword.trim()}>+ Add Rule</Button>
+        </div>
+      </div>
+      
+      <div className="pt-2">
+         <Button variant="outline" fullWidth icon={<RefreshCw size={13} />} onClick={manualPoll} disabled={!running} title={`Manually poll headlines (throttled to once every ${MANUAL_POLL_MIN_INTERVAL_MS / 1000}s)`}>
+            Force Manual Poll
+         </Button>
+      </div>
+    </>
+  );
 
-          <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              icon={running ? <Square size={13} /> : <Play size={13} />}
-              variant={running ? 'danger' : 'primary'}
-              onClick={running ? stop : start}
-            >
-              {running ? 'Stop' : 'Start'}
-            </Button>
-            <Button variant="outline" icon={<RefreshCw size={13} />} onClick={manualPoll} disabled={!running} title={`Manually poll headlines (throttled to once every ${MANUAL_POLL_MIN_INTERVAL_MS / 1000}s)`}>
-              Poll
-            </Button>
-          </div>
-        </Card>
-
-        {/* Trade settings — risk knobs only. Symbol is auto-derived from
-            the news headline; quantity is derived from notional + price. */}
-        <Card>
-          <div className="flex items-center gap-2 mb-4">
-            <Settings2 size={14} className="text-primary" />
-            <h3 className="text-sm font-semibold">Trade Settings</h3>
-            <span className="ml-auto text-[9px] text-text-muted uppercase tracking-wider">Perps · auto-coin</span>
-          </div>
-          <div className="space-y-3">
-            <Input
-              label="Margin per trade (USDT)"
-              type="number"
-              min="1"
-              step="1"
-              value={marginUsdt}
-              onChange={(e) => setMarginUsdt(e.target.value)}
-              placeholder="10"
-            />
-
-            {/* Live exposure preview — makes the margin×leverage relationship
-                explicit so the user knows exactly what size order will hit
-                the book. The wallet only loses `margin` USDT as collateral. */}
-            {(() => {
-              const m  = parseFloat(marginUsdt) || 0;
-              const lv = Math.min(leverage, effectiveLeverageCap);
-              const pos = m * lv;
+  const statsPanel = (
+    <div className="flex flex-col gap-4">
+      <BotPnlStrip botKey="news" compact />
+      {openPositions.length > 0 && (
+        <div className="glass-card p-4 mt-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3 flex items-center gap-2">
+            <Zap size={14} className="text-primary animate-pulse" /> Open Positions
+            <span className="ml-auto badge badge-primary">{openPositions.length}</span>
+          </h3>
+          <div className="space-y-2">
+            {openPositions.map((pos) => {
+              const livePct = pos.side === 'LONG' ? ((pos.lastPrice - pos.entryPrice) / pos.entryPrice) * 100 : ((pos.entryPrice - pos.lastPrice) / pos.entryPrice) * 100;
+              const livePctLev = livePct * pos.leverage;
+              const remainingMs = Math.max(0, pos.expiresAt - Date.now());
+              const remainingS  = Math.ceil(remainingMs / 1000);
+              const mm = Math.floor(remainingS / 60);
+              const ss = remainingS % 60;
               return (
-                <div className="flex items-center justify-between text-[10px] -mt-1.5 px-1">
-                  <span className="text-text-muted">
-                    Position size on book
-                  </span>
-                  <span className="font-mono font-bold text-primary">
-                    {m.toFixed(2)} × {lv}× = {pos.toFixed(2)} USDT
-                  </span>
+                <div key={pos.id} className="p-2.5 bg-surface rounded-lg border border-border/50 space-y-1.5" title={pos.triggerHeadline}>
+                  <div className="flex items-center gap-2">
+                    <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded', pos.side === 'LONG' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger')}>{pos.side}</span>
+                    <span className="text-xs font-mono font-bold">{pos.symbol}</span>
+                    <span className="text-[10px] text-text-muted">{pos.leverage}×</span>
+                    <button onClick={() => closeManagedPosition(pos, 'manual close')} className="ml-auto text-[10px] px-2 py-1 bg-danger/10 text-danger hover:bg-danger/20 rounded">Close</button>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-text-muted">{pos.qty.toFixed(4)} @ {pos.entryPrice.toFixed(4)}</span>
+                    <span className={cn('font-bold', livePctLev >= 0 ? 'text-emerald-400' : 'text-red-400')}>{livePctLev >= 0 ? '+' : ''}{livePctLev.toFixed(2)}% (lev)</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] text-text-muted">
+                    <span>TP {pos.tpPrice.toFixed(4)} · SL {pos.slPrice.toFixed(4)}</span>
+                    <span>{mm}:{ss.toString().padStart(2, '0')} left</span>
+                  </div>
                 </div>
               );
-            })()}
-
-            {/* Leverage slider — hard-bounded by the fallback coin's actual
-                exchange cap from getPerpsSymbolMeta(). When the bot opens a
-                trade on a different coin (because the headline mentions one)
-                executeTrade() re-clamps to that symbol's specific cap. */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold">Leverage</span>
-                <span className="text-xs font-mono font-bold text-primary">{leverage}×</span>
-              </div>
-              <input
-                type="range"
-                min={LEVERAGE_MIN}
-                max={effectiveLeverageCap}
-                step={1}
-                value={Math.min(leverage, effectiveLeverageCap)}
-                onChange={(e) => setLeverage(parseInt(e.target.value, 10))}
-                className="w-full accent-primary"
-              />
-              <div className="flex items-center justify-between text-[9px] text-text-muted mt-0.5">
-                <span>{LEVERAGE_MIN}×</span>
-                <span>
-                  {fallbackMeta
-                    ? <>{fallbackCoin} cap: <span className="text-text-secondary font-semibold">{fallbackMeta.maxLeverage}×</span> · default {fallbackMeta.initLeverage}×</>
-                    : fallbackMetaErr
-                      ? <span className="text-amber-400">{fallbackMetaErr}</span>
-                      : 'Resolving cap from SoDEX…'}
-                </span>
-                <span>{effectiveLeverageCap}×</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                label="TP %"
-                type="number"
-                step="0.1"
-                value={takeProfitPct}
-                onChange={(e) => setTakeProfitPct(parseFloat(e.target.value) || 0)}
-              />
-              <Input
-                label="SL %"
-                type="number"
-                step="0.1"
-                value={stopLossPct}
-                onChange={(e) => setStopLossPct(parseFloat(e.target.value) || 0)}
-              />
-              <Input
-                label="Hold (m)"
-                type="number"
-                step="1"
-                value={holdMinutes}
-                onChange={(e) => setHoldMinutes(parseInt(e.target.value, 10) || 1)}
-              />
-            </div>
-
-            <Select
-              label="Fallback coin (when headline has no ticker)"
-              value={fallbackCoin}
-              onChange={(e) => setFallbackCoin(e.target.value.toUpperCase())}
-              disabled={running}
-              options={[
-                { value: 'BTC', label: 'BTC' },
-                { value: 'ETH', label: 'ETH' },
-                { value: 'SOL', label: 'SOL' },
-                { value: 'SOSO', label: 'SOSO' },
-              ]}
-            />
-
-            <Select
-              label="News filter (optional)"
-              value={filterCoin}
-              onChange={(e) => setFilterCoin(e.target.value)}
-              options={[
-                { value: '', label: 'All Coins' },
-                ...coins.slice(0, 30).map((c) => ({ value: c.id, label: `${c.name.toUpperCase()} — ${c.fullName}` })),
-              ]}
-            />
-
-            {/* Inline quick-reference — explains how the new auto-pipeline maps
-                a headline to a trade so the lack of Symbol / Quantity inputs
-                doesn't feel surprising. */}
-            <div className="text-[10px] text-text-muted leading-relaxed bg-white/[0.02] rounded-md p-2 border border-white/5">
-              <span className="text-primary font-semibold">How it works:</span> headline → ticker (e.g. "SOL ETF approved" → SOL)
-              → SoDEX perps symbol → leverage applied → MARKET open with{' '}
-              <span className="text-text-secondary">{marginUsdt || 0} USDT</span> margin{' '}
-              × <span className="text-text-secondary">{leverage}×</span> ={' '}
-              <span className="text-text-secondary">{((parseFloat(marginUsdt) || 0) * leverage).toFixed(2)} USDT</span> position. Auto-closes on{' '}
-              <span className="text-emerald-400">+{takeProfitPct}%</span> TP,{' '}
-              <span className="text-red-400">−{stopLossPct}%</span> SL, or after{' '}
-              <span className="text-text-secondary">{holdMinutes}m</span>.
-            </div>
+            })}
           </div>
-        </Card>
+        </div>
+      )}
+    </div>
+  );
 
-        {/* Open Positions — visible only when something is being managed. */}
-        {openPositions.length > 0 && (
-          <Card>
-            <div className="flex items-center gap-2 mb-3">
-              <Zap size={14} className="text-primary animate-pulse" />
-              <h3 className="text-sm font-semibold">Open Positions</h3>
-              <span className="ml-auto text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-semibold">{openPositions.length}</span>
-            </div>
-            <div className="space-y-2">
-              {openPositions.map((pos) => {
-                const livePct = pos.side === 'LONG'
-                  ? ((pos.lastPrice - pos.entryPrice) / pos.entryPrice) * 100
-                  : ((pos.entryPrice - pos.lastPrice) / pos.entryPrice) * 100;
-                const livePctLev = livePct * pos.leverage;
-                const remainingMs = Math.max(0, pos.expiresAt - Date.now());
-                const remainingS  = Math.ceil(remainingMs / 1000);
-                const mm = Math.floor(remainingS / 60);
-                const ss = remainingS % 60;
-                return (
-                  <div
-                    key={pos.id}
-                    className="p-2.5 bg-surface rounded-lg border border-white/5 space-y-1.5"
-                    title={pos.triggerHeadline}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                        pos.side === 'LONG' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger',
-                      )}>{pos.side}</span>
-                      <span className="text-xs font-mono font-bold">{pos.symbol}</span>
-                      <span className="text-[10px] text-text-muted">{pos.leverage}×</span>
-                      <button
-                        onClick={() => closeManagedPosition(pos, 'manual close')}
-                        className="ml-auto text-text-muted hover:text-danger transition-colors p-0.5"
-                        title="Close now (reduce-only market)"
-                      >
-                        <XIcon size={12} />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] font-mono">
-                      <span className="text-text-muted">{pos.qty.toFixed(4)} @ {pos.entryPrice.toFixed(4)}</span>
-                      <span className={cn('font-bold', livePctLev >= 0 ? 'text-emerald-400' : 'text-red-400')}>
-                        {livePctLev >= 0 ? '+' : ''}{livePctLev.toFixed(2)}% (lev)
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[9px] text-text-muted">
-                      <span>TP {pos.tpPrice.toFixed(4)} · SL {pos.slPrice.toFixed(4)}</span>
-                      <span>{mm}:{ss.toString().padStart(2, '0')} left</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-
-        {/* Trigger Rules */}
-        <Card className={cn(useAi && 'opacity-50 pointer-events-none grayscale')}>
-          <div className="flex items-center gap-2 mb-4">
-            <Zap size={14} className="text-primary" />
-            <h3 className="text-sm font-semibold">Trigger Rules</h3>
-            {useAi && <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">Paused</span>}
-          </div>
-
-          <div className="space-y-2 mb-4">
-            {rules.map((r, i) => (
-              <div key={i} className="flex items-center gap-2 p-2 bg-surface rounded-lg text-xs">
-                <span className={cn(
-                  'font-semibold px-1.5 py-0.5 rounded text-[10px]',
-                  r.side === 'BUY' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger',
-                )}>
-                  {r.side}
-                </span>
-                <span className="flex-1 truncate text-text-secondary">"{r.keyword}"</span>
-                {r.category !== 0 && (
-                  <span className="text-[9px] text-text-muted">{NEWS_CATEGORIES[r.category]?.label}</span>
-                )}
-                <button
-                  onClick={() => removeRule(i)}
-                  className="text-text-muted hover:text-danger transition-colors"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Add new rule */}
-          <div className="space-y-2">
-            <Input
-              label="Keyword"
-              value={newKeyword}
-              onChange={(e) => setNewKeyword(e.target.value)}
-              placeholder='e.g. "ETF approved"'
-              onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && addRule()}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <Select
-                label="Action"
-                value={newSide}
-                onChange={(e) => setNewSide(e.target.value as 'BUY' | 'SELL')}
-                options={[{ value: 'BUY', label: 'BUY' }, { value: 'SELL', label: 'SELL' }]}
-              />
-              <Select
-                label="Category"
-                value={String(newCat)}
-                onChange={(e) => setNewCat(parseInt(e.target.value))}
-                options={[
-                  { value: '0', label: 'Any' },
-                  ...Object.entries(NEWS_CATEGORIES).map(([k, v]) => ({ value: k, label: v.label })),
-                ]}
-              />
-            </div>
-            <Button variant="outline" className="w-full" onClick={addRule} disabled={!newKeyword.trim()}>
-              + Add Rule
-            </Button>
-          </div>
-        </Card>
+  const logsPanel = (
+    <div className="flex flex-col h-full">
+      <div className="px-3 py-2 flex items-center justify-between shrink-0 bg-background/30 border-b border-border/50">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">Activity Log</span>
+        <button onClick={() => setLogs([])} className="text-[10px] text-text-muted hover:text-text-primary transition-colors">Clear</button>
       </div>
-
-      {/* Activity Log */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-[300px] lg:min-h-0">
-        <Card className="flex-1 flex flex-col p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between shrink-0">
-            <span className="text-xs font-semibold uppercase tracking-wider">Activity Log</span>
-            <button
-              onClick={() => setLogs([])}
-              className="text-[10px] text-text-muted hover:text-text transition-colors"
-            >
-              Clear
-            </button>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5 font-mono">
+        {logs.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-text-muted">
+            <Zap size={36} className="opacity-20 mb-3" />
+            <p className="text-sm">Start the bot to begin monitoring news</p>
+            <p className="text-xs mt-1 opacity-60">Headlines are checked every {Math.round(POLL_MS / 1000)} seconds</p>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-1.5 font-mono">
-            {logs.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-text-muted">
-                <Zap size={36} className="opacity-20 mb-3" />
-                <p className="text-sm">Start the bot to begin monitoring news</p>
-                <p className="text-xs mt-1 opacity-60">Headlines are checked every {Math.round(POLL_MS / 1000)} seconds</p>
-              </div>
-            )}
-            {logs.map((log, i) => (
-              <div key={i} className={cn(
-                'flex items-start gap-3 text-xs py-1 px-2 rounded',
-                log.type === 'trade' && 'bg-primary/5',
-                log.type === 'error' && 'bg-danger/5',
-              )}>
-                <span className="text-text-muted shrink-0">{log.time}</span>
-                <span className={cn(
-                  'flex-1 leading-relaxed',
-                  log.type === 'trade' && 'text-primary',
-                  log.type === 'error' && 'text-danger',
-                  log.type === 'info' && 'text-text-secondary',
-                )}>
-                  {log.message}
-                </span>
-                {log.type === 'trade' && (
-                  log.message.includes('BUY')
-                    ? <TrendingUp size={12} className="text-success shrink-0 mt-0.5" />
-                    : <TrendingDown size={12} className="text-danger shrink-0 mt-0.5" />
-                )}
-              </div>
-            ))}
+        )}
+        {logs.map((log, i) => (
+          <div key={i} className={cn('flex items-start gap-3 text-[11px] py-1.5 px-2 rounded', log.type === 'trade' && 'bg-primary/10', log.type === 'error' && 'bg-danger/10')}>
+            <span className="text-text-muted shrink-0">{log.time}</span>
+            <span className={cn('flex-1 leading-relaxed', log.type === 'trade' && 'text-primary', log.type === 'error' && 'text-danger', log.type === 'info' && 'text-text-secondary')}>{log.message}</span>
+            {log.type === 'trade' && (log.message.includes('BUY') ? <TrendingUp size={12} className="text-success shrink-0 mt-0.5" /> : <TrendingDown size={12} className="text-danger shrink-0 mt-0.5" />)}
           </div>
-        </Card>
+        ))}
       </div>
     </div>
+  );
+
+  return (
+    <BotLayout
+      title="News Bot"
+      icon={Radio}
+      status={running ? 'RUNNING' : 'STOPPED'}
+      symbol={fallbackCoin}
+      market="perps"
+      configPanel={configPanel}
+      statsPanel={statsPanel}
+      logsPanel={logsPanel}
+      isLocked={running}
+      onStart={start}
+      onStop={stop}
+    />
   );
 };
