@@ -1,7 +1,7 @@
 import { useWave3Store } from '../store/wave3Store';
 import type { Wave3Regime } from '../store/wave3Store';
 import { useRiskStore } from '../store/riskStore';
-import { fetchKlines, placeOrder, cancelAllOrders, fetchBookTickers } from './services';
+import { fetchKlines, placeOrder, cancelAllOrders } from './services';
 
 let engineInterval: NodeJS.Timeout | null = null;
 let lastPrice = 0;

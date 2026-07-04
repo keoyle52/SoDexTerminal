@@ -170,6 +170,12 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
               <span>I have reviewed the parameters above and accept the associated risk.</span>
             </label>
           )}
+
+          {disclaimer && (
+            <div className="mt-2 text-[10px] text-text-muted leading-relaxed">
+              * {disclaimer}
+            </div>
+          )}
         </div>
 
         <div className="p-6 bg-surface-2 border-t border-border flex gap-4 sticky bottom-0">

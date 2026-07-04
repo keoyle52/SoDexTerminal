@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle, 
-  ShieldAlert, ShieldCheck, Cpu, Brain, Zap, TrendingUp, Newspaper 
+  ShieldAlert, ShieldCheck, Cpu, Brain, Newspaper, X
 } from 'lucide-react';
 import { useWave3Store } from '../store/wave3Store';
 import { useRiskStore } from '../store/riskStore';
