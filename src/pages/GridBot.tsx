@@ -541,7 +541,7 @@ export const GridBot: React.FC = () => {
     <>
       <div>
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
-        <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol.replace('-USD', '').replace('-USDC', '')} onChange={(c) => state.setField('symbol', c + (state.isSpot ? '-USDC' : '-USD'))} />
+        <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(c: string) => state.setField('symbol', c)} disabled={isRunning} />
       </div>
       
       <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
