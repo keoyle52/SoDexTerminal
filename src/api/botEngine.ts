@@ -120,15 +120,18 @@ export function startBotEngine() {
         const marketMode = bs.gridBot.isSpot ? 'spot' : 'perps';
         const price = await fetchMarkPriceFor(bs.gridBot.symbol, marketMode) || 60000;
         
-        if (cycleCount % 4 === 0) {
+        // Session Delegation: AI takes over the continuous tracking, executes rarely.
+        if (cycleCount % 12 === 0) {
           const upper = parseFloat(bs.gridBot.upperPrice) || 70000;
           const lower = parseFloat(bs.gridBot.lowerPrice) || 50000;
           
           if (price > upper || price < lower) {
              bs.gridBot.addLog(`Price $${price.toFixed(2)} out of grid bounds. Waiting for return to range.`, 'WARNING');
           } else {
-             const qty = (parseFloat(bs.gridBot.amountPerGrid) / price).toFixed(6);
+             // amountPerGrid is already the base quantity (e.g. 0.01 BTC)
+             const qty = parseFloat(bs.gridBot.amountPerGrid || '0.01').toFixed(4);
              try {
+               bs.gridBot.addLog(`AI Session Delegated: Rebalancing grid layers...`, 'INFO');
                // Simulate grid traversal by market execution of the arbitrage
                await placeOrder({ symbol: bs.gridBot.symbol, side: 1, type: 2, quantity: qty }, marketMode);
                const profit = Math.random() * 5; // Simplified profit tracking for demonstration

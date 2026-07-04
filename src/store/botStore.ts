@@ -162,7 +162,7 @@ const createLog = (message: string, type: BotLog['type']): BotLog => ({
 
 export const useBotStore = create<BotStoreState>((set) => ({
   gridBot: {
-    symbol: 'vBTC-vUSDC',
+    symbol: 'BTC-USD',
     investmentUsdt: '1000',
     lowerPrice: '60000',
     upperPrice: '70000',
@@ -189,7 +189,7 @@ export const useBotStore = create<BotStoreState>((set) => ({
     resetStats: () => set((state) => ({ gridBot: { ...state.gridBot, activeOrders: 0, totalInvestment: 0, completedGrids: 0, realizedPnl: 0, status: 'STOPPED', logs: [] } })),
   },
   marketMakerBot: {
-    symbol: 'vBTC-vUSDC',
+    symbol: 'BTC-USD',
     budgetUsdt: '100',
     orderSizeUsdt: '10',
     layers: '2',
