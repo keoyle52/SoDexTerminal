@@ -599,11 +599,76 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
                  <div className="font-bold text-sm text-text-primary">Advanced Trigger & Risk Settings</div>
                  <ChevronDown size={18} className={cn("text-text-muted transition-transform", advancedOpen ? "rotate-180" : "")} />
                </button>
-               {advancedOpen && (
-                 <div className="p-6 bg-background border-t border-border/50 space-y-4">
-                    <div className="text-xs text-text-muted">Advanced settings like Conditional Triggers and global Stop-Loss will appear here.</div>
-                 </div>
-               )}
+                 {advancedOpen && (
+                   <div className="p-6 bg-background border-t border-border/50 space-y-4">
+                      {type === 'grid' && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Spacing</label>
+                            <select className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.spacing} onChange={(e) => store.gridBot.setField('spacing', e.target.value as any)}>
+                              <option value="ARITHMETIC">Arithmetic</option>
+                              <option value="GEOMETRIC">Geometric</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Trigger Price</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.triggerPrice} onChange={(e) => store.gridBot.setField('triggerPrice', e.target.value)} placeholder="Optional" />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Stop Loss Price</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.stopLossPrice} onChange={(e) => store.gridBot.setField('stopLossPrice', e.target.value)} placeholder="Optional" />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Take Profit Price</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.gridBot.takeProfitPrice} onChange={(e) => store.gridBot.setField('takeProfitPrice', e.target.value)} placeholder="Optional" />
+                          </div>
+                        </div>
+                      )}
+                      {type === 'marketmaker' && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Volume Target (USDT)</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.marketMakerBot.volumeTargetUsdt} onChange={(e) => store.marketMakerBot.setField('volumeTargetUsdt', e.target.value)} placeholder="Auto-stop limit" />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Fee Budget (USDT)</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.marketMakerBot.feeBudgetUsdt} onChange={(e) => store.marketMakerBot.setField('feeBudgetUsdt', e.target.value)} placeholder="Optional max fee" />
+                          </div>
+                        </div>
+                      )}
+                      {type === 'signal' && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Check Interval (s)</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.signalBot.checkInterval} onChange={(e) => store.signalBot.setField('checkInterval', e.target.value)} />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Max Open Positions</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.signalBot.maxOpenPositions} onChange={(e) => store.signalBot.setField('maxOpenPositions', e.target.value)} />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Conflict Resolution</label>
+                            <select className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.signalBot.onConflictingSignal} onChange={(e) => store.signalBot.setField('onConflictingSignal', e.target.value as any)}>
+                              <option value="CLOSE_AND_REVERSE">Close & Reverse</option>
+                              <option value="CLOSE_ONLY">Close Only</option>
+                              <option value="IGNORE">Ignore</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                      {type === 'dca' && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-text-muted uppercase">Max Drawdown (%)</label>
+                            <input type="number" className="w-full h-10 mt-1 bg-surface border border-border rounded-lg px-3 text-sm font-bold text-text-primary focus:outline-none" value={store.dcaBot.maxDrawdownPct} onChange={(e) => store.dcaBot.setField('maxDrawdownPct', e.target.value)} placeholder="5" />
+                          </div>
+                        </div>
+                      )}
+                      {type === 'twap' && (
+                        <div className="text-xs text-text-muted font-medium">TWAP bot automatically uses internal intelligent routing to minimize slippage. No further advanced settings required.</div>
+                      )}
+                   </div>
+                 )}
             </div>
 
             <div className="pt-4">
