@@ -91,7 +91,7 @@ const Wave3AgentConsole: React.FC = () => {
 
   const handleStartRequest = () => {
     if (w3.isAgentRunning) {
-      w3.setAgentRunning(false); // Stop directly without pre-flight
+      w3.setAgentRunning(false);
     } else {
       setShowPreFlight(true);
     }
@@ -274,37 +274,63 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
   const [showPreFlight, setShowPreFlight] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // Derive running state from the real store
+  // Status mapping
   let isRunning = false;
   let symbol = 'BTC-USD';
   let market: 'spot' | 'perps' = 'spot';
+  let realizedPnl = 0;
+  let logs: any[] = [];
   
   if (type === 'grid') {
     isRunning = store.gridBot.status === 'RUNNING';
     symbol = store.gridBot.symbol.replace('vBTC-vUSDC', 'BTC-USD');
     market = store.gridBot.isSpot ? 'spot' : 'perps';
+    realizedPnl = store.gridBot.realizedPnl;
+    logs = store.gridBot.logs;
   } else if (type === 'marketmaker') {
     isRunning = store.marketMakerBot.status === 'RUNNING';
     symbol = store.marketMakerBot.symbol.replace('vBTC-vUSDC', 'BTC-USD');
+    realizedPnl = store.marketMakerBot.realizedPnl;
+    logs = store.marketMakerBot.logs;
   } else if (type === 'signal') {
     isRunning = store.signalBot.status === 'RUNNING';
     symbol = store.signalBot.symbol;
     market = store.signalBot.isSpot ? 'spot' : 'perps';
+    realizedPnl = store.signalBot.realizedPnl;
+    logs = store.signalBot.logs;
+  } else if (type === 'dca') {
+    isRunning = store.dcaBot.status === 'RUNNING';
+    symbol = store.dcaBot.symbol;
+    realizedPnl = store.dcaBot.realizedPnl;
+    logs = store.dcaBot.logs;
+  } else if (type === 'twap') {
+    isRunning = store.twapBot.status === 'RUNNING';
+    symbol = store.twapBot.symbol;
+    realizedPnl = store.twapBot.realizedPnl;
+    logs = store.twapBot.logs;
   }
 
   const handleAutoConfigure = () => {
+    // Note: Do NOT overwrite the user's budget (investmentUsdt / budgetUsdt). 
+    // Just overwrite other fields based on the AI's logic.
     if (type === 'grid') {
       store.gridBot.setField('lowerPrice', '55000');
       store.gridBot.setField('upperPrice', '72000');
       store.gridBot.setField('gridCount', '20');
-      store.gridBot.setField('amountPerGrid', '0.05');
+      store.gridBot.setField('amountPerGrid', (parseFloat(store.gridBot.investmentUsdt || '1000') / 20).toFixed(4));
     } else if (type === 'marketmaker') {
-      store.marketMakerBot.setField('budgetUsdt', '2500');
       store.marketMakerBot.setField('layers', '3');
       store.marketMakerBot.setField('spreadBps', '1');
+      store.marketMakerBot.setField('orderSizeUsdt', (parseFloat(store.marketMakerBot.budgetUsdt || '1000') / 3).toFixed(2));
     } else if (type === 'signal') {
       store.signalBot.setField('takeProfitPct', '5');
       store.signalBot.setField('stopLossPct', '2.5');
+    } else if (type === 'dca') {
+      store.dcaBot.setField('intervalMinutes', '60');
+      store.dcaBot.setField('orderSizeUsdt', (parseFloat(store.dcaBot.investmentUsdt || '1000') / 24).toFixed(2));
+    } else if (type === 'twap') {
+      store.twapBot.setField('totalDurationHours', '12');
+      store.twapBot.setField('sliceCount', '12');
     }
   };
 
@@ -312,15 +338,19 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
   
   const handleConfirmDeploy = () => {
     setShowPreFlight(false);
-    if (type === 'grid') store.gridBot.setField('status', 'RUNNING');
-    else if (type === 'marketmaker') store.marketMakerBot.setField('status', 'RUNNING');
-    else if (type === 'signal') store.signalBot.setField('status', 'RUNNING');
+    if (type === 'grid') { store.gridBot.addLog('Grid bot deployed and engine engaged.', 'INFO'); store.gridBot.setField('status', 'RUNNING'); }
+    else if (type === 'marketmaker') { store.marketMakerBot.addLog('Market Maker engaged.', 'INFO'); store.marketMakerBot.setField('status', 'RUNNING'); }
+    else if (type === 'signal') { store.signalBot.addLog('Signal Bot engaged. Awaiting webhooks.', 'INFO'); store.signalBot.setField('status', 'RUNNING'); }
+    else if (type === 'dca') { store.dcaBot.addLog('DCA Bot engaged. Beginning accumulation.', 'INFO'); store.dcaBot.setField('status', 'RUNNING'); }
+    else if (type === 'twap') { store.twapBot.addLog('TWAP Bot engaged. Slicing orders.', 'INFO'); store.twapBot.setField('status', 'RUNNING'); }
   };
 
   const handleStop = () => {
     if (type === 'grid') store.gridBot.setField('status', 'STOPPED');
     else if (type === 'marketmaker') store.marketMakerBot.setField('status', 'STOPPED');
     else if (type === 'signal') store.signalBot.setField('status', 'STOPPED');
+    else if (type === 'dca') store.dcaBot.setField('status', 'STOPPED');
+    else if (type === 'twap') store.twapBot.setField('status', 'STOPPED');
   };
 
   if (isRunning) {
@@ -341,7 +371,7 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
           <div className="flex gap-6 items-center">
             <div className="text-right">
               <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest">Realized PnL</div>
-              <div className="text-xl font-black text-emerald-400">+ $12.40</div>
+              <NumberDisplay value={realizedPnl} prefix="$" decimals={2} trend={realizedPnl >= 0 ? "up" : "down"} className="text-xl font-black" />
             </div>
             <button onClick={handleStop} className="px-6 py-2.5 rounded-xl bg-red-500/10 text-red-400 font-bold border border-red-500/30 hover:bg-red-500/20 transition-colors flex items-center gap-2">
               <StopCircle size={18} /> HALT BOT
@@ -357,10 +387,22 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
             <h3 className="text-sm font-bold text-text-muted uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-border/50 pb-2">
               <FileText size={16} /> Live Execution Log
             </h3>
-            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar text-sm font-mono">
-               <div className="text-emerald-400">[{new Date().toLocaleTimeString()}] Engine fully engaged. Limits set.</div>
-               <div className="text-text-secondary">[{new Date().toLocaleTimeString()}] Subscribed to {symbol} WS feeds.</div>
-               <div className="text-primary">[{new Date().toLocaleTimeString()}] AI Strategy: Waiting for technical trigger...</div>
+            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar text-sm font-mono pr-2">
+              {logs.length === 0 && <div className="text-text-muted text-center mt-4 text-xs">Awaiting engine events...</div>}
+              {logs.map(log => (
+                 <div key={log.id} className="flex gap-3 text-xs animate-in fade-in duration-300">
+                    <span className="text-text-muted/50 shrink-0">
+                      {new Date(log.timestamp).toLocaleTimeString([], { hour12: false })}
+                    </span>
+                    <span className={cn(
+                      log.type === 'SUCCESS' ? 'text-emerald-400' :
+                      log.type === 'ACTION' ? 'text-primary' :
+                      log.type === 'WARNING' ? 'text-amber-400' : 'text-text-secondary'
+                    )}>
+                      {log.message}
+                    </span>
+                 </div>
+              ))}
             </div>
           </div>
         </div>
@@ -368,12 +410,28 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
     );
   }
 
-  // --- Real Form Rendering depending on bot type ---
+  // Helper to render the universal "Investment / Budget" input
+  const renderInvestmentInput = (val: string, onChange: (v: string) => void, label = "Investment / Budget (USDT)") => (
+    <div className="space-y-2 col-span-2 mb-2">
+      <label className="text-xs font-bold text-emerald-500 uppercase tracking-wider">{label}</label>
+      <div className="relative">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted font-bold">$</span>
+        <input 
+          type="number" 
+          value={val} 
+          onChange={e => onChange(e.target.value)} 
+          className="w-full h-14 bg-background border border-emerald-500/30 shadow-inner rounded-xl pl-10 pr-4 text-text-primary text-lg font-black focus:outline-none focus:border-emerald-500 transition-colors" 
+        />
+      </div>
+    </div>
+  );
+
   const renderBotSpecificForm = () => {
     if (type === 'grid') {
       const gb = store.gridBot;
       return (
         <>
+          {renderInvestmentInput(gb.investmentUsdt, v => gb.setField('investmentUsdt', v))}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Lower Price Bound</label>
@@ -402,21 +460,18 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
       const mm = store.marketMakerBot;
       return (
         <>
+          {renderInvestmentInput(mm.budgetUsdt, v => mm.setField('budgetUsdt', v), "Budget (USDT)")}
           <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Budget (USDT)</label>
-              <input type="number" value={mm.budgetUsdt} onChange={e => mm.setField('budgetUsdt', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
-            </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Order Size (USDT)</label>
               <input type="number" value={mm.orderSizeUsdt} onChange={e => mm.setField('orderSizeUsdt', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
             </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
              <div className="space-y-2">
               <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Layers</label>
               <input type="number" value={mm.layers} onChange={e => mm.setField('layers', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Spread BPS</label>
               <input type="number" value={mm.spreadBps} onChange={e => mm.setField('spreadBps', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
@@ -434,6 +489,7 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
       const sb = store.signalBot;
       return (
         <>
+          {renderInvestmentInput(sb.investmentUsdt, v => sb.setField('investmentUsdt', v))}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Take Profit (%)</label>
@@ -444,26 +500,55 @@ const StandardBotView: React.FC<{ type: BotTab }> = ({ type }) => {
               <input type="number" value={sb.stopLossPct} onChange={e => sb.setField('stopLossPct', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
             </div>
           </div>
+        </>
+      );
+    }
+
+    if (type === 'dca') {
+      const dca = store.dcaBot;
+      return (
+        <>
+          {renderInvestmentInput(dca.investmentUsdt, v => dca.setField('investmentUsdt', v))}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Leverage (Perps)</label>
-              <input type="number" value={sb.leverage} onChange={e => sb.setField('leverage', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
+              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Order Size (USDT)</label>
+              <input type="number" value={dca.orderSizeUsdt} onChange={e => dca.setField('orderSizeUsdt', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Cooldown (Seconds)</label>
-              <input type="number" value={sb.cooldownSeconds} onChange={e => sb.setField('cooldownSeconds', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
+              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Interval (Minutes)</label>
+              <input type="number" value={dca.intervalMinutes} onChange={e => dca.setField('intervalMinutes', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
             </div>
           </div>
         </>
       );
     }
 
-    // Fallback for untouched bots like DCA/TWAP for now
-    return (
-       <div className="h-24 flex items-center justify-center text-text-muted border border-dashed border-border rounded-xl">
-         Advanced Configuration Loading...
-       </div>
-    );
+    if (type === 'twap') {
+      const twap = store.twapBot;
+      return (
+        <>
+          {renderInvestmentInput(twap.investmentUsdt, v => twap.setField('investmentUsdt', v))}
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Total Duration (Hours)</label>
+              <input type="number" value={twap.totalDurationHours} onChange={e => twap.setField('totalDurationHours', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Slice Count</label>
+              <input type="number" value={twap.sliceCount} onChange={e => twap.setField('sliceCount', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Price Limit</label>
+              <input type="number" value={twap.priceLimit} onChange={e => twap.setField('priceLimit', e.target.value)} className="w-full h-12 bg-background border border-border rounded-xl px-4 text-text-primary font-bold focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    return null;
   };
 
   return (
