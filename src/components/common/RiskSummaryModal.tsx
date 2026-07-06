@@ -62,8 +62,8 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
   const resolvedRisk = risk ?? (rows.length > 0 ? inferRiskFromRows(rows) : 'Medium');
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-2 sm:p-4">
-      <div className="w-full max-w-[500px] max-h-[90vh] bg-surface border border-border rounded-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-2 sm:p-4 overflow-y-auto">
+      <div className="w-full max-w-[500px] max-h-[calc(100%-2rem)] bg-surface border border-border rounded-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
         
         {/* Header */}
         <div className="p-4 sm:p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-border flex justify-between items-start shrink-0">

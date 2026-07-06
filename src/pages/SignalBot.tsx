@@ -829,8 +829,8 @@ export const SignalBot: React.FC = () => {
       </div>
 
       {isSignalsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-backdrop p-2 sm:p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
-          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[90vh] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-backdrop p-2 sm:p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[calc(100%-2rem)] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
             <div className="flex items-center gap-3 p-3 sm:p-5 border-b border-border bg-background/50 shrink-0">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                 <Zap size={18} />
