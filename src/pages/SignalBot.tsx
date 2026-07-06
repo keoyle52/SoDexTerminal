@@ -829,9 +829,9 @@ export const SignalBot: React.FC = () => {
       </div>
 
       {isSignalsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-backdrop" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
-          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[85vh] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
-            <div className="flex items-center gap-3 p-5 border-b border-border bg-background/50 shrink-0">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-backdrop p-2 sm:p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[90vh] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
+            <div className="flex items-center gap-3 p-3 sm:p-5 border-b border-border bg-background/50 shrink-0">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                 <Zap size={18} />
               </div>
@@ -841,7 +841,7 @@ export const SignalBot: React.FC = () => {
               </button>
             </div>
             
-            <div className="p-5 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4">
+            <div className="p-3 sm:p-5 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Select label="Combination Mode" value={state.combineMode} onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} disabled={isLocked} options={[{ value: 'ANY', label: 'ANY - If any signal triggers' }, { value: 'ALL', label: 'ALL - All enabled must agree' }, { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }]} />
               </div>
@@ -870,7 +870,7 @@ export const SignalBot: React.FC = () => {
               </div>
             </div>
             
-            <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-background/30 shrink-0">
+            <div className="flex items-center justify-end gap-3 p-3 sm:p-4 border-t border-border bg-background/30 shrink-0">
               <Button variant="primary" size="sm" fullWidth onClick={() => setIsSignalsModalOpen(false)}>
                 Done
               </Button>

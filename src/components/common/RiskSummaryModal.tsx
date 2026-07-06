@@ -62,11 +62,11 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
   const resolvedRisk = risk ?? (rows.length > 0 ? inferRiskFromRows(rows) : 'Medium');
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-      <div className="w-[500px] max-w-full max-h-[90vh] bg-surface border border-border rounded-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-2 sm:p-4">
+      <div className="w-full max-w-[500px] max-h-[90vh] bg-surface border border-border rounded-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
         
         {/* Header */}
-        <div className="p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-border flex justify-between items-start shrink-0">
+        <div className="p-4 sm:p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-border flex justify-between items-start shrink-0">
           <div>
             <div className="flex items-center gap-3 text-amber-500 mb-2">
               <AlertTriangle size={24} />
@@ -81,7 +81,7 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
           </button>
         </div>
         
-        <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
           {/* AI Risk Assessment */}
           <div className={cn(
             "p-4 rounded-xl border flex items-center justify-between",
@@ -135,7 +135,7 @@ export const RiskSummaryModal: React.FC<RiskSummaryModalProps> = ({
           )}
         </div>
 
-        <div className="p-6 bg-surface-2 border-t border-border flex gap-4 shrink-0">
+        <div className="p-4 sm:p-6 bg-surface-2 border-t border-border flex gap-3 sm:gap-4 shrink-0">
           <button onClick={onCancel} className="flex-1 py-3 rounded-xl font-bold text-text-muted hover:text-text-primary bg-background border border-border transition-colors">{cancelLabel}</button>
           <button 
             onClick={onConfirm} 

@@ -13,9 +13,9 @@ import {
   getPerpsSymbolMeta,
   type PerpsSymbolMeta,
 } from '../api/services';
-import { buildContext, recommendGridBot } from '../api/aiAutoConfig';
+import { recommendGridBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
-import { cn, getErrorMessage } from '../lib/utils';
+import { cn } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
@@ -446,27 +446,7 @@ export const GridBot: React.FC = () => {
   const isArmed = state.status === 'ARMED';
   const isLocked = isRunning || isArmed;
 
-  const [autoConfigBusy, setAutoConfigBusy] = useState(false);
-  const handleAutoConfigure = useCallback(async () => {
-    if (isLocked) { toast.error('Stop the bot before auto-configuring'); return; }
-    setAutoConfigBusy(true);
-    try {
-      const market: 'spot' | 'perps' = state.isSpot ? 'spot' : 'perps';
-      const ctx = await buildContext(state.symbol, market);
-      const { preset, rationale } = recommendGridBot(ctx);
-      state.setField('lowerPrice',    String(preset.lowerPrice));
-      state.setField('upperPrice',    String(preset.upperPrice));
-      state.setField('gridCount',     String(preset.gridCount));
-      state.setField('amountPerGrid', String(preset.amountPerGrid));
-      state.setField('spacing',       preset.spacing as 'ARITHMETIC' | 'GEOMETRIC');
-      state.setField('mode',          preset.mode as 'NEUTRAL' | 'LONG' | 'SHORT');
-      toast.success(rationale, { duration: 7_000 });
-    } catch (err) {
-      toast.error(`Auto-configure failed: ${getErrorMessage(err)}`);
-    } finally {
-      setAutoConfigBusy(false);
-    }
-  }, [isLocked, state]);
+
 
   const lower = parseFloat(state.lowerPrice) || 0;
   const upper = parseFloat(state.upperPrice) || 0;
@@ -549,6 +529,10 @@ export const GridBot: React.FC = () => {
           if (preset.upperPrice) state.setField('upperPrice', String(preset.upperPrice));
           if (preset.lowerPrice) state.setField('lowerPrice', String(preset.lowerPrice));
           if (preset.gridLevels) state.setField('gridCount', String(preset.gridLevels));
+          if (preset.gridCount) state.setField('gridCount', String(preset.gridCount));
+          if (preset.amountPerGrid) state.setField('amountPerGrid', String(preset.amountPerGrid));
+          if (preset.spacing) state.setField('spacing', preset.spacing as 'ARITHMETIC' | 'GEOMETRIC');
+          if (preset.mode) state.setField('mode', preset.mode as 'NEUTRAL' | 'LONG' | 'SHORT');
           if (preset.leverage && !state.isSpot) state.setField('leverage', String(preset.leverage));
         }}
       />
@@ -610,8 +594,6 @@ export const GridBot: React.FC = () => {
         isLocked={isLocked}
         onStart={() => setShowConfirm(true)}
         onStop={() => void stopBot()}
-        onAutoConfig={() => void handleAutoConfigure()}
-        autoConfigBusy={autoConfigBusy}
       />
       <RiskSummaryModal
         isOpen={showConfirm}
