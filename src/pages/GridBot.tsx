@@ -15,7 +15,7 @@ import {
 } from '../api/services';
 import { recommendGridBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
-import { cn } from '../lib/utils';
+import { cn, getErrorMessage } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
