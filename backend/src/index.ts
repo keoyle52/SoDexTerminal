@@ -4,6 +4,7 @@ import cors from 'cors';
 import { geminiRouter } from './routes/gemini';
 import { sosovalueRouter } from './routes/sosovalue';
 import { telegramRouter } from './routes/telegram';
+import { mirrorRouter } from './routes/mirror';
 import { startBot } from './bot';
 
 const app = express();
@@ -27,6 +28,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/api/gemini', geminiRouter);
 app.use('/api/sosovalue', sosovalueRouter);
 app.use('/api/telegram', telegramRouter);
+app.use('/api/mirror', mirrorRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, ts: Date.now() });

@@ -39,6 +39,7 @@ const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').the
 const AiAlphaMatrix     = lazyFrom(() => import('./pages/AiAlphaMatrix').then(m => ({ default: m.AiAlphaMatrix })), 'AiAlphaMatrix');
 const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
 const ResearchHub       = lazyFrom(() => import('./pages/ResearchHub').then(m => ({ default: m.ResearchHub })), 'ResearchHub');
+const MirrorTool        = lazyFrom(() => import('./pages/MirrorTool').then(m => ({ default: m.MirrorTool })), 'MirrorTool');
 import { HeaderDock } from './components/HeaderDock';
 
 /**
@@ -148,6 +149,7 @@ function App() {
                     <Route path="/telegram"        element={<TelegramIntegration />} />
                     <Route path="/alerts"          element={<Alerts />} />
                     <Route path="/ai-console"      element={<AiConsole />} />
+                    <Route path="/mirror/*"        element={<MirrorTool />} />
                     <Route path="*"                element={<Navigate to="/terminal" replace />} />
                   </Routes>
                 </Suspense>
