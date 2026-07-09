@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { analyzeWallet } from '../mirror/lib/analyzeWallet';
 import { store } from '../mirror/lib/store';
 import { CopyConfig } from '../mirror/lib/riskEngine';
+import { encryptSecret } from '../mirror/lib/secretBox';
 import * as sodex from '../mirror/lib/sodexClient';
 
 export const mirrorRouter = Router();
@@ -79,10 +80,16 @@ mirrorRouter.post('/copy/start', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Missing required fields' });
       return;
     }
+    let encryptedKey = agentPrivateKey;
+    try {
+      encryptedKey = encryptSecret(agentPrivateKey);
+    } catch {
+      // APP_MASTER_KEY not set — store raw (dev/demo mode)
+    }
     const sessionId = store.insertSession({
       userAccountId, sourceAccountId,
       config: config as CopyConfig,
-      agentPrivateKeyEnc: agentPrivateKey,
+      agentPrivateKeyEnc: encryptedKey,
       agentApiKeyName: agentApiKeyName ?? '',
       network, status: 'active',
     });

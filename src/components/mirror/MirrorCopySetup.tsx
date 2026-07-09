@@ -17,6 +17,8 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
   const [approved, setApproved] = useState(false);
   const [signing, setSigning] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [agentPrivateKey, setAgentPrivateKey] = useState<string>('');
+  const [agentAddress, setAgentAddress] = useState<string>('');
 
   // Config state
   const [sizingMode, setSizingMode] = useState<'fixed' | 'proportional'>((suggested.sizingMode as 'fixed' | 'proportional') ?? 'fixed');
@@ -38,7 +40,19 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
     setErrorMsg(null);
     try {
       const accounts = await win.ethereum.request({ method: 'eth_requestAccounts' });
-      if (accounts?.[0]) setWalletAddress(accounts[0]);
+      if (accounts?.[0]) {
+        setWalletAddress(accounts[0]);
+        // Generate agent wallet keypair
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        const pk = '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        setAgentPrivateKey(pk);
+        // Derive address (first 20 bytes of keccak256 — simplified for demo)
+        const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+        const hashArray = new Uint8Array(hashBuffer);
+        const addr = '0x' + Array.from(hashArray.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
+        setAgentAddress(addr);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to connect wallet.');
     } finally { setIsConnecting(false); }
@@ -69,7 +83,7 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
       };
       const res = await startCopySession({
         userAccountId: walletAddress, sourceAccountId,
-        agentPrivateKey: '0x_demo_key', agentApiKeyName: walletAddress,
+        agentPrivateKey, agentApiKeyName: agentAddress || walletAddress,
         network, config,
       });
       setResult(res.sessionId ? 'started' : res.error ?? 'unknown error');

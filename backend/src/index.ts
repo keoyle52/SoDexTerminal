@@ -6,6 +6,7 @@ import { sosovalueRouter } from './routes/sosovalue';
 import { telegramRouter } from './routes/telegram';
 import { mirrorRouter } from './routes/mirror';
 import { startBot } from './bot';
+import { copyEngine } from './mirror/lib/engine';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -37,4 +38,10 @@ app.get('/api/health', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`[SoDEX Backend] Listening on http://localhost:${PORT}`);
   startBot();
+  copyEngine.startPolling();
+});
+
+process.on('SIGINT', () => {
+  copyEngine.stopPolling();
+  process.exit(0);
 });
