@@ -52,16 +52,22 @@ mirrorRouter.post('/analyze', async (req: Request, res: Response) => {
 // GET /api/mirror/wallet/resolve
 mirrorRouter.get('/wallet/resolve', async (req: Request, res: Response) => {
   try {
-    const address = req.query.address as string;
+    const rawAddress = req.query.address as string;
     const network = (req.query.network as string) || 'mainnet';
-    if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    if (!rawAddress || !/^0x[a-fA-F0-9]{40}$/.test(rawAddress)) {
       res.status(400).json({ error: 'Invalid wallet address' });
       return;
     }
+    const address = rawAddress.toLowerCase();
+    console.log(`[Mirror Resolve] Resolving address: ${address} on network: ${network}`);
+    
     const state = await sodex.getAccountState(address, network as sodex.SodexNetwork);
+    console.log(`[Mirror Resolve] SoDEX API Response:`, JSON.stringify(state));
+    
     const accountId = state?.data?.aid ?? 0;
     if (!accountId) {
-      res.status(404).json({ error: 'No active SoDEX account found for this address' });
+      console.warn(`[Mirror Resolve] No account ID found in state for ${address}`);
+      res.status(404).json({ error: `No active SoDEX account found for this address. (API returned: ${JSON.stringify(state)})` });
       return;
     }
     res.json({ accountId });
