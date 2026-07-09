@@ -11,10 +11,12 @@ export interface Wave3Log {
 
 export interface Wave3Position {
   botType: string;
+  side: 'LONG' | 'SHORT';
   entryPrice: number;
   currentPrice: number;
   pnl: number;
   size: number;
+  orderId?: string;
   status: 'ACTIVE' | 'CLOSING' | 'CLOSED';
 }
 
@@ -95,13 +97,16 @@ export const useWave3Store = create<Wave3Store>((set) => ({
   setActivePosition: (pos) => set({ activePosition: pos }),
   updatePositionPnl: (currentPrice) => set((state) => {
     if (!state.activePosition) return state;
-    const isLong = state.activePosition.botType === 'DCA Bot' || state.activePosition.botType === 'TWAP Bot';
-    const diff = currentPrice - state.activePosition.entryPrice;
-    const pnl = isLong ? diff : diff * 0.5; // dummy
+    const pos = state.activePosition;
+    const isLong = pos.side === 'LONG';
+    const diff = currentPrice - pos.entryPrice;
+    
+    // PnL in quote asset (USDT)
+    const pnl = isLong ? (diff * pos.size) : (-diff * pos.size);
     
     return {
       activePosition: {
-        ...state.activePosition,
+        ...pos,
         currentPrice,
         pnl
       }
