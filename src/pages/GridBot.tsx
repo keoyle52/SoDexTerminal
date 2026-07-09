@@ -23,6 +23,7 @@ import { BotLayout } from '../components/bots/BotLayout';
 import { StatCard } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { useBotPnlStore } from '../store/botPnlStore';
+import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 
 interface GridLevel {
   price: number;
@@ -122,7 +123,7 @@ export const GridBot: React.FC = () => {
   }, []);
 
   const placeGridOrder = useCallback(
-    async (price: number, side: 'BUY' | 'SELL'): Promise<string | null> => {
+    async (price: number, side: 'BUY' | 'SELL', orderType: 'LIMIT' | 'MARKET' = 'LIMIT'): Promise<string | null> => {
       const { gridBot: s } = useBotStore.getState();
       const market: 'spot' | 'perps' = s.isSpot ? 'spot' : 'perps';
 
@@ -130,22 +131,24 @@ export const GridBot: React.FC = () => {
         const rawQty = parseFloat(s.amountPerGrid);
         if (isNaN(rawQty) || rawQty <= 0) throw new Error('Invalid quantity — check Amount/Grid');
 
-        const result = await placeOrder(
-          {
-            symbol: s.symbol,
-            side: side === 'BUY' ? 1 : 2,
-            type: 1,
-            quantity: String(rawQty),
-            price: String(price),
-            timeInForce: 1,
-          },
-          market,
-        );
+        const payload: any = {
+          symbol: s.symbol,
+          side: side === 'BUY' ? 1 : 2,
+          type: orderType === 'LIMIT' ? 1 : 2,
+          quantity: String(rawQty),
+        };
+        
+        if (orderType === 'LIMIT') {
+          payload.price = String(price);
+          payload.timeInForce = 1;
+        }
+
+        const result = await placeOrder(payload, market);
 
         const res = result as Record<string, unknown> | undefined;
         const orderId: string | null = String(res?.orderID ?? res?.orderId ?? res?.id ?? '') || null;
         if (orderId) {
-          addLog({ message: `${side} LIMIT @ ${price.toFixed(2)} placed (${orderId})`, side });
+          addLog({ message: `${side} ${orderType} @ ${price.toFixed(2)} placed (${orderId})`, side });
         }
         return orderId;
       } catch (err: unknown) {
@@ -218,6 +221,28 @@ export const GridBot: React.FC = () => {
 
       const levels = gridLevelsRef.current;
       const missingIndices: number[] = [];
+
+      // DYNAMIC execution trigger
+      if (s.executionMode === 'DYNAMIC' && mid !== null && prevPriceForCrossRef.current !== null) {
+        const prev = prevPriceForCrossRef.current;
+        for (let i = 0; i < levels.length; i++) {
+          const level = levels[i];
+          if (level.status === 'ACTIVE' && !level.orderId) {
+            const crossedDown = prev > level.price && mid <= level.price;
+            const crossedUp   = prev < level.price && mid >= level.price;
+            
+            if (level.side === 'BUY' && crossedDown) {
+              const orderId = await placeGridOrder(level.price, 'BUY', 'MARKET');
+              if (orderId) levels[i] = { ...level, orderId };
+            } else if (level.side === 'SELL' && crossedUp) {
+              const orderId = await placeGridOrder(level.price, 'SELL', 'MARKET');
+              if (orderId) levels[i] = { ...level, orderId };
+            }
+          }
+        }
+      }
+      prevPriceForCrossRef.current = mid;
+
       for (let i = 0; i < levels.length; i++) {
         const level = levels[i];
         if (level.status === 'ACTIVE' && level.orderId && !openOrderIds.has(level.orderId)) {
@@ -263,11 +288,21 @@ export const GridBot: React.FC = () => {
           });
 
           if (filledSide === 'BUY' && idx + 1 < levels.length) {
-            const orderId = await placeGridOrder(levels[idx + 1].price, 'SELL');
-            if (orderId) levels[idx + 1] = { ...levels[idx + 1], orderId, side: 'SELL', status: 'ACTIVE' };
+            const nextSide = 'SELL';
+            if (s.executionMode === 'STATIC') {
+              const orderId = await placeGridOrder(levels[idx + 1].price, nextSide, 'LIMIT');
+              if (orderId) levels[idx + 1] = { ...levels[idx + 1], orderId, side: nextSide, status: 'ACTIVE' };
+            } else {
+              levels[idx + 1] = { ...levels[idx + 1], side: nextSide, status: 'ACTIVE' };
+            }
           } else if (filledSide === 'SELL' && idx - 1 >= 0) {
-            const orderId = await placeGridOrder(levels[idx - 1].price, 'BUY');
-            if (orderId) levels[idx - 1] = { ...levels[idx - 1], orderId, side: 'BUY', status: 'ACTIVE' };
+            const nextSide = 'BUY';
+            if (s.executionMode === 'STATIC') {
+              const orderId = await placeGridOrder(levels[idx - 1].price, nextSide, 'LIMIT');
+              if (orderId) levels[idx - 1] = { ...levels[idx - 1], orderId, side: nextSide, status: 'ACTIVE' };
+            } else {
+              levels[idx - 1] = { ...levels[idx - 1], side: nextSide, status: 'ACTIVE' };
+            }
           }
         }
       }
@@ -337,9 +372,16 @@ export const GridBot: React.FC = () => {
       }
 
       if (side) {
-        const orderId = await placeGridOrder(levels[i].price, side);
-        if (orderId) {
-          levels[i] = { ...levels[i], orderId, side, status: 'ACTIVE' };
+        if (s.executionMode === 'STATIC') {
+          const orderId = await placeGridOrder(levels[i].price, side, 'LIMIT');
+          if (orderId) {
+            levels[i] = { ...levels[i], orderId, side, status: 'ACTIVE' };
+            activeCount++;
+            if (side === 'BUY') totalInvested += levels[i].price * amount;
+          }
+        } else {
+          // Dynamic execution: don't place anything yet, just arm the grid level
+          levels[i] = { ...levels[i], side, status: 'ACTIVE' };
           activeCount++;
           if (side === 'BUY') totalInvested += levels[i].price * amount;
         }
@@ -481,9 +523,24 @@ export const GridBot: React.FC = () => {
         <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(c: string) => state.setField('symbol', c)} disabled={isRunning} />
       </div>
       
-      <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
-        <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
-        <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
+      <div className="space-y-4 pt-4 border-t border-border/40">
+        <div>
+          <label className="text-xs font-bold text-text-muted mb-2 block uppercase tracking-wider">Execution Mode</label>
+          <div className="flex bg-surface-2 p-1 rounded-xl border border-border">
+            <button
+              onClick={() => state.setField('executionMode', 'STATIC')}
+              className={cn("flex-1 py-2 text-xs font-bold rounded-lg transition-all", state.executionMode === 'STATIC' ? 'bg-primary text-background shadow-lg shadow-primary/20' : 'text-text-muted hover:text-text-primary')}
+            >
+              Static (Limits)
+            </button>
+            <button
+              onClick={() => state.setField('executionMode', 'DYNAMIC')}
+              className={cn("flex-1 py-2 text-xs font-bold rounded-lg transition-all", state.executionMode === 'DYNAMIC' ? 'bg-primary text-background shadow-lg shadow-primary/20' : 'text-text-muted hover:text-text-primary')}
+            >
+              Dynamic (Virtual)
+            </button>
+          </div>
+        </div>
       </div>
       
       <Input label="Investment (USDT)" value={state.amountUsdt} onChange={(e) => state.setField('amountUsdt', e.target.value)} type="number" placeholder="1000" />
@@ -531,6 +588,7 @@ export const GridBot: React.FC = () => {
         configPanel={configPanel}
         statsPanel={statsPanel}
         logsPanel={logsPanel}
+        howItWorksPanel={<BotsHowItWorks botType="Grid" />}
         isLocked={isLocked}
         onStart={() => setShowConfirm(true)}
         onStop={() => void stopBot()}

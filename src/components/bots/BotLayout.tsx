@@ -12,6 +12,7 @@ interface BotLayoutProps {
   configPanel: React.ReactNode;
   statsPanel: React.ReactNode;
   logsPanel: React.ReactNode;
+  howItWorksPanel?: React.ReactNode;
   isLocked: boolean;
   onStart: () => void;
   onStop: () => void;
@@ -23,10 +24,12 @@ interface BotLayoutProps {
 
 export const BotLayout: React.FC<BotLayoutProps> = ({
   title, icon: Icon, status,
-  configPanel, statsPanel, logsPanel,
+  configPanel, statsPanel, logsPanel, howItWorksPanel,
   isLocked, onStart, onStop, onAutoConfig, autoConfigBusy,
   currentPnl = 0, investment = 0
 }) => {
+  const [activeTab, setActiveTab] = React.useState<'dashboard' | 'howItWorks'>('dashboard');
+
   useRiskEnforcer({
     botName: title,
     unrealizedPnlUsdt: currentPnl,
@@ -39,13 +42,39 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
 
   return (
     <div className="h-full flex flex-col md:flex-row bg-[#0b0b0f] text-text-primary animate-in fade-in duration-500">
-      {/* LEFT: Chart & Logs */}
-      <div className="flex-1 flex flex-col min-w-0 border-b md:border-b-0 md:border-r border-border/40 min-h-[500px] md:min-h-0">
-        <div className="flex-1 flex flex-col p-4">
-          {statsPanel}
-          <div className="flex-1 overflow-hidden mt-4 bg-surface/30 p-1 rounded-xl border border-border/50">
-            {logsPanel}
+      {/* LEFT: Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 border-b md:border-b-0 md:border-r border-border/40 min-h-[500px] md:min-h-0 bg-background/50">
+        
+        {howItWorksPanel && (
+          <div className="flex border-b border-border/40 px-4 pt-2 gap-2 bg-surface/20">
+            <button 
+              onClick={() => setActiveTab('dashboard')}
+              className={cn("px-4 py-2 text-sm font-bold border-b-2 transition-colors", activeTab === 'dashboard' ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary')}
+            >
+              Dashboard
+            </button>
+            <button 
+              onClick={() => setActiveTab('howItWorks')}
+              className={cn("px-4 py-2 text-sm font-bold border-b-2 transition-colors", activeTab === 'howItWorks' ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary')}
+            >
+              How It Works
+            </button>
           </div>
+        )}
+
+        <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
+          {activeTab === 'howItWorks' && howItWorksPanel ? (
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 animate-in fade-in duration-300">
+              {howItWorksPanel}
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col animate-in fade-in duration-300 h-full">
+              {statsPanel}
+              <div className="flex-1 overflow-hidden mt-4 bg-surface/30 p-1 rounded-xl border border-border/50">
+                {logsPanel}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

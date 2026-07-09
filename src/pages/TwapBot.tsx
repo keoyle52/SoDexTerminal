@@ -16,6 +16,7 @@ import { recommendTwapBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { BotLayout } from '../components/bots/BotLayout';
+import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useBotPnlStore } from '../store/botPnlStore';
 
@@ -437,6 +438,7 @@ export const TwapBot: React.FC = () => {
         configPanel={configPanel}
         statsPanel={statsPanel}
         logsPanel={logsPanel}
+        howItWorksPanel={<BotsHowItWorks botType="TWAP" />}
         isLocked={isRunning}
         onStart={() => setShowConfirm(true)}
         onStop={stopBot}

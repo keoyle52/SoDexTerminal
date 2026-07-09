@@ -25,6 +25,8 @@ interface GridBotState {
    *  before placing initial orders. Empty string = start immediately. */
   triggerPrice: string;
   triggerDirection: 'CROSS_DOWN' | 'CROSS_UP';
+  /** STATIC = Pre-places limit orders; DYNAMIC = Virtual grid that tracks price and uses market orders */
+  executionMode: 'STATIC' | 'DYNAMIC';
   // ── Stop conditions ───────────────────────────────────────────
   /** Stop the entire grid + cancel orders if price drops to this level. */
   stopLossPrice: string;
@@ -227,6 +229,7 @@ export const useBotStore = create<BotStoreState>((set) => ({
     leverage: '1',
     triggerPrice: '',
     triggerDirection: 'CROSS_UP',
+    executionMode: 'DYNAMIC',
     stopLossPrice: '',
     takeProfitPrice: '',
     trailingProfitUsd: '',

@@ -23,6 +23,7 @@ import { useBotPnlStore } from '../store/botPnlStore';
 import { recommendMarketMakerBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
+import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { BotLayout } from '../components/bots/BotLayout';
 
 /**
@@ -519,6 +520,7 @@ export const MarketMakerBot: React.FC = () => {
         configPanel={configPanel}
         statsPanel={statsPanel}
         logsPanel={logsPanel}
+        howItWorksPanel={<BotsHowItWorks botType="Market Maker" />}
         isLocked={isRunning}
         onStart={() => setShowConfirm(true)}
         onStop={() => { void stopBotInternal(); }}

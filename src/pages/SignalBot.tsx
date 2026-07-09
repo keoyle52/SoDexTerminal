@@ -16,6 +16,7 @@ import { Input, Select, Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
+import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { BotLayout } from '../components/bots/BotLayout';
 import { fetchTickers } from '../api/services';
 import { type SeriesMarker, type Time } from 'lightweight-charts';
@@ -999,6 +1000,7 @@ export const SignalBot: React.FC = () => {
       }
       statsPanel={statsPanel}
       logsPanel={logsPanel}
+      howItWorksPanel={<BotsHowItWorks botType="Signal" />}
       isLocked={isLocked}
       onStart={() => setShowConfirm(true)}
       onStop={() => void stopBot()}

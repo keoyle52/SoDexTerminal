@@ -18,6 +18,7 @@ import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
+import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { BotLayout } from '../components/bots/BotLayout';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { recommendNewsBot } from '../api/aiAutoConfig';
@@ -790,6 +791,7 @@ export const NewsBot: React.FC = () => {
       configPanel={configPanel}
       statsPanel={statsPanel}
       logsPanel={logsPanel}
+      howItWorksPanel={<BotsHowItWorks botType="News" />}
       isLocked={running}
       onStart={() => setShowConfirm(true)}
       onStop={stop}

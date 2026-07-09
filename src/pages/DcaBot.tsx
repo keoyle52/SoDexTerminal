@@ -14,6 +14,7 @@ import { recommendDcaBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { SymbolSelector } from '../components/common/SymbolSelector';
 import { BotLayout } from '../components/bots/BotLayout';
+import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useBotPnlStore } from '../store/botPnlStore';
 
@@ -487,6 +488,7 @@ export const DcaBot: React.FC = () => {
         configPanel={configPanel}
         statsPanel={statsPanel}
         logsPanel={logsPanel}
+        howItWorksPanel={<BotsHowItWorks botType="DCA" />}
         isLocked={isRunning}
         onStart={() => setShowConfirm(true)}
         onStop={stopBot}

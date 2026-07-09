@@ -1,7 +1,24 @@
 import React from 'react';
 import { Network, Cpu, ShieldCheck, Zap, ArrowRight, Database, Code, Lock } from 'lucide-react';
 
-export const BotsHowItWorks: React.FC = () => {
+interface BotsHowItWorksProps {
+  botType?: 'Grid' | 'DCA' | 'TWAP' | 'Market Maker' | 'Signal' | 'News';
+}
+
+export const BotsHowItWorks: React.FC<BotsHowItWorksProps> = ({ botType }) => {
+  
+  const getBotDescription = () => {
+    switch (botType) {
+      case 'Grid': return "Grid Bot uses Dynamic Virtual Execution. Instead of locking capital by pre-placing all limit orders, it tracks the live websocket and fires instantaneous Market Orders only when the price crosses your defined thresholds. This prevents capital inefficiency and avoids 'Fee Drag'.";
+      case 'DCA': return "DCA Bot executes time-weighted or price-weighted buys. Integrated with our AI Co-pilot, it can smartly 'Buy the Dip' by monitoring the RSI before executing a time-scheduled purchase, lowering your average entry price aggressively.";
+      case 'TWAP': return "TWAP Bot breaks down massive orders into algorithmic micro-slices. It randomizes the execution intervals slightly to prevent front-running by MEV bots, guaranteeing premium execution quality over the selected timeframe.";
+      case 'Market Maker': return "Market Maker provides localized liquidity. It posts Post-Only (GTX) limit orders to earn the Maker rebate. If the spread becomes too narrow compared to the fee tier, Fee Drag Protection automatically suspends quoting to prevent bleeding.";
+      case 'Signal': return "Signal Bot listens to multi-indicator strategies (RSI, MACD, Bollinger). When combined with our Risk Shield, it evaluates the SoSoValue AI score in real-time before entering the signal, blocking false-positive signals in highly volatile regimes.";
+      case 'News': return "News Bot consumes high-speed RSS and sentiment feeds via our AI pipeline. It executes orders within milliseconds of a sentiment breakout, instantly applying a trailing stop-loss to lock in profits from volatility spikes.";
+      default: return "Our autonomous trading engine interacts directly with the SoDEX API. It uses sophisticated AI models and sub-millisecond execution to manage your crypto portfolio.";
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in pb-12 p-4 md:p-8 overflow-y-auto h-full custom-scrollbar">
       {/* Header */}
@@ -9,10 +26,10 @@ export const BotsHowItWorks: React.FC = () => {
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-3xl transition-transform duration-700 group-hover:scale-150" />
         <div className="relative z-10 text-center max-w-2xl mx-auto">
           <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-primary/80 tracking-tight mb-4">
-            How Automated Bots Work
+            How {botType || 'Automated Bots'} Work{botType ? 's' : ''}
           </h2>
           <p className="text-text-secondary text-sm leading-relaxed">
-            Our autonomous trading engine is designed to interact directly with the SoDEX API. It uses sophisticated AI models, sub-millisecond execution, and advanced risk guardrails to completely automate your crypto portfolio.
+            {getBotDescription()}
           </p>
         </div>
       </div>
