@@ -132,28 +132,29 @@ export const MirrorTool: React.FC = () => {
 function AnalyzingState() {
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center py-20 px-4 animate-fade-in">
-      <div className="relative w-20 h-20 mb-8">
-        <div className="absolute inset-0 rounded-full border-4 border-primary/10 border-t-primary animate-spin" />
-        <div className="absolute inset-4 rounded-full bg-primary/5 border border-primary/20 animate-pulse flex items-center justify-center">
-          <span className="text-primary text-lg">⚡</span>
+      <div className="relative w-32 h-32 mb-10 group">
+        <div className="absolute inset-0 rounded-full border-4 border-primary/20 border-t-primary animate-spin shadow-[0_0_30px_rgba(0,212,255,0.3)]" />
+        <div className="absolute inset-4 rounded-full bg-gradient-to-br from-primary/10 to-info/10 border border-primary/30 animate-pulse flex items-center justify-center backdrop-blur-xl">
+          <Activity className="text-primary w-8 h-8 drop-shadow-[0_0_8px_rgba(0,212,255,0.8)] animate-pulse" />
         </div>
       </div>
-      <h2 className="font-bold text-xl mb-3 text-center text-text-primary">Conducting Wallet Diagnostics</h2>
-      <p className="text-text-muted text-sm text-center max-w-sm mb-6 leading-relaxed">
-        Evaluating transactions, inspecting historical performance edges, and checking trading metrics on SoDEX...
+      <h2 className="font-extrabold text-2xl mb-4 text-center text-transparent bg-clip-text bg-gradient-to-r from-white to-primary/80">Conducting Neural Wallet Diagnostics</h2>
+      <p className="text-text-muted text-sm text-center max-w-md mb-8 leading-relaxed">
+        Evaluating cross-chain transactions, identifying edge vectors, and assessing risk metrics on SoDEX...
       </p>
-      <div className="w-full max-w-xs space-y-2.5 bg-surface border border-border p-5 rounded-xl shadow-lg text-xs font-mono">
-        <div className="flex items-center gap-2.5 text-text-secondary">
-          <span className="text-success animate-pulse">●</span>
-          <span>Fetching Spot & Perps trade history...</span>
+      <div className="w-full max-w-sm space-y-3 glass-card p-6 border-primary/20 shadow-[0_10px_40px_-10px_rgba(0,212,255,0.15)] text-xs font-mono relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl animate-pulse" />
+        <div className="flex items-center gap-3 text-success font-semibold relative z-10">
+          <span className="w-2 h-2 rounded-full bg-success drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]" />
+          <span>Synchronizing historical trades (Perps & Spot)</span>
         </div>
-        <div className="flex items-center gap-2.5 text-text-secondary/60 animate-pulse">
-          <span className="text-primary">○</span>
-          <span>Running AI cognitive audit...</span>
+        <div className="flex items-center gap-3 text-primary relative z-10">
+          <span className="w-2 h-2 rounded-full bg-primary drop-shadow-[0_0_5px_rgba(0,212,255,0.8)] animate-pulse" />
+          <span>Executing cognitive behavioral audit...</span>
         </div>
-        <div className="flex items-center gap-2.5 text-text-muted">
-          <span>◌</span>
-          <span>Compiling risk profile & configs...</span>
+        <div className="flex items-center gap-3 text-text-muted relative z-10">
+          <span className="w-2 h-2 rounded-full border border-text-muted" />
+          <span>Compiling risk profile & optimal config...</span>
         </div>
       </div>
     </div>

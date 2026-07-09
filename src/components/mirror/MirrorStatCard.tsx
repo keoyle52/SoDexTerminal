@@ -11,11 +11,12 @@ interface MirrorStatCardProps {
 
 export const MirrorStatCard: React.FC<MirrorStatCardProps> = ({ label, value, icon: Icon, accentColor }) => {
   return (
-    <div className={cn(
-      'group relative rounded-xl border border-border bg-surface p-5 overflow-hidden',
-      'transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5'
-    )}>
-      {/* Left accent line */}
+    <div className="stat-card group">
+      {/* Glow effect on hover */}
+      <div 
+        className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none" 
+        style={{ background: `radial-gradient(circle at right top, ${accentColor ?? 'var(--color-primary)'}, transparent 70%)` }} 
+      />
       <div
         className="absolute left-0 top-0 bottom-0 w-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300"
         style={{ background: accentColor ?? 'var(--color-primary)' }}

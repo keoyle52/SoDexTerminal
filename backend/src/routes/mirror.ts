@@ -21,11 +21,11 @@ mirrorRouter.post('/analyze', async (req: Request, res: Response) => {
 
     const net = network as sodex.SodexNetwork;
     const [orders, trades, positions, spotOrders, spotTrades] = await Promise.all([
-      sodex.getPerpsOrderHistory(accountId, net).catch(() => []),
-      sodex.getPerpsUserTrades(accountId, net).catch(() => []),
-      sodex.getPerpsPositionHistory(accountId, net).catch(() => []),
-      sodex.getSpotOrderHistory(address, net).catch(() => []),
-      sodex.getSpotUserTrades(address, net).catch(() => []),
+      sodex.getPerpsOrderHistory(address, net, 500).catch((e) => { console.error('getPerpsOrderHistory error', e); return []; }),
+      sodex.getPerpsUserTrades(address, net, 500).catch((e) => { console.error('getPerpsUserTrades error', e); return []; }),
+      sodex.getPerpsPositionHistory(address, net, 500).catch((e) => { console.error('getPerpsPositionHistory error', e); return []; }),
+      sodex.getSpotOrderHistory(address, net, 500).catch((e) => { console.error('getSpotOrderHistory error', e); return []; }),
+      sodex.getSpotUserTrades(address, net, 500).catch((e) => { console.error('getSpotUserTrades error', e); return []; }),
     ]);
 
     const report = await analyzeWallet({

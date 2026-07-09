@@ -79,10 +79,17 @@ Return ONLY a valid JSON object with this exact structure:
     const result = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
       contents: prompt,
+      config: { responseMimeType: 'application/json' }
     });
     const text = result.text ?? '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return fallbackReport(trades, positions, totalTrades);
+    if (!jsonMatch) {
+      try {
+        return JSON.parse(text) as WalletReport;
+      } catch {
+        return fallbackReport(trades, positions, totalTrades);
+      }
+    }
     return JSON.parse(jsonMatch[0]) as WalletReport;
   } catch {
     return fallbackReport(trades, positions, totalTrades);
@@ -92,12 +99,26 @@ Return ONLY a valid JSON object with this exact structure:
 function fallbackReport(trades: any[], positions: any[], totalTrades: number): WalletReport {
   let wins = 0;
   let maxLev = 1;
+  let totalHoldMinutes = 0;
+  let holdCount = 0;
   const symbolCounts: Record<string, number> = {};
+
   for (const p of positions) {
     const pnl = parseFloat(p.closedPnl ?? p.pnl ?? '0');
     if (pnl > 0) wins++;
     const lev = parseFloat(p.leverage ?? '1');
     if (lev > maxLev) maxLev = lev;
+
+    // Try to calculate hold time
+    const t1 = p.createdAt || p.openTime || p.createTime;
+    const t2 = p.updatedAt || p.closeTime || p.updateTime || Date.now();
+    if (t1 && t2) {
+      const ms = new Date(t2).getTime() - new Date(t1).getTime();
+      if (ms > 0) {
+        totalHoldMinutes += ms / (1000 * 60);
+        holdCount++;
+      }
+    }
   }
   for (const t of trades) {
     const s = t.s ?? t.symbol ?? 'unknown';
@@ -105,13 +126,14 @@ function fallbackReport(trades: any[], positions: any[], totalTrades: number): W
   }
   const topSymbols = Object.entries(symbolCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
   const winRate = positions.length > 0 ? Math.round((wins / positions.length) * 100) : null;
+  const avgHoldTimeMinutes = holdCount > 0 ? Math.round(totalHoldMinutes / holdCount) : null;
 
   return {
     summary: 'Direct analytics computed from raw trading history (AI analysis unavailable).',
     riskScore: maxLev > 10 ? 75 : maxLev > 5 ? 55 : 35,
     riskFactors: maxLev > 5 ? ['High leverage usage detected'] : [],
     style: 'mixed',
-    stats: { totalTrades, winRatePct: winRate, avgHoldTimeMinutes: null, maxLeverageObserved: maxLev, mostTradedSymbols: topSymbols },
+    stats: { totalTrades, winRatePct: winRate, avgHoldTimeMinutes, maxLeverageObserved: maxLev, mostTradedSymbols: topSymbols },
     suggestedCopyConfig: { sizingMode: 'fixed', proportionalPct: 10, maxLeverage: Math.min(maxLev, 3), requireStopLoss: true, rationale: 'Conservative defaults based on observed trading patterns.' },
     performanceEdges: { positive: [], negative: [] },
   };

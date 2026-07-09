@@ -121,28 +121,28 @@ export async function getAccountState(address: string, network: SodexNetwork) {
   return null;
 }
 
-/* ── Perps endpoints (by accountID) ─────────────────── */
+/* ── Perps endpoints (by address) ─────────────────── */
 
-export async function getPerpsOrderHistory(accountId: number, network: SodexNetwork, limit = 50) {
+export async function getPerpsOrderHistory(address: string, network: SodexNetwork, limit = 500) {
   const base = ENDPOINTS[network].perps;
-  const envelope = await request<any[]>(base, '/trade/orders/history', {
-    method: 'GET', query: { accountID: accountId, limit },
+  const envelope = await request<any[]>(base, `/accounts/${address}/orders/history`, {
+    method: 'GET', query: { limit },
   });
   return (envelope.data ?? []).slice(0, limit);
 }
 
-export async function getPerpsUserTrades(accountId: number, network: SodexNetwork, limit = 50) {
+export async function getPerpsUserTrades(address: string, network: SodexNetwork, limit = 500) {
   const base = ENDPOINTS[network].perps;
-  const envelope = await request<any[]>(base, '/trade/trades', {
-    method: 'GET', query: { accountID: accountId, limit },
+  const envelope = await request<any[]>(base, `/accounts/${address}/trades`, {
+    method: 'GET', query: { limit },
   });
   return (envelope.data ?? []).slice(0, limit);
 }
 
-export async function getPerpsPositionHistory(accountId: number, network: SodexNetwork, limit = 30) {
+export async function getPerpsPositionHistory(address: string, network: SodexNetwork, limit = 500) {
   const base = ENDPOINTS[network].perps;
-  const envelope = await request<any[]>(base, '/trade/positions/history', {
-    method: 'GET', query: { accountID: accountId, limit },
+  const envelope = await request<any[]>(base, `/accounts/${address}/positions/history`, {
+    method: 'GET', query: { limit },
   });
   return (envelope.data ?? []).slice(0, limit);
 }
