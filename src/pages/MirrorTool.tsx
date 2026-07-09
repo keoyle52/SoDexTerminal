@@ -42,7 +42,9 @@ export const MirrorTool: React.FC = () => {
       setReportData(data);
       setView('report');
     } catch (err: any) {
-      setError(err.response?.data?.error ?? err.message ?? 'Analysis failed');
+      console.error('[Mirror resolve error]:', err);
+      const detail = err.response?.data?.error ?? err.response?.data?.message ?? err.message ?? String(err);
+      setError(`Error: ${detail}`);
       setView('input');
     } finally {
       setLoading(false);
