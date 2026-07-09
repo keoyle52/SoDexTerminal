@@ -87,28 +87,36 @@ export async function getAccountState(address: string, network: SodexNetwork) {
     const res = await request<any>(endpoints.spot, `/accounts/${address}/state`, { method: 'GET' });
     const id = extractAccountId(res);
     if (id) return { data: { aid: id } };
-  } catch { /* empty */ }
+  } catch (err: any) {
+    console.warn(`[sodexClient] spot state resolve failed:`, err.message);
+  }
 
   // Try perps state
   try {
     const res = await request<any>(endpoints.perps, `/accounts/${address}/state`, { method: 'GET' });
     const id = extractAccountId(res);
     if (id) return { data: { aid: id } };
-  } catch { /* empty */ }
+  } catch (err: any) {
+    console.warn(`[sodexClient] perps state resolve failed:`, err.message);
+  }
 
   // Try spot balances
   try {
     const res = await request<any>(endpoints.spot, `/accounts/${address}/balances`, { method: 'GET' });
     const id = extractAccountId(res);
     if (id) return { data: { aid: id } };
-  } catch { /* empty */ }
+  } catch (err: any) {
+    console.warn(`[sodexClient] spot balances resolve failed:`, err.message);
+  }
 
   // Try perps balances
   try {
     const res = await request<any>(endpoints.perps, `/accounts/${address}/balances`, { method: 'GET' });
     const id = extractAccountId(res);
     if (id) return { data: { aid: id } };
-  } catch { /* empty */ }
+  } catch (err: any) {
+    console.warn(`[sodexClient] perps balances resolve failed:`, err.message);
+  }
 
   return null;
 }
