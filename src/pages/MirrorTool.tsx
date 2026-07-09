@@ -33,8 +33,9 @@ export const MirrorTool: React.FC = () => {
     try {
       // Step 1: Resolve wallet address to SoDEX account ID
       const resolved = await resolveWalletAddress(address, network);
-      if (!resolved.accountId || resolved.accountId === 0) {
-        throw new Error('No active SoDEX account found for this wallet address.');
+      console.log('[Mirror resolve response]:', resolved);
+      if (!resolved || !resolved.accountId || resolved.accountId === 0) {
+        throw new Error(`No active SoDEX account found for this wallet address. (Resolved payload: ${JSON.stringify(resolved)})`);
       }
 
       // Step 2: Run AI analysis
