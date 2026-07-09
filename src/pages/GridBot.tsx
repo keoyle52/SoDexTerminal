@@ -18,7 +18,7 @@ import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { cn, getErrorMessage } from '../lib/utils';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { SymbolSelector } from '../components/common/SymbolSelector';
-import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { BotLayout } from '../components/bots/BotLayout';
 import { StatCard } from '../components/common/Card';
 import { Input } from '../components/common/Input';
@@ -456,67 +456,7 @@ export const GridBot: React.FC = () => {
   const profitClearsFee = profitPct >= ROUND_TRIP_FEE_PCT * 1.5;
   const rangePct = lower > 0 && upper > 0 ? ((upper - lower) / ((lower + upper) / 2)) * 100 : 0;
 
-  const buildRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
-    const tooWide = rangePct > 30;
-    const tooNarrow = rangePct < 4 && rangePct > 0;
-    const rows: RiskSummaryRow[] = [
-      { label: 'Pair', value: state.symbol, hint: state.isSpot ? 'Spot market' : 'Perpetual futures' },
-      { label: 'Direction', value: state.mode, tone: state.mode === 'NEUTRAL' ? 'default' : 'warning' },
-      { label: 'Spacing', value: state.spacing === 'GEOMETRIC' ? 'Geometric (constant %)' : 'Arithmetic (constant Δ)' },
-      ...(!state.isSpot && parseInt(state.leverage) > 1
-        ? [{ label: 'Leverage', value: `${state.leverage}×`, tone: parseInt(state.leverage) > 5 ? 'warning' as const : 'default' as const }]
-        : []),
-      {
-        label: 'Price range',
-        value: `${lower.toLocaleString()} – ${upper.toLocaleString()}`,
-        hint: rangePct > 0 ? `${rangePct.toFixed(1)}% wide` : undefined,
-        tone: tooWide || tooNarrow ? 'warning' : 'default',
-      },
-      {
-        label: 'Grid levels',
-        value: `${count} levels`,
-        hint: profitPct > 0 ? `Profit/grid ≈ ${profitPct.toFixed(3)}%` : undefined,
-      },
-      {
-        label: 'Profit/grid vs fee',
-        value: `${profitPct.toFixed(3)}% vs ~${ROUND_TRIP_FEE_PCT.toFixed(2)}% fee`,
-        tone: profitClearsFee ? 'positive' as const : 'warning' as const,
-        hint: profitClearsFee
-          ? 'Each fill clears round-trip fees with margin to spare.'
-          : 'Each fill barely clears the fee — increase range or reduce grid count.',
-      },
-      { label: 'Amount per grid', value: `${amount} ${state.symbol.split(/[_-]/)[0]}` },
-      { label: 'Approx. orders placed', value: `${Math.max(0, count - 1)} initial limit orders` },
-    ];
-    if (state.triggerPrice && parseFloat(state.triggerPrice) > 0) {
-      rows.push({
-        label: 'Trigger price',
-        value: `${state.triggerPrice} (${state.triggerDirection === 'CROSS_UP' ? 'on rise' : 'on drop'})`,
-        hint: 'Bot will stay ARMED until price crosses this level.',
-      });
-    }
-    if (state.stopLossPrice && parseFloat(state.stopLossPrice) > 0) {
-      rows.push({ label: 'Stop-loss', value: state.stopLossPrice, tone: 'warning' });
-    }
-    if (state.takeProfitPrice && parseFloat(state.takeProfitPrice) > 0) {
-      rows.push({ label: 'Take-profit', value: state.takeProfitPrice, tone: 'positive' });
-    }
-    if (state.trailingProfitUsd && parseFloat(state.trailingProfitUsd) > 0) {
-      rows.push({ label: 'Profit target', value: `$${state.trailingProfitUsd}`, tone: 'positive' });
-    }
-    if (tooWide) rows.push({ label: 'Heads-up', value: 'Range > 30%', tone: 'warning', hint: 'Wide ranges trade less often.' });
-    if (tooNarrow) rows.push({ label: 'Heads-up', value: 'Range < 4%', tone: 'warning', hint: 'Narrow ranges break out frequently.' });
 
-    const lev = parseInt(state.leverage) || 1;
-    const highLevThreshold = perpsMeta ? Math.max(2, Math.floor(perpsMeta.maxLeverage / 2)) : 5;
-    const risk: 'Low' | 'Medium' | 'High' =
-      (!state.isSpot && lev > highLevThreshold) || (state.mode !== 'NEUTRAL' && (tooWide || tooNarrow)) ? 'High'
-      : (state.mode !== 'NEUTRAL' || tooWide || tooNarrow || lev > 1) ? 'Medium'
-      : 'Low';
-    const totalRisk = '— (configure parameters)';
-    return { rows, totalRisk, risk };
-  };
-  const riskSummary = buildRiskRows();
 
   const configPanel = (
     <>
@@ -594,19 +534,14 @@ export const GridBot: React.FC = () => {
         isLocked={isLocked}
         onStart={() => setShowConfirm(true)}
         onStop={() => void stopBot()}
+        currentPnl={state.realizedPnl}
+        investment={state.totalInvestment}
       />
-      <RiskSummaryModal
+      <BotRiskSetupModal
         isOpen={showConfirm}
-        title="Confirm Grid Strategy"
-        subtitle="Review the run before launch — these parameters cannot be changed while the bot is active."
         botName="Grid Bot"
-        rows={riskSummary.rows}
-        risk={riskSummary.risk}
-        totalRisk={riskSummary.totalRisk}
         onCancel={() => setShowConfirm(false)}
         onConfirm={() => { setShowConfirm(false); void doStart(); }}
-        disclaimer="Grid bots place multiple limit orders. In highly trending markets, you may experience impermanent loss."
-        confirmLabel="Confirm & Start Bot"
       />
     </>
   );

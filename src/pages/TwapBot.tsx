@@ -5,7 +5,7 @@ import {
   Hash, BarChart3, DollarSign, Clock
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
-import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
@@ -341,29 +341,7 @@ export const TwapBot: React.FC = () => {
   ), [totalDurationSec]);
   const sliceQty = totalSlicesNum > 0 ? totalNum / totalSlicesNum : 0;
 
-  const buildTwapRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
-    const sizeVar = parseFloat(sizeVariancePct) || 0;
-    const timeVar = parseFloat(timeVariancePct) || 0;
-    const offsetBps = parseFloat(limitOffsetBps) || 0;
-    const rows: RiskSummaryRow[] = [
-      { label: 'Pair', value: symbol, hint: isSpot ? 'Spot market' : 'Perpetual futures' },
-      { label: 'Direction', value: side, tone: side === 'BUY' ? 'positive' : 'warning' },
-      { label: 'Total order size', value: `${totalNum} ${symbol.split(/[_-]/)[0]}` },
-      { label: 'Slices', value: `${totalSlicesNum} × ${sliceQty.toFixed(6)}` },
-      { label: 'Order type', value: orderType === 'LIMIT' ? `Limit (offset ${offsetBps} bps inside spread)` : 'Market (taker)' },
-      { label: 'Interval', value: `${intervalNum}s between slices` },
-      { label: 'Total run time', value: durationLabel || '—' },
-    ];
-    if (sizeVar > 0) rows.push({ label: 'Size variance', value: `±${sizeVar}%`, hint: 'Each slice randomised by this percent' });
-    if (timeVar > 0) rows.push({ label: 'Time variance', value: `±${timeVar}%`, hint: 'Inter-slice delay randomised by this percent' });
-    if (side === 'BUY' && parseFloat(maxBuyPrice) > 0) rows.push({ label: 'Max buy price', value: maxBuyPrice, tone: 'warning', hint: 'Slices skipped if mid exceeds this' });
-    if (side === 'SELL' && parseFloat(minSellPrice) > 0) rows.push({ label: 'Min sell price', value: minSellPrice, tone: 'warning', hint: 'Slices skipped if mid drops below this' });
-    const risk: 'Low' | 'Medium' | 'High' =
-      totalSlicesNum < 5 || intervalNum < 5 ? 'Medium' : 'Low';
-    const totalRisk = `${totalNum} ${symbol.split(/[_-]/)[0]} ${side === 'BUY' ? 'buy' : 'sell'} pressure spread over ${durationLabel || 'the run'}`;
-    return { rows, totalRisk, risk };
-  };
-  const twapRiskSummary = buildTwapRiskRows();
+
 
   const configPanel = (
     <>
@@ -463,15 +441,9 @@ export const TwapBot: React.FC = () => {
         onStart={() => setShowConfirm(true)}
         onStop={stopBot}
       />
-      <RiskSummaryModal
+      <BotRiskSetupModal
         isOpen={showConfirm}
-        title="TWAP Bot Summary"
         botName="TWAP Strategy"
-        rows={twapRiskSummary.rows}
-        risk={twapRiskSummary.risk}
-        totalRisk={twapRiskSummary.totalRisk}
-        disclaimer={orderType === 'MARKET' ? 'Each slice is sent as a market order. Stopping cancels remaining slices.' : 'Each slice is placed as a limit order. Stopping leaves the most recent unfilled limit on the book.'}
-        confirmLabel="Confirm & Start TWAP"
         onConfirm={() => { setShowConfirm(false); doStart(); }}
         onCancel={() => setShowConfirm(false)}
       />

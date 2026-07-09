@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, ShieldAlert, Zap
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
-import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { useSettingsStore } from '../store/settingsStore';
@@ -369,41 +369,7 @@ export const DcaBot: React.FC = () => {
     return `${totalSec} seconds`;
   }, [maxOrd, intervalNum]);
 
-  const buildDcaRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
-    const rows: RiskSummaryRow[] = [
-      { label: 'Pair', value: symbol, hint: isSpot ? 'Spot market' : 'Perpetual futures' },
-      { label: 'Direction', value: side, tone: side === 'BUY' ? 'positive' : 'warning' },
-      { label: 'Order size', value: `${orderAmt} ${symbol.split(/[_-]/)[0]}` },
-      { label: 'Interval', value: intervalLabel },
-      {
-        label: 'Max orders',
-        value: maxOrd > 0 ? maxOrd.toString() : 'Unbounded — bot runs until stopped',
-        tone: maxOrd === 0 ? 'warning' : 'default',
-        hint: maxOrd === 0 ? 'Without a cap, deployed capital grows over time.' : undefined,
-      },
-      { label: 'Total run', value: totalDurationLabel },
-    ];
-    if (condition === 'BUY_THE_DIP') {
-      rows.push({
-        label: 'Trigger',
-        value: `Buy-the-dip — ≥ ${dipPercent}% drop`,
-        hint: 'Each order only fires when price drops the configured percent from the prior fill',
-      });
-    }
-    if (parseFloat(takeProfitPrice) > 0) rows.push({ label: 'Take-profit', value: takeProfitPrice, tone: 'positive' });
-    if (parseFloat(stopLossPrice) > 0)   rows.push({ label: 'Stop-loss', value: stopLossPrice, tone: 'warning' });
-    if (parseFloat(takeProfitPct) > 0)   rows.push({ label: 'Profit % target', value: `${takeProfitPct}%`, tone: 'positive' });
 
-    const risk: 'Low' | 'Medium' | 'High' =
-      maxOrd === 0 ? 'High'
-      : maxOrd > 50 ? 'Medium'
-      : 'Low';
-    const totalRisk = totalCapitalNotional > 0
-      ? `~$${totalCapitalNotional.toLocaleString(undefined, { maximumFractionDigits: 0 })} max ${side.toLowerCase()} exposure`
-      : (maxOrd === 0 ? 'Open-ended (no cap)' : `${totalAmount} ${symbol.split(/[_-]/)[0]} total`);
-    return { rows, totalRisk, risk };
-  };
-  const dcaRiskSummary = buildDcaRiskRows();
 
   // Build UI panels for BotLayout
   const configPanel = (
@@ -525,15 +491,9 @@ export const DcaBot: React.FC = () => {
         onStart={() => setShowConfirm(true)}
         onStop={stopBot}
       />
-      <RiskSummaryModal
+      <BotRiskSetupModal
         isOpen={showConfirm}
-        title="DCA Bot Summary"
         botName="DCA Bot"
-        rows={dcaRiskSummary.rows}
-        risk={dcaRiskSummary.risk}
-        totalRisk={dcaRiskSummary.totalRisk}
-        disclaimer="Each tick evaluates stop conditions then places a market order. Stopping the bot prevents future orders but does not unwind already-filled positions."
-        confirmLabel="Confirm & Start DCA"
         onConfirm={() => { setShowConfirm(false); doStart(); }}
         onCancel={() => setShowConfirm(false)}
       />

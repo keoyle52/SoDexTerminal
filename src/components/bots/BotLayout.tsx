@@ -1,7 +1,7 @@
 import React from 'react';
 import { Play, StopCircle, Zap, Activity } from 'lucide-react';
 import { cn } from '../../lib/utils';
-// removed StatusBadge
+import { useRiskEnforcer } from '../../hooks/useRiskEnforcer';
 
 interface BotLayoutProps {
   title: string;
@@ -17,13 +17,26 @@ interface BotLayoutProps {
   onStop: () => void;
   onAutoConfig?: () => void;
   autoConfigBusy?: boolean;
+  currentPnl?: number;
+  investment?: number;
 }
 
 export const BotLayout: React.FC<BotLayoutProps> = ({
   title, icon: Icon, status,
   configPanel, statsPanel, logsPanel,
-  isLocked, onStart, onStop, onAutoConfig, autoConfigBusy
+  isLocked, onStart, onStop, onAutoConfig, autoConfigBusy,
+  currentPnl = 0, investment = 0
 }) => {
+  useRiskEnforcer({
+    botName: title,
+    unrealizedPnlUsdt: currentPnl,
+    investmentUsdt: investment,
+    onStop: () => {
+      if (status === 'RUNNING') onStop();
+    },
+    isRunning: status === 'RUNNING'
+  });
+
   return (
     <div className="h-full flex flex-col md:flex-row bg-[#0b0b0f] text-text-primary animate-in fade-in duration-500">
       {/* LEFT: Chart & Logs */}

@@ -22,7 +22,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import { recommendMarketMakerBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
-import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { BotLayout } from '../components/bots/BotLayout';
 
 /**
@@ -505,17 +505,7 @@ export const MarketMakerBot: React.FC = () => {
   );
 
 
-  const buildRiskRows = () => {
-    return {
-      rows: [
-        { label: 'Agent Strategy', value: 'Autonomous Execution', tone: 'default' as const },
-        { label: 'Market Condition', value: 'Unpredictable', tone: 'warning' as const },
-      ],
-      totalRisk: 'AI agents execute actions automatically based on configured parameters.',
-      risk: 'High' as const
-    };
-  };
-  const riskSummary = buildRiskRows();
+
 
   return (
     <>
@@ -533,16 +523,10 @@ export const MarketMakerBot: React.FC = () => {
         onStart={() => setShowConfirm(true)}
         onStop={() => { void stopBotInternal(); }}
       />
-      <RiskSummaryModal
+      <BotRiskSetupModal
         isOpen={showConfirm}
-        onCancel={() => setShowConfirm(false)}
-        title="Market Maker Bot Risk Summary"
         botName="Market Maker Bot"
-        rows={riskSummary.rows}
-        risk={riskSummary.risk}
-        totalRisk={riskSummary.totalRisk}
-        disclaimer="AI Agents execute independently. Monitor closely."
-        confirmLabel="Confirm & Deploy"
+        onCancel={() => setShowConfirm(false)}
         onConfirm={() => { setShowConfirm(false); startBot(); }}
       />
     </>

@@ -23,6 +23,18 @@ interface RiskStore {
   riskEvents: RiskEvent[];
   addRiskEvent: (event: Omit<RiskEvent, 'id' | 'timestamp'>) => void;
   clearRiskEvents: () => void;
+  
+  // Universal Bot Risk Panel Settings
+  aiRiskThreshold: number;
+  setAiRiskThreshold: (val: number) => void;
+  feeDragProtection: boolean;
+  setFeeDragProtection: (val: boolean) => void;
+  maxLossMode: 'usd' | 'pct';
+  setMaxLossMode: (val: 'usd' | 'pct') => void;
+  maxLossValue: number;
+  setMaxLossValue: (val: number) => void;
+  flashCrashSlippagePct: number;
+  setFlashCrashSlippagePct: (val: number) => void;
 }
 
 export const useRiskStore = create<RiskStore>((set) => ({
@@ -46,5 +58,16 @@ export const useRiskStore = create<RiskStore>((set) => ({
       ...state.riskEvents
     ].slice(0, 50)
   })),
-  clearRiskEvents: () => set({ riskEvents: [] })
+  clearRiskEvents: () => set({ riskEvents: [] }),
+
+  aiRiskThreshold: 70,
+  setAiRiskThreshold: (val) => set({ aiRiskThreshold: val }),
+  feeDragProtection: true,
+  setFeeDragProtection: (val) => set({ feeDragProtection: val }),
+  maxLossMode: 'usd',
+  setMaxLossMode: (val) => set({ maxLossMode: val }),
+  maxLossValue: 100,
+  setMaxLossValue: (val) => set({ maxLossValue: val }),
+  flashCrashSlippagePct: 1,
+  setFlashCrashSlippagePct: (val) => set({ flashCrashSlippagePct: val })
 }));

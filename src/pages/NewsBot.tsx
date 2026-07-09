@@ -17,7 +17,7 @@ import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
-import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { BotLayout } from '../components/bots/BotLayout';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { recommendNewsBot } from '../api/aiAutoConfig';
@@ -777,17 +777,7 @@ export const NewsBot: React.FC = () => {
     </div>
   );
 
-  const buildRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
-    return {
-      rows: [
-        { label: 'Agent Strategy', value: 'News Trigger', tone: 'default' as const },
-        { label: 'Market Condition', value: 'Unpredictable', tone: 'warning' as const },
-      ],
-      totalRisk: 'AI agents execute actions automatically based on configured parameters.',
-      risk: 'High' as const
-    };
-  };
-  const riskSummary = buildRiskRows();
+
 
   return (
     <>
@@ -804,16 +794,10 @@ export const NewsBot: React.FC = () => {
       onStart={() => setShowConfirm(true)}
       onStop={stop}
     />
-      <RiskSummaryModal
+      <BotRiskSetupModal
         isOpen={showConfirm}
-        onCancel={() => setShowConfirm(false)}
-        title="News Bot Risk Summary"
         botName="News Bot"
-        rows={riskSummary.rows}
-        risk={riskSummary.risk}
-        totalRisk={riskSummary.totalRisk}
-        disclaimer="AI Agents execute independently. Monitor closely."
-        confirmLabel="Confirm & Deploy"
+        onCancel={() => setShowConfirm(false)}
         onConfirm={() => { setShowConfirm(false); start(); }}
       />
     </>

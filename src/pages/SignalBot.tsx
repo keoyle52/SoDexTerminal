@@ -15,7 +15,7 @@ import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { Input, Select, Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { BotPnlStrip } from '../components/common/BotPnlStrip';
-import { RiskSummaryModal, type RiskSummaryRow } from '../components/common/RiskSummaryModal';
+import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { BotLayout } from '../components/bots/BotLayout';
 import { fetchTickers } from '../api/services';
 import { type SeriesMarker, type Time } from 'lightweight-charts';
@@ -957,17 +957,7 @@ export const SignalBot: React.FC = () => {
     </div>
   );
 
-  const buildRiskRows = (): { rows: RiskSummaryRow[]; totalRisk: string; risk: 'Low' | 'Medium' | 'High' } => {
-    return {
-      rows: [
-        { label: 'Agent Strategy', value: 'Technical Signals', tone: 'default' as const },
-        { label: 'Market Condition', value: 'Unpredictable', tone: 'warning' as const },
-      ],
-      totalRisk: 'AI agents execute actions automatically based on configured parameters.',
-      risk: 'High' as const
-    };
-  };
-  const riskSummary = buildRiskRows();
+
 
   return (
     <>
@@ -1012,17 +1002,13 @@ export const SignalBot: React.FC = () => {
       isLocked={isLocked}
       onStart={() => setShowConfirm(true)}
       onStop={() => void stopBot()}
+      currentPnl={state.realizedPnl + state.activePositions.reduce((sum, p) => sum + p.unrealizedPnl, 0)}
+      investment={parseFloat(state.amountUsdt) * Math.max(state.activePositions.length, 1)}
     />
-      <RiskSummaryModal
+      <BotRiskSetupModal
         isOpen={showConfirm}
-        onCancel={() => setShowConfirm(false)}
-        title="Signal Bot Risk Summary"
         botName="Signal Bot"
-        rows={riskSummary.rows}
-        risk={riskSummary.risk}
-        totalRisk={riskSummary.totalRisk}
-        disclaimer="AI Agents execute independently. Monitor closely."
-        confirmLabel="Confirm & Deploy"
+        onCancel={() => setShowConfirm(false)}
         onConfirm={() => { setShowConfirm(false); startBot(); }}
       />
     </>
