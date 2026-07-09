@@ -26,8 +26,10 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
   const [fixedNotionalUsd, setFixedNotionalUsd] = useState(50);
   const [maxLeverage, setMaxLeverage] = useState(suggested.maxLeverage ?? 3);
   const [maxNotionalPerTradeUsd, setMaxNotionalPerTradeUsd] = useState(200);
-  const [maxDailyLossUsd, setMaxDailyLossUsd] = useState(100);
+  const [maxDailyLossMode, setMaxDailyLossMode] = useState<'usd' | 'pct'>('usd');
+  const [maxDailyLossValue, setMaxDailyLossValue] = useState(100);
   const [requireStopLoss, setRequireStopLoss] = useState(suggested.requireStopLoss ?? true);
+  const [defaultStopLossPct, setDefaultStopLossPct] = useState(5);
   const [aiCoPilotMode, setAiCoPilotMode] = useState<'disabled' | 'auto' | 'manual'>('disabled');
   const [aiRiskThreshold, setAiRiskThreshold] = useState(70);
   const [submitting, setSubmitting] = useState(false);
@@ -77,8 +79,9 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
     try {
       const config = {
         sourceAccountId, sizingMode, proportionalPct, fixedNotionalUsd,
-        maxLeverage, maxNotionalPerTradeUsd, maxDailyLossUsd,
-        requireStopLoss, defaultStopLossPct: 5, paused: false,
+        maxLeverage, maxNotionalPerTradeUsd, 
+        maxDailyLossMode, maxDailyLossValue,
+        requireStopLoss, defaultStopLossPct, paused: false,
         slippageFeeGuardEnabled: true, aiCoPilotMode, aiRiskThreshold,
       };
       const res = await startCopySession({
@@ -191,16 +194,38 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
                 className="w-full bg-surface-2 border border-border rounded-xl px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-primary/50" />
             </Field>
 
-            <Field label="Daily max loss (USD) — auto-pause if exceeded">
-              <input type="number" value={maxDailyLossUsd} onChange={e => setMaxDailyLossUsd(Number(e.target.value))}
-                className="w-full bg-surface-2 border border-border rounded-xl px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-primary/50" />
+            <Field label="Daily max loss budget — auto-pause if exceeded">
+              <div className="flex gap-2">
+                <div className="flex bg-surface-2 p-1 rounded-xl border border-border">
+                  <button onClick={() => { setMaxDailyLossMode('usd'); setMaxDailyLossValue(100); }}
+                    className={cn('px-4 py-1.5 rounded-lg text-sm font-semibold transition-all', maxDailyLossMode === 'usd' ? 'bg-primary text-background' : 'text-text-muted hover:text-text-primary')}>
+                    $ (USD)
+                  </button>
+                  <button onClick={() => { setMaxDailyLossMode('pct'); setMaxDailyLossValue(10); }}
+                    className={cn('px-4 py-1.5 rounded-lg text-sm font-semibold transition-all', maxDailyLossMode === 'pct' ? 'bg-primary text-background' : 'text-text-muted hover:text-text-primary')}>
+                    % (Equity)
+                  </button>
+                </div>
+                <input type="number" value={maxDailyLossValue} onChange={e => setMaxDailyLossValue(Number(e.target.value))}
+                  className="flex-1 bg-surface-2 border border-border rounded-xl px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-primary/50" />
+              </div>
             </Field>
 
-            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-              <input type="checkbox" checked={requireStopLoss} onChange={e => setRequireStopLoss(e.target.checked)}
-                className="rounded accent-[#00D4FF]" />
-              Enforce stop-loss for every mirrored trade
-            </label>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+                <input type="checkbox" checked={requireStopLoss} onChange={e => setRequireStopLoss(e.target.checked)}
+                  className="rounded accent-[#00D4FF]" />
+                Enforce stop-loss for every mirrored trade
+              </label>
+              {requireStopLoss && (
+                <div className="pl-6 animate-fade-in">
+                  <Field label={`Stop-Loss Percentage: ${defaultStopLossPct}%`}>
+                    <input type="range" min={1} max={50} value={defaultStopLossPct}
+                      onChange={e => setDefaultStopLossPct(Number(e.target.value))} className="w-full accent-[#00D4FF]" />
+                  </Field>
+                </div>
+              )}
+            </div>
 
             {/* AI Co-Pilot */}
             <div className="border-t border-border/60 my-2 pt-4 space-y-4">

@@ -7,7 +7,8 @@ export interface CopyConfig {
   proportionalPct: number;
   maxLeverage: number;
   maxNotionalPerTradeUsd: number;
-  maxDailyLossUsd: number;
+  maxDailyLossMode: 'usd' | 'pct';
+  maxDailyLossValue: number;
   requireStopLoss: boolean;
   defaultStopLossPct: number;
   paused: boolean;
@@ -40,8 +41,12 @@ export function evaluateCopyTrade(
 
   if (config.paused) return reject('Session is paused');
 
-  if (account.todayRealizedPnlUsd < -config.maxDailyLossUsd) {
-    return reject(`Daily loss limit exceeded: $${Math.abs(account.todayRealizedPnlUsd).toFixed(2)} > $${config.maxDailyLossUsd}`);
+  let dailyLossLimitUsd = config.maxDailyLossMode === 'pct' 
+    ? account.equityUsd * (config.maxDailyLossValue / 100) 
+    : config.maxDailyLossValue;
+
+  if (account.todayRealizedPnlUsd < -dailyLossLimitUsd) {
+    return reject(`Daily loss limit exceeded: $${Math.abs(account.todayRealizedPnlUsd).toFixed(2)} > $${dailyLossLimitUsd.toFixed(2)}`);
   }
 
   const price = parseFloat(trade.p);

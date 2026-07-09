@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
-import { Search, Activity, ArrowLeft, Loader2 } from 'lucide-react';
+import { Search, Activity, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
 import { MirrorWalletInput } from '../components/mirror/MirrorWalletInput';
 import { MirrorRiskReport } from '../components/mirror/MirrorRiskReport';
 import { MirrorCopySetup } from '../components/mirror/MirrorCopySetup';
 import { MirrorDashboard } from '../components/mirror/MirrorDashboard';
+import { MirrorHowItWorks } from '../components/mirror/MirrorHowItWorks';
 import { resolveWalletAddress, analyzeMirrorWallet } from '../api/mirrorClient';
 import { useSettingsStore } from '../store/settingsStore';
 
@@ -13,10 +14,11 @@ type MirrorView = 'input' | 'analyzing' | 'report' | 'dashboard';
 const TABS = [
   { key: 'analyze' as const, label: 'Analyze', icon: Search },
   { key: 'dashboard' as const, label: 'Dashboard', icon: Activity },
+  { key: 'how-it-works' as const, label: 'How it Works', icon: ShieldCheck },
 ];
 
 export const MirrorTool: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'analyze' | 'dashboard'>('analyze');
+  const [activeTab, setActiveTab] = useState<'analyze' | 'dashboard' | 'how-it-works'>('analyze');
   const [view, setView] = useState<MirrorView>('input');
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -66,7 +68,8 @@ export const MirrorTool: React.FC = () => {
           {TABS.map(tab => {
             const Icon = tab.icon;
             const isActive = (tab.key === 'analyze' && activeTab === 'analyze') ||
-                             (tab.key === 'dashboard' && activeTab === 'dashboard');
+                             (tab.key === 'dashboard' && activeTab === 'dashboard') ||
+                             (tab.key === 'how-it-works' && activeTab === 'how-it-works');
             return (
               <button
                 key={tab.key}
@@ -105,6 +108,8 @@ export const MirrorTool: React.FC = () => {
         <div className="max-w-6xl mx-auto">
           {activeTab === 'dashboard' ? (
             <MirrorDashboard />
+          ) : activeTab === 'how-it-works' ? (
+            <MirrorHowItWorks />
           ) : view === 'analyzing' ? (
             <AnalyzingState />
           ) : view === 'report' && reportData ? (
