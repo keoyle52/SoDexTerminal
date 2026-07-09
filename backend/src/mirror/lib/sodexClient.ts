@@ -57,10 +57,60 @@ async function request<T>(base: string, path: string, opts: {
 
 /* ── Account State (wallet → accountId) ─────────────── */
 
+function extractAccountId(raw: any): number | null {
+  if (!raw) return null;
+  const obj = raw.data ?? raw;
+  if (typeof obj !== 'object') return null;
+  const keys = ['aid', 'accountID', 'accountId', 'AccountID', 'account_id'];
+  for (const k of keys) {
+    const v = obj[k];
+    if (v != null && v !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  // Search balances array if present
+  if (Array.isArray(obj.balances)) {
+    for (const b of obj.balances) {
+      const id = extractAccountId(b);
+      if (id) return id;
+    }
+  }
+  return null;
+}
+
 export async function getAccountState(address: string, network: SodexNetwork) {
-  const base = ENDPOINTS[network].spot;
-  const envelope = await request<any>(base, `/accounts/${address}/state`, { method: 'GET' });
-  return envelope;
+  const endpoints = ENDPOINTS[network];
+  
+  // Try spot state
+  try {
+    const res = await request<any>(endpoints.spot, `/accounts/${address}/state`, { method: 'GET' });
+    const id = extractAccountId(res);
+    if (id) return { data: { aid: id } };
+  } catch { /* empty */ }
+
+  // Try perps state
+  try {
+    const res = await request<any>(endpoints.perps, `/accounts/${address}/state`, { method: 'GET' });
+    const id = extractAccountId(res);
+    if (id) return { data: { aid: id } };
+  } catch { /* empty */ }
+
+  // Try spot balances
+  try {
+    const res = await request<any>(endpoints.spot, `/accounts/${address}/balances`, { method: 'GET' });
+    const id = extractAccountId(res);
+    if (id) return { data: { aid: id } };
+  } catch { /* empty */ }
+
+  // Try perps balances
+  try {
+    const res = await request<any>(endpoints.perps, `/accounts/${address}/balances`, { method: 'GET' });
+    const id = extractAccountId(res);
+    if (id) return { data: { aid: id } };
+  } catch { /* empty */ }
+
+  return null;
 }
 
 /* ── Perps endpoints (by accountID) ─────────────────── */
