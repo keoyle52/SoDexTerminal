@@ -1,8 +1,14 @@
 import axios from 'axios';
 
 const ENDPOINTS = {
-  mainnet: { perps: 'https://api.hyperliquid.xyz', spot: 'https://api.hyperliquid.xyz' },
-  testnet: { perps: 'https://api.hyperliquid-testnet.xyz', spot: 'https://api.hyperliquid-testnet.xyz' },
+  mainnet: {
+    spot: 'https://mainnet-gw.sodex.dev/api/v1/spot',
+    perps: 'https://mainnet-gw.sodex.dev/api/v1/perps',
+  },
+  testnet: {
+    spot: 'https://testnet-gw.sodex.dev/api/v1/spot',
+    perps: 'https://testnet-gw.sodex.dev/api/v1/perps',
+  },
 };
 
 export type SodexNetwork = 'mainnet' | 'testnet';
@@ -13,74 +19,106 @@ export interface SodexAccountTrade {
   reduceOnly: boolean; t: string;
 }
 
-let symbolCache: Map<string, number> | null = null;
-
-async function loadSymbols(network: SodexNetwork): Promise<Map<string, number>> {
-  if (symbolCache) return symbolCache;
-  const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'meta' });
-  const map = new Map<string, number>();
-  const universe = res.data?.universe ?? [];
-  universe.forEach((s: any, i: number) => {
-    map.set(s.name, i);
-  });
-  symbolCache = map;
-  return map;
+interface SodexEnvelope<T> {
+  code: number;
+  timestamp: number;
+  error?: string;
+  data: T;
 }
 
-export async function resolveSymbolId(symbol: string, network: SodexNetwork): Promise<number | null> {
-  const cache = await loadSymbols(network);
-  for (const key of [symbol, symbol.replace('_', ''), symbol.split('_')[0], symbol.split('-')[0]]) {
-    const id = cache.get(key);
-    if (id !== undefined) return id;
+async function request<T>(base: string, path: string, opts: {
+  method?: 'GET' | 'POST';
+  query?: Record<string, string | number | undefined>;
+  body?: unknown;
+}): Promise<SodexEnvelope<T>> {
+  const url = new URL(base + path);
+  if (opts.query) {
+    for (const [k, v] of Object.entries(opts.query)) {
+      if (v !== undefined) url.searchParams.set(k, String(v));
+    }
   }
-  return null;
+
+  const res = await axios({
+    method: opts.method ?? 'GET',
+    url: url.toString(),
+    headers: {
+      Accept: 'application/json',
+      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    data: opts.body,
+  });
+
+  const json = res.data as SodexEnvelope<T>;
+  if (json.error) {
+    throw new Error(`SoDEX API error [${path}]: ${json.error}`);
+  }
+  return json;
 }
+
+/* ── Account State (wallet → accountId) ─────────────── */
 
 export async function getAccountState(address: string, network: SodexNetwork) {
+  const base = ENDPOINTS[network].spot;
+  const envelope = await request<any>(base, `/accounts/${address}/state`, { method: 'GET' });
+  return envelope;
+}
+
+/* ── Perps endpoints (by accountID) ─────────────────── */
+
+export async function getPerpsOrderHistory(accountId: number, network: SodexNetwork, limit = 50) {
   const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'clearinghouseState', user: address });
-  return res.data;
+  const envelope = await request<any[]>(base, '/trade/orders/history', {
+    method: 'GET', query: { accountID: accountId, limit },
+  });
+  return (envelope.data ?? []).slice(0, limit);
 }
 
 export async function getPerpsUserTrades(accountId: number, network: SodexNetwork, limit = 50) {
   const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'userFills', user: String(accountId) });
-  return (res.data ?? []).slice(0, limit);
-}
-
-export async function getPerpsOrderHistory(accountId: number, network: SodexNetwork, limit = 50) {
-  const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'userOrders', user: String(accountId) });
-  return (res.data ?? []).slice(0, limit);
+  const envelope = await request<any[]>(base, '/trade/trades', {
+    method: 'GET', query: { accountID: accountId, limit },
+  });
+  return (envelope.data ?? []).slice(0, limit);
 }
 
 export async function getPerpsPositionHistory(accountId: number, network: SodexNetwork, limit = 30) {
   const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'userPositionHistory', user: String(accountId) });
-  return (res.data ?? []).slice(0, limit);
+  const envelope = await request<any[]>(base, '/trade/positions/history', {
+    method: 'GET', query: { accountID: accountId, limit },
+  });
+  return (envelope.data ?? []).slice(0, limit);
 }
 
-export async function getSpotUserTrades(accountId: number, network: SodexNetwork, limit = 50) {
+/* ── Spot endpoints (by address) ────────────────────── */
+
+export async function getSpotOrderHistory(address: string, network: SodexNetwork, limit = 50) {
   const base = ENDPOINTS[network].spot;
-  const res = await axios.post(`${base}/info`, { type: 'spotUserFills', user: String(accountId) });
-  return (res.data ?? []).slice(0, limit);
+  const envelope = await request<any[]>(base, `/accounts/${address}/orders/history`, {
+    method: 'GET', query: { limit },
+  });
+  return (envelope.data ?? []).slice(0, limit);
 }
 
-export async function getSpotOrderHistory(accountId: number, network: SodexNetwork, limit = 50) {
+export async function getSpotUserTrades(address: string, network: SodexNetwork, limit = 50) {
   const base = ENDPOINTS[network].spot;
-  const res = await axios.post(`${base}/info`, { type: 'spotUserOrders', user: String(accountId) });
-  return (res.data ?? []).slice(0, limit);
+  const envelope = await request<any[]>(base, `/accounts/${address}/trades`, {
+    method: 'GET', query: { limit },
+  });
+  return (envelope.data ?? []).slice(0, limit);
 }
+
+/* ── Market data ────────────────────────────────────── */
 
 export async function getPerpsBalances(accountId: number, network: SodexNetwork) {
   const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'clearinghouseState', user: String(accountId) });
-  return res.data;
+  const envelope = await request<any>(base, '/account/balances', {
+    method: 'GET', query: { accountID: accountId },
+  });
+  return envelope.data;
 }
 
 export async function getMarkPrices(network: SodexNetwork) {
   const base = ENDPOINTS[network].perps;
-  const res = await axios.post(`${base}/info`, { type: 'allMids' });
-  return res.data;
+  const envelope = await request<any[]>(base, '/market/markPrices', { method: 'GET' });
+  return envelope.data;
 }

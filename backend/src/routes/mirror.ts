@@ -23,8 +23,8 @@ mirrorRouter.post('/analyze', async (req: Request, res: Response) => {
       sodex.getPerpsOrderHistory(accountId, net).catch(() => []),
       sodex.getPerpsUserTrades(accountId, net).catch(() => []),
       sodex.getPerpsPositionHistory(accountId, net).catch(() => []),
-      sodex.getSpotOrderHistory(accountId, net).catch(() => []),
-      sodex.getSpotUserTrades(accountId, net).catch(() => []),
+      sodex.getSpotOrderHistory(address, net).catch(() => []),
+      sodex.getSpotUserTrades(address, net).catch(() => []),
     ]);
 
     const report = await analyzeWallet({
@@ -58,7 +58,11 @@ mirrorRouter.get('/wallet/resolve', async (req: Request, res: Response) => {
       return;
     }
     const state = await sodex.getAccountState(address, network as sodex.SodexNetwork);
-    const accountId = state?.aid ?? state?.accountId ?? 0;
+    const accountId = state?.data?.aid ?? 0;
+    if (!accountId) {
+      res.status(404).json({ error: 'No active SoDEX account found for this address' });
+      return;
+    }
     res.json({ accountId });
   } catch (err: any) {
     res.status(500).json({ error: err.message ?? 'Failed to resolve wallet' });
