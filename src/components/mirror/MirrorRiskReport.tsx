@@ -3,6 +3,8 @@ import { cn } from '../../lib/utils';
 import { MirrorRiskGauge } from './MirrorRiskGauge';
 import { MirrorStatCard } from './MirrorStatCard';
 import { Activity, TrendingUp, Timer, Gauge, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { placeOrder } from '../../api/services';
 
 interface MirrorRiskReportProps {
   data: any;
@@ -24,11 +26,44 @@ function formatSymbol(sym: string): string {
 
 export const MirrorRiskReport: React.FC<MirrorRiskReportProps> = ({ data, onSetupCopy }) => {
   const [activeTab, setActiveTab] = useState<'futures' | 'spot'>('futures');
+  const [copyingTradeId, setCopyingTradeId] = useState<string | null>(null);
+
   const report = data.report ?? {};
   const stats = report.stats ?? {};
   const edges = report.performanceEdges ?? { positive: [], negative: [] };
   const riskFactors = report.riskFactors ?? [];
   const suggested = report.suggestedCopyConfig ?? {};
+
+  async function handleCopyTrade(trade: any, index: number) {
+    const symbol = trade.s ?? trade.symbol;
+    const side = (trade.S ?? trade.side) === 'BUY' ? 1 : 2;
+    const qty = trade.q ?? trade.quantity;
+    const market = activeTab === 'futures' ? 'perps' : 'spot';
+
+    if (!symbol || !qty) {
+      toast.error('Invalid trade data.');
+      return;
+    }
+
+    const tradeId = `${symbol}-${index}`;
+    setCopyingTradeId(tradeId);
+    const toastId = toast.loading(`Copying ${trade.S ?? trade.side} order for ${symbol}...`);
+
+    try {
+      await placeOrder({
+        symbol,
+        side,
+        type: 2, // MARKET order
+        quantity: String(qty),
+      }, market);
+      toast.success(`Successfully placed order: ${trade.S ?? trade.side} ${qty} ${symbol}!`, { id: toastId });
+    } catch (err: any) {
+      const msg = err.message ?? 'Failed to execute order';
+      toast.error(`Order Failed: ${msg}`, { id: toastId });
+    } finally {
+      setCopyingTradeId(null);
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -167,6 +202,7 @@ export const MirrorRiskReport: React.FC<MirrorRiskReportProps> = ({ data, onSetu
                 <th className="px-6 py-3 font-medium">Side</th>
                 <th className="px-6 py-3 font-medium">Price</th>
                 <th className="px-6 py-3 font-medium">Quantity</th>
+                <th className="px-6 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody className="font-mono">
@@ -178,11 +214,23 @@ export const MirrorRiskReport: React.FC<MirrorRiskReportProps> = ({ data, onSetu
                   </td>
                   <td className="px-6 py-3 text-text-secondary">{t.p ?? t.price}</td>
                   <td className="px-6 py-3 text-text-secondary">{t.q ?? t.quantity}</td>
+                  <td className="px-6 py-3 text-right">
+                    <button
+                      disabled={copyingTradeId !== null}
+                      onClick={() => handleCopyTrade(t, i)}
+                      className={cn(
+                        'text-primary hover:underline text-xs font-semibold disabled:opacity-50',
+                        copyingTradeId === `${t.s ?? t.symbol}-${i}` && 'text-text-muted animate-pulse'
+                      )}
+                    >
+                      {copyingTradeId === `${t.s ?? t.symbol}-${i}` ? 'Copying...' : 'Copy'}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {((activeTab === 'futures' ? data.trades : data.spotTrades) ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-text-muted">No orders found in this category.</td>
+                  <td colSpan={5} className="px-6 py-10 text-center text-text-muted">No orders found in this category.</td>
                 </tr>
               )}
             </tbody>
