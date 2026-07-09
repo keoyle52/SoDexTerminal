@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './backendBase';
 
-const BASE = '/api/mirror';
+const BASE = `${API_BASE}/api/mirror`;
 
 export async function resolveWalletAddress(address: string, network: string) {
   const res = await axios.get(`${BASE}/wallet/resolve`, { params: { address, network } });
