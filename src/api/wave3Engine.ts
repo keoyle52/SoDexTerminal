@@ -217,7 +217,7 @@ export function startWave3Engine() {
              w3State.addLog(`Oversold (${rsi.toFixed(1)}). Deploying DCA Bot (Market Long).`, 'ACTION');
              const qty = (w3State.investment / currentPrice).toFixed(6);
              await placeOrder({ symbol: w3State.targetCoin, side: 1, type: 2, quantity: qty }, w3State.market);
-             w3State.setActivePosition({ botType: 'DCA Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: w3State.investment, status: 'ACTIVE' });
+             w3State.setActivePosition({ botType: 'DCA Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: parseFloat(qty), status: 'ACTIVE' });
           }
         } 
         else if (newRegime === 'TRENDING_DOWN') {
@@ -225,7 +225,7 @@ export function startWave3Engine() {
           w3State.addLog(`Overbought (${rsi.toFixed(1)}). Deploying Signal Bot (Market Short).`, 'ACTION');
           const qty = (w3State.investment / currentPrice).toFixed(6);
           await placeOrder({ symbol: w3State.targetCoin, side: 2, type: 2, quantity: qty }, w3State.market);
-          w3State.setActivePosition({ botType: 'Signal Bot', side: 'SHORT', entryPrice: currentPrice, currentPrice, pnl: 0, size: w3State.investment, status: 'ACTIVE' });
+          w3State.setActivePosition({ botType: 'Signal Bot', side: 'SHORT', entryPrice: currentPrice, currentPrice, pnl: 0, size: parseFloat(qty), status: 'ACTIVE' });
         }
         else if (newRegime === 'CONSOLIDATION') {
           w3State.setActiveAction('DEPLOY_MM');
@@ -233,7 +233,7 @@ export function startWave3Engine() {
           const qty = ((w3State.investment * 0.25) / currentPrice).toFixed(6);
           await placeOrder({ symbol: w3State.targetCoin, side: 1, type: 1, price: (currentPrice * 0.999).toFixed(2), quantity: qty }, w3State.market);
           await placeOrder({ symbol: w3State.targetCoin, side: 2, type: 1, price: (currentPrice * 1.001).toFixed(2), quantity: qty }, w3State.market);
-          w3State.setActivePosition({ botType: 'Market Maker Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: w3State.investment, status: 'ACTIVE' });
+          w3State.setActivePosition({ botType: 'Market Maker Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: parseFloat(qty), status: 'ACTIVE' });
         }
         else if (newRegime === 'HIGH_VOLATILITY') {
           w3State.setActiveAction('DEPLOY_GRID');
@@ -241,7 +241,7 @@ export function startWave3Engine() {
           const qty = ((w3State.investment * 0.25) / currentPrice).toFixed(6);
           await placeOrder({ symbol: w3State.targetCoin, side: 1, type: 1, price: (currentPrice * 0.98).toFixed(2), quantity: qty }, w3State.market);
           await placeOrder({ symbol: w3State.targetCoin, side: 2, type: 1, price: (currentPrice * 1.02).toFixed(2), quantity: qty }, w3State.market);
-          w3State.setActivePosition({ botType: 'Grid Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: w3State.investment, status: 'ACTIVE' });
+          w3State.setActivePosition({ botType: 'Grid Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: parseFloat(qty), status: 'ACTIVE' });
         }
       }
 

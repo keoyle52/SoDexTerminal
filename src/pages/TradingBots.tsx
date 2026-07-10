@@ -8,7 +8,6 @@ import toast from 'react-hot-toast';
 import { fetchTickers } from '../api/services';
 import { useWave3Store } from '../store/wave3Store';
 import { useRiskStore } from '../store/riskStore';
-import { SymbolSelector } from '../components/common/SymbolSelector';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { cn } from '../lib/utils';
 import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
@@ -31,26 +30,6 @@ const Wave3AgentConsole: React.FC = () => {
   const isSoso = w3.targetCoin.startsWith('SOSO');
 
   const [showInfo, setShowInfo] = useState(false);
-  const [autoPairBusy, setAutoPairBusy] = useState(false);
-
-  const handleAutoSelectPair = async () => {
-    setAutoPairBusy(true);
-    try {
-      const tickers = await fetchTickers(w3.market);
-      if (Array.isArray(tickers) && tickers.length > 0) {
-        const sorted = tickers.sort((a: any, b: any) => (parseFloat(b.quoteVolume) || 0) - (parseFloat(a.quoteVolume) || 0));
-        const top = sorted[0] as any;
-        if (top && top.symbol) {
-          handleAssetChange(top.symbol.replace('-USD', ''));
-          toast.success(`Auto-selected highest volume pair: ${top.symbol}`);
-        }
-      }
-    } catch (e) {
-      toast.error('Failed to auto-select pair');
-    } finally {
-      setAutoPairBusy(false);
-    }
-  };
 
   const handleStartRequest = () => {
     if (w3.isAgentRunning) {
@@ -107,18 +86,12 @@ const Wave3AgentConsole: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Target Asset</label>
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <SymbolSelector market={w3.market} value={w3.targetCoin} onChange={handleAssetChange} />
+                    <div className="w-full bg-background/50 border border-border rounded-xl h-11 px-4 font-bold text-text-primary flex items-center justify-between opacity-70">
+                      <div className="flex items-center gap-2">
+                        <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.svg" className="w-5 h-5" alt="BTC" />
+                        <span>BTC-USD</span>
                       </div>
-                      <button 
-                        onClick={handleAutoSelectPair} 
-                        disabled={w3.isAgentRunning || autoPairBusy} 
-                        className="px-3 bg-surface-2 hover:bg-surface border border-border rounded-xl text-text-primary transition-colors flex items-center justify-center disabled:opacity-50" 
-                        title="Auto-Select High Volume Pair"
-                      >
-                        {autoPairBusy ? <Activity className="animate-spin" size={16} /> : <Zap size={16} />}
-                      </button>
+                      <span className="text-[10px] text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full bg-purple-500/10">FIXED</span>
                     </div>
                   </div>
                 <div>
