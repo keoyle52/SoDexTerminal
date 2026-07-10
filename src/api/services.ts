@@ -207,9 +207,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
  * ensure path matching is consistent.
  */
 function getEvmAddress(): string {
-  const { privateKey, evmAddress } = useSettingsStore.getState();
+  const { privateKey, evmAddress, walletAddress } = useSettingsStore.getState();
   const explicit = (evmAddress ?? '').trim();
   if (explicit) return explicit.toLowerCase();
+  if (walletAddress) return walletAddress.toLowerCase();
   const derived = deriveAddressFromPrivateKey(privateKey);
   return derived ? derived.toLowerCase() : '';
 }
