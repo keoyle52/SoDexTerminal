@@ -217,10 +217,12 @@ export const Settings: React.FC = () => {
 
                     <div className="mt-4 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
                       <h4 className="text-sm font-bold text-purple-400 mb-2">Note for Judges: Why is an API Key required?</h4>
-                      <p className="text-xs text-text-secondary leading-relaxed">
-                        Since this platform runs <strong>100% real on-chain automated trading bots</strong> (Grid, Wave3, etc.), submitting trades requires cryptographic signatures (EIP-712). 
-                        If an API Key is not provided, <strong>MetaMask will pop up to request a signature for every single trade</strong> executed by the bots (due to strict Web3 security rules). 
-                        To achieve true autonomous "1-Click Trading" without interrupting the user with hundreds of pop-ups, providing a registered SoDEX API Key is technically mandatory per exchange architecture.
+                      <p className="text-xs text-text-secondary leading-relaxed space-y-2">
+                        <span>Since this platform runs <strong>100% real on-chain automated trading bots</strong> (Grid, Wave3, etc.), submitting trades requires cryptographic signatures (EIP-712).</span>
+                        <br/><br/>
+                        <span>You <strong>CAN</strong> run the bots without entering an API Key. However, if you don't provide one, <strong>MetaMask will pop up to request a manual signature for every single trade</strong> executed by the bots due to strict Web3 security rules.</span>
+                        <br/><br/>
+                        <span>To achieve true autonomous "1-Click Trading" without interrupting the user with hundreds of pop-ups, providing a registered SoDEX API Key is technically mandatory per exchange architecture. <strong className="text-emerald-400">Security Note: Your API Key is stored strictly LOCALLY in your browser's memory and is NEVER sent to any external server.</strong></span>
                       </p>
                     </div>
                   </form>
@@ -257,10 +259,12 @@ export const Settings: React.FC = () => {
 
                     <div className="mt-4 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
                       <h4 className="text-sm font-bold text-purple-400 mb-2">Note for Judges: Why is an API Key required?</h4>
-                      <p className="text-xs text-text-secondary leading-relaxed">
-                        Since this platform runs <strong>100% real on-chain automated trading bots</strong> (Grid, Wave3, etc.), submitting trades requires cryptographic signatures (EIP-712). 
-                        If an API Key is not provided, <strong>MetaMask will pop up to request a signature for every single trade</strong> executed by the bots (due to strict Web3 security rules). 
-                        To achieve true autonomous "1-Click Trading" without interrupting the user with hundreds of pop-ups, providing a registered SoDEX API Key is technically mandatory per exchange architecture.
+                      <p className="text-xs text-text-secondary leading-relaxed space-y-2">
+                        <span>Since this platform runs <strong>100% real on-chain automated trading bots</strong> (Grid, Wave3, etc.), submitting trades requires cryptographic signatures (EIP-712).</span>
+                        <br/><br/>
+                        <span>You <strong>CAN</strong> run the bots without entering an API Key. However, if you don't provide one, <strong>MetaMask will pop up to request a manual signature for every single trade</strong> executed by the bots due to strict Web3 security rules.</span>
+                        <br/><br/>
+                        <span>To achieve true autonomous "1-Click Trading" without interrupting the user with hundreds of pop-ups, providing a registered SoDEX API Key is technically mandatory per exchange architecture. <strong className="text-emerald-400">Security Note: Your API Key is stored strictly LOCALLY in your browser's memory and is NEVER sent to any external server.</strong></span>
                       </p>
                     </div>
                   </form>
