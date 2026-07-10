@@ -77,7 +77,27 @@ export function startWave3Engine() {
       const klines = await fetchKlines(w3State.targetCoin, '1m', 30, w3State.market);
       if (!klines || klines.length === 0) return;
       
-      const closes = (klines as number[][]).map(k => Number(k[4]));
+      const closes: number[] = [];
+      let minLow = Infinity;
+      let maxHigh = -Infinity;
+
+      for (const k of klines as any[]) {
+        let h = 0, l = 0, c = 0;
+        if (Array.isArray(k)) {
+          h = parseFloat(k[2]);
+          l = parseFloat(k[3]);
+          c = parseFloat(k[4]);
+        } else {
+          h = parseFloat(k.high || k.h || '0');
+          l = parseFloat(k.low || k.l || '0');
+          c = parseFloat(k.close || k.c || '0');
+        }
+        if (l < minLow) minLow = l;
+        if (h > maxHigh) maxHigh = h;
+        if (!isNaN(c)) closes.push(c);
+      }
+
+      if (closes.length === 0) return;
       const currentPrice = closes[closes.length - 1];
       if (lastPrice === 0) lastPrice = currentPrice;
 
@@ -85,6 +105,8 @@ export function startWave3Engine() {
 
       // --- Flash Crash Protection ---
       const dropPct = ((lastPrice - currentPrice) / lastPrice) * 100;
+      const spreadPct = minLow > 0 ? ((maxHigh - minLow) / minLow) : 0;
+
       if (riskState.isRiskShieldActive && dropPct > 3) {
         riskState.setRiskLevel('CRITICAL');
         riskState.addRiskEvent({
@@ -115,7 +137,7 @@ export function startWave3Engine() {
 
       // --- AI Regime Detection ---
       const rsi = calculateRSI(closes, 14);
-      const vol = calculateVolatility(closes.slice(-14));
+      const vol = spreadPct * 100; // use calculated spread instead of calculateVolatility which relies on max/min of close
       const macd = calculateMACD(closes);
       const bb = calculateBollingerBands(closes, 20);
       
