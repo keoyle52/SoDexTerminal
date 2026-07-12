@@ -34,6 +34,7 @@ const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ defaul
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
 const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
 const MirrorTool        = lazyFrom(() => import('./pages/MirrorTool').then(m => ({ default: m.MirrorTool })), 'MirrorTool');
+const Backtesting       = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
 import { HeaderDock } from './components/HeaderDock';
 
 /**
@@ -127,6 +128,7 @@ function App() {
                     <Route path="/account"          element={<AccountAndRisk />} />
                     <Route path="/positions"       element={<Navigate to="/account" replace />} />
                     <Route path="/risk"            element={<Navigate to="/account" replace />} />
+                    <Route path="/backtesting"     element={<Backtesting />} />
                     <Route path="/trading-bots"    element={<TradingBots />} />
                     <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
                     <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />

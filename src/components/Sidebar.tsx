@@ -15,6 +15,12 @@ const NAV_SECTIONS = [
       { to: '/positions',     icon: LineChart,       label: 'Positions' },
     ],
   },
+  {
+    label: 'AI & Intelligence',
+    items: [
+      { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting & VaR' },
+    ],
+  },
 ];
 
 const NavItem: React.FC<{ to: string; icon: React.ElementType; label: string; badge?: string; onClick?: () => void }> = ({
