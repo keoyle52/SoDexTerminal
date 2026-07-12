@@ -1,6 +1,28 @@
 import { ethers } from 'ethers';
 import { perpsClient } from './perpsClient';
+import { spotClient } from './spotClient';
 import { useSettingsStore } from '../store/settingsStore';
+
+function extractAccountId(raw: any): number | null {
+  if (!raw) return null;
+  const obj = raw.data ?? raw;
+  if (typeof obj !== 'object') return null;
+  const keys = ['aid', 'accountID', 'accountId', 'AccountID', 'account_id'];
+  for (const k of keys) {
+    const v = obj[k];
+    if (v != null && v !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  if (Array.isArray(obj.balances)) {
+    for (const b of obj.balances) {
+      const id = extractAccountId(b);
+      if (id) return id;
+    }
+  }
+  return null;
+}
 
 /**
  * Service to handle the automated creation of SoDEX API Keys via EIP-712.
@@ -17,12 +39,16 @@ export async function createAndRegisterApiKey(
   const isDemoMode = useSettingsStore.getState().isDemoMode;
 
   // 1. Fetch accountID using the public /state endpoint.
-  let accountID: number;
+  let accountID: number | null = null;
   try {
-    const state: any = await perpsClient.get(`/accounts/${walletAddress}/state`);
-    const dataObj = state.data || state;
-    const accountStr = dataObj.account?.aid || dataObj.account?.accountID || dataObj.aid || dataObj.accountID || '0';
-    accountID = parseInt(accountStr, 10);
+    const spotState: any = await spotClient.get(`/accounts/${walletAddress}/state`).catch(() => null);
+    accountID = extractAccountId(spotState);
+
+    if (!accountID) {
+      const perpsState: any = await perpsClient.get(`/accounts/${walletAddress}/state`).catch(() => null);
+      accountID = extractAccountId(perpsState);
+    }
+
     if (!accountID || accountID <= 0) {
       if (isDemoMode) {
         accountID = 999999;
