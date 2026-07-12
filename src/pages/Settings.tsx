@@ -1,18 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { perpsClient } from '../api/perpsClient';
-import { wsService } from '../api/websocket';
-import { clearServiceCaches } from '../api/services';
-import { deriveAddressFromPrivateKey } from '../api/signer';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
-import { Shield, Settings2, Info, Wifi, Unplug, Globe, Sun, Wallet, Key, Bell, Hash, FlaskConical } from 'lucide-react';
+import { Wallet, Wifi, FlaskConical } from 'lucide-react';
 import { Card } from '../components/common/Card';
-import { Input } from '../components/common/Input';
-import { Toggle } from '../components/common/Input';
 import { Button } from '../components/common/Button';
-import { cn } from '../lib/utils';
 import WalletConnect from '../components/WalletConnect';
+import { deriveAddressFromPrivateKey } from '../api/signer';
 
 export const Settings: React.FC = () => {
   const store = useSettingsStore();
@@ -30,8 +25,6 @@ export const Settings: React.FC = () => {
     return derivedAddress;
   }, [store.evmAddress, derivedAddress]);
 
-  const evmAddressLooksValid = !store.evmAddress || ethers.isAddress(store.evmAddress.trim());
-
   const credentialsMissing = !store.isWalletConnected && (!store.apiKeyName || !store.privateKey || !store.evmAddress);
 
   const handleTestConnection = async () => {
@@ -41,9 +34,6 @@ export const Settings: React.FC = () => {
     }
     setTesting(true);
     try {
-      // Use the perps /state endpoint — it returns `aid` (accountID) and
-      // validates that the address actually has a SoDEX account on the
-      // current network. Public GETs are unsigned so we don't need a key.
       await perpsClient.get(`/accounts/${effectiveAddress}/state`);
       toast.success('Connection successful.');
     } catch (error: unknown) {
@@ -68,12 +58,34 @@ export const Settings: React.FC = () => {
                 <Wallet size={18} className="text-primary" />
                 <h3 className="text-sm font-bold text-text-primary">Web3 Wallet Connection (Recommended)</h3>
               </div>
-                    </div>
-                  </div>
-                </div>
-              </Card>
+              <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded font-bold uppercase">Non-Custodial</span>
+            </div>
+            <p className="text-xs text-text-secondary mb-4 leading-relaxed">
+              Connect your MetaMask or browser Web3 wallet to sign SoDEX orders directly via EIP-712. No private keys are stored or persisted.
+            </p>
+            <WalletConnect />
+          </Card>
+
+          {credentialsMissing && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-danger/10 border border-danger/25">
+              <FlaskConical size={14} className="text-danger shrink-0 mt-0.5" />
+              <p className="text-xs text-danger leading-snug">
+                <strong>Required credentials missing.</strong> Connect your Web3 wallet above to place orders and use bot features.
+              </p>
             </div>
           )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              icon={<Wifi size={14} />}
+              onClick={handleTestConnection}
+              loading={testing}
+              disabled={testing || !effectiveAddress}
+            >
+              Test Connection
+            </Button>
+          </div>
         </div>
       </div>
     </div>
