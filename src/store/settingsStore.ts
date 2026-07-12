@@ -38,6 +38,9 @@ interface SettingsState {
   setTheme: (val: Theme) => void;
   setTelegramChatId: (val: string) => void;
   
+  hasDisconnectedManually: boolean;
+  setHasDisconnectedManually: (val: boolean) => void;
+
   disconnect: () => void;
 
   // Deprecated/Compatibility layer to prevent instant crashes
@@ -56,6 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set, get) => ({
       isWalletConnected: false,
       walletAddress: '',
+      hasDisconnectedManually: false,
       
       apiKeyName: '',
       privateKey: '',
@@ -74,15 +78,15 @@ export const useSettingsStore = create<SettingsState>()(
       isTestnet: false,
 
       connectWallet: (address) => {
-        set({ isWalletConnected: true, walletAddress: (address || '').trim().toLowerCase() });
+        set({ isWalletConnected: true, walletAddress: (address || '').trim().toLowerCase(), hasDisconnectedManually: false });
       },
       disconnectWallet: () => {
-        set({ isWalletConnected: false, walletAddress: '' });
+        set({ isWalletConnected: false, walletAddress: '', hasDisconnectedManually: true });
       },
       
       setApiKeyName: (val) => set({ apiKeyName: val.trim() }),
       setPrivateKey: (val) => set({ privateKey: val.trim() }),
-      setEvmAddress: (val) => set({ evmAddress: val.trim() }),
+      setEvmAddress: (val) => set({ evmAddress: val.trim().toLowerCase() }),
       setApiKeyExpiry: (val) => set({ apiKeyExpiry: val }),
       
       setDefaultSymbol: (val) => set({ defaultSymbol: val }),
@@ -93,9 +97,10 @@ export const useSettingsStore = create<SettingsState>()(
       setIsDemoMode: (val) => set({ isDemoMode: val }),
       setTheme: (val) => set({ theme: val }),
       setTelegramChatId: (val) => set({ telegramChatId: val }),
+      setHasDisconnectedManually: (val) => set({ hasDisconnectedManually: val }),
       
       disconnect: () => {
-        set({ isWalletConnected: false, walletAddress: '', apiKeyName: '', privateKey: '', evmAddress: '', apiKeyExpiry: null });
+        set({ isWalletConnected: false, walletAddress: '', hasDisconnectedManually: true });
       },
 
       setIsTestnet: () => {}, // no-op

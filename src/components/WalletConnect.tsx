@@ -33,13 +33,15 @@ export const WalletConnect: React.FC<{ className?: string }> = ({ className }) =
       setHasMetaMask(available);
 
       if (available && win.ethereum.request) {
-        try {
-          const accounts = await win.ethereum.request({ method: 'eth_accounts' });
-          if (accounts && accounts[0]) {
-            connectWallet(accounts[0]);
+        if (!store.hasDisconnectedManually) {
+          try {
+            const accounts = await win.ethereum.request({ method: 'eth_accounts' });
+            if (accounts && accounts[0]) {
+              connectWallet(accounts[0]);
+            }
+          } catch {
+            // Ignore error on silent check
           }
-        } catch {
-          // Ignore error on silent check
         }
 
         const handleAccountsChanged = (accs: string[]) => {
@@ -57,7 +59,7 @@ export const WalletConnect: React.FC<{ className?: string }> = ({ className }) =
       }
     };
     checkWallet();
-  }, [connectWallet, disconnectWallet]);
+  }, [connectWallet, disconnectWallet, store.hasDisconnectedManually]);
 
   const handleConnect = async () => {
     const win = window as any;
@@ -134,7 +136,9 @@ export const WalletConnect: React.FC<{ className?: string }> = ({ className }) =
     }
   };
 
-  const isAuthorized = !!privateKey && (!apiKeyExpiry || apiKeyExpiry > Date.now());
+  const isAuthorized = !!privateKey && 
+                       (!apiKeyExpiry || apiKeyExpiry > Date.now()) && 
+                       (walletAddress?.toLowerCase() === store.evmAddress?.toLowerCase());
 
   // --- Render State 2: Fully Connected and Authorized ---
   if (isWalletConnected && walletAddress && isAuthorized) {
