@@ -71,7 +71,6 @@ export function computePayloadHash(actionType: string, params: unknown): Hex {
 export async function signSodexAction(opts: {
   privateKey: Hex;
   domainName: SodexDomainName;
-  network: SodexNetwork;
   actionType: string;
   params: Record<string, unknown>;
   nonce?: number;
@@ -84,7 +83,7 @@ export async function signSodexAction(opts: {
     domain: {
       name: opts.domainName,
       version: '1',
-      chainId: CHAIN_IDS[opts.network],
+      chainId: 286623,
       verifyingContract: '0x0000000000000000000000000000000000000000',
     },
     types: {

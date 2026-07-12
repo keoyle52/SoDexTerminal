@@ -8,7 +8,7 @@ const registeredChats = new Set<number>();
 interface LinkedAccount {
   evmAddress: string;
   apiKeyName: string;
-  isTestnet: boolean;
+  isDemoMode: boolean;
 }
 const chatAccounts = new Map<number, LinkedAccount>();
 
@@ -270,9 +270,7 @@ export function startBot(): void {
       bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* to link your account.', { parse_mode: 'Markdown' });
       return;
     }
-    const base = acct.isTestnet
-      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
-      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    const base = 'https://mainnet-gw.sodex.dev/api/v1/perps';
     try {
       const res = await axios.get(`${base}/accounts/${acct.evmAddress}/balances`, {
         headers: { 'X-API-Key': acct.apiKeyName },
@@ -288,7 +286,7 @@ export function startBot(): void {
       bot!.sendMessage(
         chatId,
         [
-          `🤖 *SoDEX PowerOps Bot Overview* (${acct.isTestnet ? 'Testnet' : 'Mainnet'})`,
+          `🤖 *SoDEX PowerOps Bot Overview* (${acct.isDemoMode ? 'Testnet' : 'Mainnet'})`,
           '',
           `🔑 Address: \`${acct.evmAddress.slice(0, 6)}…${acct.evmAddress.slice(-4)}\``,
           `💰 Available Balance: *$${bal} USDC*`,
@@ -315,9 +313,7 @@ export function startBot(): void {
       bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
       return;
     }
-    const base = acct.isTestnet
-      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
-      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    const base = 'https://mainnet-gw.sodex.dev/api/v1/perps';
 
     try {
       const [posRes, pricesRes] = await Promise.all([
@@ -388,9 +384,7 @@ export function startBot(): void {
       bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
       return;
     }
-    const base = acct.isTestnet
-      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
-      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    const base = 'https://mainnet-gw.sodex.dev/api/v1/perps';
 
     try {
       const [posRes, balRes, pricesRes] = await Promise.all([
@@ -495,9 +489,7 @@ export function startBot(): void {
       bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
       return;
     }
-    const base = acct.isTestnet
-      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
-      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    const base = 'https://mainnet-gw.sodex.dev/api/v1/perps';
 
     try {
       const [posRes, pricesRes] = await Promise.all([
@@ -560,9 +552,7 @@ export function startBot(): void {
       bot!.sendMessage(chatId, '⚠️ No SoDEX account linked.\n\nVerify your Chat ID in *SoDEX Terminal → Telegram Integration* first.', { parse_mode: 'Markdown' });
       return;
     }
-    const base = acct.isTestnet
-      ? 'https://testnet-gw.sodex.dev/api/v1/perps'
-      : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+    const base = 'https://mainnet-gw.sodex.dev/api/v1/perps';
 
     try {
       const tickersRes = await axios.get(`${base}/markets/tickers`, { timeout: 8000 });

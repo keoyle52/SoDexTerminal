@@ -631,7 +631,7 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
       useSettingsStore.setState({ isWalletConnected: true });
 
       if (networkChanged) {
-        wsService.switchNetwork(testnetInput);
+        wsService.switchNetwork();
         clearServiceCaches();
       }
 
@@ -678,7 +678,7 @@ ${useAi ? `💡 *AI Rationale:* "${rationaleText}"` : '💡 *Configuration:* Usi
     useSettingsStore.setState({ isWalletConnected: true });
 
     if (networkChanged) {
-      wsService.switchNetwork(testnetInput);
+      wsService.switchNetwork();
       clearServiceCaches();
     }
     toast.success('SoDEX API credentials saved successfully!');

@@ -4,7 +4,7 @@ import { decryptSecret } from './secretBox';
 import { evaluateCopyTrade, type AccountSnapshot, type CopyConfig } from './riskEngine';
 import { store, type CopySessionRow } from './store';
 import { OrderSide, OrderType, TimeInForce, PositionSide } from './enums';
-import { signSodexAction, buildPerpsNewOrderParams, type SodexNetwork, type SodexDomainName } from './signer';
+import { signSodexAction, buildPerpsNewOrderParams, type SodexDomainName } from './signer';
 import { SoSoValueClient } from './sosoValueClient';
 import { auditTradeWithAI } from './coPilot';
 import * as sodex from './sodexClient';
@@ -23,11 +23,11 @@ interface RunningWatcher {
 
 // Symbol registry cache
 let symbolRegistry: Map<string, number> | null = null;
-async function resolveSymbolId(symbolName: string, network: SodexNetwork): Promise<number> {
+async function resolveSymbolId(symbolName: string, isDemoMode: boolean): Promise<number> {
   if (!symbolRegistry) {
     symbolRegistry = new Map();
     try {
-      const perpsBase = PERPS_ENDPOINTS[network];
+      const perpsBase = PERPS_ENDPOINTS.mainnet;
       const res = await axios.get(`${perpsBase}/market/symbols`);
       const symbols = res.data?.data ?? [];
       for (const sym of symbols) {
@@ -48,7 +48,7 @@ async function resolveSymbolId(symbolName: string, network: SodexNetwork): Promi
 
 async function placePerpsOrder(args: {
   privateKey: Hex; accountID: number; symbolID: number;
-  order: any; apiKeyName: string; network: SodexNetwork;
+  order: any; apiKeyName: string; isDemoMode: boolean;
 }) {
   const params = buildPerpsNewOrderParams({
     accountID: args.accountID, symbolID: args.symbolID, orders: [args.order],
@@ -57,12 +57,16 @@ async function placePerpsOrder(args: {
   const signed = await signSodexAction({
     privateKey: args.privateKey,
     domainName: 'futures' as SodexDomainName,
-    network: args.network,
     actionType: 'newOrder',
     params,
   });
 
-  const base = PERPS_ENDPOINTS[args.network];
+  
+  if (args.isDemoMode) {
+    console.log('[DEMO MODE] Simulated Perps Order:', args.order);
+    return { success: true, demo: true };
+  }
+  const base = PERPS_ENDPOINTS.mainnet;
   const res = await axios.post(`${base}/trade/orders`, signed.body, {
     headers: {
       'Content-Type': 'application/json',
@@ -80,13 +84,13 @@ export class CopyEngineRunner {
   private accountSnapshots = new Map<string, { snapshot: AccountSnapshot; ts: number }>();
   private pollInterval: NodeJS.Timeout | null = null;
 
-  private async getAccountSnapshotCached(userAccountId: number, network: SodexNetwork): Promise<AccountSnapshot> {
-    const key = `${network}:${userAccountId}`;
+  private async getAccountSnapshotCached(userAccountId: number, isDemoMode: boolean): Promise<AccountSnapshot> {
+    const key = `${isDemoMode}:${userAccountId}`;
     const now = Date.now();
     const entry = this.accountSnapshots.get(key);
     if (entry && now - entry.ts < 3000) return entry.snapshot;
 
-    const balances = await sodex.getPerpsBalances(userAccountId, network);
+    const balances = await sodex.getPerpsBalances(userAccountId, isDemoMode);
     const snapshot = summarizeAccount(balances);
     this.accountSnapshots.set(key, { snapshot, ts: now });
     return snapshot;
@@ -125,11 +129,11 @@ export class CopyEngineRunner {
   }
 
   attach(session: CopySessionRow) {
-    const key = `${session.network}:${session.sourceAccountId}`;
+    const key = `${session.isDemoMode}:${session.sourceAccountId}`;
     let entry = this.watchers.get(key);
     if (!entry) {
       const watcher = new AccountTradeWatcher(
-        session.network,
+        session.isDemoMode,
         'perps',
         session.sourceAccountId,
         (trade) => this.onSourceTrade(key, trade),
@@ -138,13 +142,13 @@ export class CopyEngineRunner {
       entry = { watcher, sessionIds: new Set() };
       this.watchers.set(key, entry);
       watcher.start();
-      console.log(`[Mirror Engine] Watching source wallet: ${session.sourceAccountId} on ${session.network}`);
+      console.log(`[Mirror Engine] Watching source wallet: ${session.sourceAccountId} on ${session.isDemoMode}`);
     }
     entry.sessionIds.add(session.id);
   }
 
   detach(sessionId: string, session: CopySessionRow) {
-    const key = `${session.network}:${session.sourceAccountId}`;
+    const key = `${session.isDemoMode}:${session.sourceAccountId}`;
     const entry = this.watchers.get(key);
     if (!entry) return;
     entry.sessionIds.delete(sessionId);
@@ -173,7 +177,7 @@ export class CopyEngineRunner {
     // Pull fresh account state
     let account: AccountSnapshot;
     try {
-      account = await this.getAccountSnapshotCached(Number(session.userAccountId), session.network);
+      account = await this.getAccountSnapshotCached(Number(session.userAccountId), session.isDemoMode);
     } catch (err) {
       this.logResult(session.id, trade, { allow: false, reason: 'Failed to fetch account state' }, 'error', String(err));
       return;
@@ -227,14 +231,14 @@ export class CopyEngineRunner {
     try {
       const privateKey = decryptSecret(session.agentPrivateKeyEnc) as Hex;
       const isBuy = trade.S === 'BUY';
-      const symbolID = await resolveSymbolId(trade.s, session.network);
+      const symbolID = await resolveSymbolId(trade.s, session.isDemoMode);
 
       await placePerpsOrder({
         privateKey,
         accountID: Number(session.userAccountId),
         symbolID,
         apiKeyName: session.agentApiKeyName,
-        network: session.network,
+        isDemoMode: session.isDemoMode,
         order: {
           clOrdID: `mirror-${randomUUID()}`,
           modifier: 0,

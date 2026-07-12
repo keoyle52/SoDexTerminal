@@ -31,27 +31,19 @@ export const Settings: React.FC = () => {
   const derivedAddress = useMemo(() => deriveAddressFromPrivateKey(store.privateKey), [store.privateKey]);
 
   // Address used in REST URL paths (balances / orders / positions / state):
-  //  - Mainnet: the explicit Master EVM Address (required).
-  //  - Testnet: the optional override if set, else the derived address.
   const effectiveAddress = useMemo(() => {
     const explicit = (store.evmAddress ?? '').trim();
     if (explicit && ethers.isAddress(explicit)) return explicit;
-    return store.isTestnet ? derivedAddress : '';
-  }, [store.evmAddress, derivedAddress, store.isTestnet]);
+    return derivedAddress;
+  }, [store.evmAddress, derivedAddress]);
 
   const evmAddressLooksValid = !store.evmAddress || ethers.isAddress(store.evmAddress.trim());
 
-  const credentialsMissing = !store.isWalletConnected && (store.isTestnet
-    ? !store.testnetPrivateKey
-    : !store.mainnetApiKeyName || !store.mainnetPrivateKey || !store.mainnetEvmAddress);
+  const credentialsMissing = !store.isWalletConnected && (!store.apiKeyName || !store.privateKey || !store.evmAddress);
 
   const handleTestConnection = async () => {
     if (!effectiveAddress) {
-      toast.error(
-        store.isTestnet
-          ? 'Enter a valid testnet Private Key.'
-          : 'Enter a valid mainnet Master EVM Address.',
-      );
+      toast.error('Enter a valid mainnet Master EVM Address.');
       return;
     }
     setTesting(true);
@@ -60,7 +52,7 @@ export const Settings: React.FC = () => {
       // validates that the address actually has a SoDEX account on the
       // current network. Public GETs are unsigned so we don't need a key.
       await perpsClient.get(`/accounts/${effectiveAddress}/state`);
-      toast.success(`Connection successful (${store.isTestnet ? 'testnet' : 'mainnet'}).`);
+      toast.success('Connection successful.');
     } catch (error: unknown) {
       const e = error as { response?: { data?: { error?: string; message?: string } } };
       const msg = e?.response?.data?.error
@@ -121,71 +113,7 @@ export const Settings: React.FC = () => {
                   </p>
                 </div>
               )}
-              {/* Network selector — primary choice that controls which
-                  credential set below is active. Shown FIRST so the user
-                  sees the right fields without toggling back. */}
-              <Card>
-                <div className="flex items-center gap-2 mb-5">
-                  <Globe size={16} className="text-primary" />
-                  <h3 className="text-sm font-semibold">Network</h3>
-                </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      store.setIsTestnet(false);
-                      wsService.switchNetwork(false);
-                      clearServiceCaches();
-                    }}
-                    className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
-                      !store.isTestnet
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-background/40 text-text-muted hover:border-border-hover'
-                    }`}
-                  >
-                    Mainnet
-                  </button>
-                  <button
-                    onClick={() => {
-                      store.setIsTestnet(true);
-                      wsService.switchNetwork(true);
-                      clearServiceCaches();
-                    }}
-                    className={`flex-1 py-3 text-sm rounded-lg border transition-all duration-200 font-medium ${
-                      store.isTestnet
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-background/40 text-text-muted hover:border-border-hover'
-                    }`}
-                  >
-                    Testnet
-                  </button>
-                </div>
-
-                {!store.isTestnet && (
-                  <div className="mt-3 flex items-start gap-2 p-3 bg-warning/5 border border-warning/20 rounded-lg">
-                    <Info size={14} className="text-warning shrink-0 mt-0.5" />
-                    <p className="text-xs text-warning leading-relaxed">
-                      Mainnet: real assets are used. Sign requests with your registered API
-                      key's private key (agent wallet, not the master) and set the Master
-                      EVM Address to your master wallet. Mainnet and testnet account IDs
-                      are independent.
-                    </p>
-                  </div>
-                )}
-
-                {store.isTestnet && (
-                  <div className="mt-3 flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
-                    <Info size={14} className="text-primary shrink-0 mt-0.5" />
-                    <p className="text-xs text-primary leading-relaxed">
-                      Testnet: paste your master wallet private key — writes are signed
-                      with it. By default its derived address is used as X-API-Key. If
-                      the gateway rejects it with “api key not found”, register an API
-                      key on testnet and paste its name below. Mainnet credentials stay
-                      safely in a separate slot and are restored when you switch back.
-                    </p>
-                  </div>
-                )}
-              </Card>
 
 
 
@@ -204,9 +132,9 @@ export const Settings: React.FC = () => {
                   icon={<Unplug size={14} />}
                   onClick={store.disconnect}
                   className="ml-auto"
-                  title={store.isTestnet ? 'Clears testnet credentials only' : 'Clears mainnet credentials only'}
+                  title="Clears mainnet credentials only"
                 >
-                  Disconnect {store.isTestnet ? 'Testnet' : 'Mainnet'}
+                  Disconnect Mainnet
                 </Button>
               </div>
             </div>

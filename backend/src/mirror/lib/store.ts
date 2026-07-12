@@ -8,7 +8,7 @@ export interface CopySessionRow {
   config: CopyConfig;
   agentPrivateKeyEnc: string;
   agentApiKeyName: string;
-  network: 'mainnet' | 'testnet';
+  isDemoMode: boolean;
   status: 'active' | 'paused' | 'revoked';
   createdAt: number;
 }

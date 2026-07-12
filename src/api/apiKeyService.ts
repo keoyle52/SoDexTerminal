@@ -6,8 +6,7 @@ import { perpsClient } from './perpsClient';
  */
 export async function createAndRegisterApiKey(
   days: number,
-  walletAddress: string,
-  isTestnet: boolean
+  walletAddress: string
 ): Promise<{ privateKey: string; apiKeyName: string }> {
   // Validate days
   if (days < 1 || days > 180 || isNaN(days)) {
@@ -15,7 +14,6 @@ export async function createAndRegisterApiKey(
   }
 
   // 1. Fetch accountID using the public /state endpoint.
-  // We use perpsClient to correctly route the URL, but public GETs are unsigned.
   let accountID: number;
   try {
     const state: any = await perpsClient.get(`/accounts/${walletAddress}/state`);
@@ -41,11 +39,11 @@ export async function createAndRegisterApiKey(
   // 4. Get a monotonic nonce
   const nonce = Date.now();
 
-  // 5. Build EIP-712 Signature Payload
+  // 5. Build EIP-712 Signature Payload (Mainnet ChainID: 286623)
   const domain = {
     name: "universal",
     version: "1",
-    chainId: isTestnet ? 138565 : 286623,
+    chainId: 286623,
     verifyingContract: "0x0000000000000000000000000000000000000000"
   };
 
@@ -107,11 +105,8 @@ export async function createAndRegisterApiKey(
   const xApiSign = '0x02' + normalizedRawSignature.slice(2);
 
   // 6. Submit POST request to SoDEX /accounts/api-keys
-  // Send to the SPOT endpoint to register (usually works for both, or we can send to perps)
-  // PDF says: "Register the key on the spot endpoint for spot trading, on the perps endpoint for perps trading, or call both"
-  // Let's send to both just to be perfectly safe that it's globally authorized.
-  const spotEndpoint = isTestnet ? 'https://testnet-gw.sodex.dev/api/v1/spot' : 'https://mainnet-gw.sodex.dev/api/v1/spot';
-  const perpsEndpoint = isTestnet ? 'https://testnet-gw.sodex.dev/api/v1/perps' : 'https://mainnet-gw.sodex.dev/api/v1/perps';
+  const spotEndpoint = 'https://mainnet-gw.sodex.dev/api/v1/spot';
+  const perpsEndpoint = 'https://mainnet-gw.sodex.dev/api/v1/perps';
   
   const payload = {
     accountID: accountID,

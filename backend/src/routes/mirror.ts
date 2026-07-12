@@ -12,29 +12,29 @@ export const mirrorRouter = Router();
 // POST /api/mirror/analyze
 mirrorRouter.post('/analyze', async (req: Request, res: Response) => {
   try {
-    const { address, accountId, network = 'mainnet' } = req.body;
+    const { address, accountId, isDemoMode = false } = req.body;
     const apiKey = (req.headers['x-gemini-api-key'] as string) || process.env.GEMINI_API_KEY || '';
     if (!address || !accountId) {
       res.status(400).json({ error: 'address and accountId required' });
       return;
     }
 
-    const net = network as sodex.SodexNetwork;
+    // Remove SodexNetwork reference
     const [orders, trades, positions, spotOrders, spotTrades] = await Promise.all([
-      sodex.getPerpsOrderHistory(address, net, 500).catch((e) => { console.error('getPerpsOrderHistory error', e); return []; }),
-      sodex.getPerpsUserTrades(address, net, 500).catch((e) => { console.error('getPerpsUserTrades error', e); return []; }),
-      sodex.getPerpsPositionHistory(address, net, 500).catch((e) => { console.error('getPerpsPositionHistory error', e); return []; }),
-      sodex.getSpotOrderHistory(address, net, 500).catch((e) => { console.error('getSpotOrderHistory error', e); return []; }),
-      sodex.getSpotUserTrades(address, net, 500).catch((e) => { console.error('getSpotUserTrades error', e); return []; }),
+      sodex.getPerpsOrderHistory(address, isDemoMode, 500).catch((e) => { console.error('getPerpsOrderHistory error', e); return []; }),
+      sodex.getPerpsUserTrades(address, isDemoMode, 500).catch((e) => { console.error('getPerpsUserTrades error', e); return []; }),
+      sodex.getPerpsPositionHistory(address, isDemoMode, 500).catch((e) => { console.error('getPerpsPositionHistory error', e); return []; }),
+      sodex.getSpotOrderHistory(address, isDemoMode, 500).catch((e) => { console.error('getSpotOrderHistory error', e); return []; }),
+      sodex.getSpotUserTrades(address, isDemoMode, 500).catch((e) => { console.error('getSpotUserTrades error', e); return []; }),
     ]);
 
     const report = await analyzeWallet({
       orders, trades, positions, spotOrders, spotTrades,
-      address, accountId, network, apiKey,
+      address, accountId, isDemoMode, apiKey,
     });
 
     res.json({
-      address, accountId, network, report,
+      address, accountId, isDemoMode, report,
       rawCounts: {
         orders: orders.length, trades: trades.length,
         positions: positions.length, spotOrders: spotOrders.length,
@@ -53,15 +53,15 @@ mirrorRouter.post('/analyze', async (req: Request, res: Response) => {
 mirrorRouter.get('/wallet/resolve', async (req: Request, res: Response) => {
   try {
     const rawAddress = req.query.address as string;
-    const network = (req.query.network as string) || 'mainnet';
+    const isDemoMode = req.query.isDemoMode === 'true';
     if (!rawAddress || !/^0x[a-fA-F0-9]{40}$/.test(rawAddress)) {
       res.status(400).json({ error: 'Invalid wallet address' });
       return;
     }
     const address = rawAddress.toLowerCase();
-    console.log(`[Mirror Resolve] Resolving address: ${address} on network: ${network}`);
+    console.log(`[Mirror Resolve] Resolving address: ${address} on isDemoMode: ${isDemoMode}`);
     
-    const state = await sodex.getAccountState(address, network as sodex.SodexNetwork);
+    const state = await sodex.getAccountState(address, isDemoMode);
     console.log(`[Mirror Resolve] SoDEX API Response:`, JSON.stringify(state));
     
     const accountId = state?.data?.aid ?? 0;
@@ -81,8 +81,8 @@ mirrorRouter.get('/wallet/resolve', async (req: Request, res: Response) => {
 // POST /api/mirror/copy/start
 mirrorRouter.post('/copy/start', async (req: Request, res: Response) => {
   try {
-    const { userAccountId, sourceAccountId, agentPrivateKey, agentApiKeyName, network, config } = req.body;
-    if (!userAccountId || !sourceAccountId || !agentPrivateKey || !network) {
+    const { userAccountId, sourceAccountId, agentPrivateKey, agentApiKeyName, isDemoMode, config } = req.body;
+    if (!userAccountId || !sourceAccountId || !agentPrivateKey || !isDemoMode) {
       res.status(400).json({ error: 'Missing required fields' });
       return;
     }
@@ -97,7 +97,7 @@ mirrorRouter.post('/copy/start', async (req: Request, res: Response) => {
       config: config as CopyConfig,
       agentPrivateKeyEnc: encryptedKey,
       agentApiKeyName: agentApiKeyName ?? '',
-      network, status: 'active',
+      isDemoMode, status: 'active',
     });
     res.json({ sessionId });
   } catch (err: any) {
@@ -128,7 +128,7 @@ mirrorRouter.post('/copy/delete', (req: Request, res: Response) => {
 mirrorRouter.get('/copy/sessions', (_req: Request, res: Response) => {
   const all = store.getAllSessions().map(s => ({
     id: s.id, userAccountId: s.userAccountId, sourceAccountId: s.sourceAccountId,
-    network: s.network, status: s.status, createdAt: s.createdAt,
+    isDemoMode: s.isDemoMode, status: s.status, createdAt: s.createdAt,
   }));
   res.json({ sessions: all });
 });

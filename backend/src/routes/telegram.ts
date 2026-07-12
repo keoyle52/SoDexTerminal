@@ -118,7 +118,7 @@ router.post('/verify', async (req: Request, res: Response) => {
       linkAccount(numericId, {
         evmAddress,
         apiKeyName,
-        isTestnet: isTestnet ?? false,
+        isDemoMode: isTestnet ?? false,
       });
     }
     const bot = getBot();
@@ -154,7 +154,7 @@ router.post('/verify', async (req: Request, res: Response) => {
       linkAccount(numericId, {
         evmAddress,
         apiKeyName,
-        isTestnet: isTestnet ?? false,
+        isDemoMode: isTestnet ?? false,
       });
     }
     res.json({ ok: true, registered: true });

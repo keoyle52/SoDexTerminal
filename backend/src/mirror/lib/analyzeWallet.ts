@@ -28,10 +28,10 @@ export interface WalletReport {
 export async function analyzeWallet(input: {
   orders: any[]; trades: any[]; positions: any[];
   spotOrders: any[]; spotTrades: any[];
-  address: string; accountId: number; network: string;
+  address: string; accountId: number; isDemoMode: boolean;
   apiKey: string;
 }): Promise<WalletReport> {
-  const { orders, trades, positions, spotOrders, spotTrades, address, accountId, network, apiKey } = input;
+  const { orders, trades, positions, spotOrders, spotTrades, address, accountId, isDemoMode, apiKey } = input;
   const totalTrades = trades.length + spotTrades.length;
 
   if (!apiKey) {
@@ -40,7 +40,7 @@ export async function analyzeWallet(input: {
 
   const prompt = `You are a quantitative trading analyst. Analyze this SoDEX trading account and return a JSON object.
 
-Account: ${address} (ID: ${accountId}, Network: ${network})
+Account: ${address} (ID: ${accountId}, DemoMode: ${isDemoMode})
 
 Perps Orders (last ${orders.length}): ${JSON.stringify(orders.slice(0, 30))}
 Perps Trades (last ${trades.length}): ${JSON.stringify(trades.slice(0, 30))}

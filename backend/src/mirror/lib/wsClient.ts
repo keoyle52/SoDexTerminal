@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import type { SodexNetwork } from './signer';
+
 
 const WS_ENDPOINTS = {
   mainnet: { spot: 'wss://mainnet-gw.sodex.dev/ws/spot', perps: 'wss://mainnet-gw.sodex.dev/ws/perps' },
@@ -28,7 +28,7 @@ export class AccountTradeWatcher {
   private reconnectDelayMs = 1000;
 
   constructor(
-    private network: SodexNetwork,
+    private isDemoMode: boolean,
     private market: 'spot' | 'perps',
     private accountId: string,
     private onTrade: TradeHandler,
@@ -47,7 +47,7 @@ export class AccountTradeWatcher {
   }
 
   private connect() {
-    const url = WS_ENDPOINTS[this.network][this.market];
+    const url = WS_ENDPOINTS.mainnet[this.market];
     this.ws = new WebSocket(url);
 
     this.ws.on('open', () => {

@@ -2,21 +2,10 @@ import axios from 'axios';
 import { signPayload, deriveActionType, resolveApiKey } from './signer';
 import { useSettingsStore } from '../store/settingsStore';
 
-/**
- * SoDEX Perps (Bolt engine) REST client.
- *
- * Endpoints: see `sodexdocument/sodex-rest-perps-api.md`.
- *  - Mainnet: https://mainnet-gw.sodex.dev/api/v1/perps
- *  - Testnet: https://testnet-gw.sodex.dev/api/v1/perps
- *
- * - Public GET endpoints are unsigned.
- * - Signed writes (POST/DELETE) attach `X-API-Key`, `X-API-Sign`,
- *   `X-API-Nonce` headers via EIP-712 (`signer.ts → signPayload`).
- */
 const BASE_URL_MAINNET = 'https://mainnet-gw.sodex.dev/api/v1/perps';
-const BASE_URL_TESTNET = 'https://testnet-gw.sodex.dev/api/v1/perps';
 
 export const perpsClient = axios.create({
+  baseURL: BASE_URL_MAINNET,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -25,14 +14,36 @@ export const perpsClient = axios.create({
 
 perpsClient.interceptors.request.use(async (config) => {
   const state = useSettingsStore.getState();
-  config.baseURL = state.isTestnet ? BASE_URL_TESTNET : BASE_URL_MAINNET;
-
-  const { apiKeyName, privateKey, isTestnet, isWalletConnected, walletAddress } = state;
+  const { apiKeyName, privateKey, isWalletConnected, walletAddress, isDemoMode } = state;
   const method = (config.method ?? 'GET').toUpperCase();
+
+  // Handle Demo Mode explicitly
+  if (isDemoMode && method !== 'GET') {
+    // Instead of sending the actual request, we intercept it by using a custom adapter
+    config.adapter = async () => {
+      console.log(`[DEMO MODE] Simulated ${method} to ${config.url}`);
+      return {
+        data: {
+          code: 0,
+          msg: "Success (Demo Mode)",
+          timestamp: Date.now(),
+          data: {
+             orderId: "demo-" + Math.floor(Math.random() * 1000000)
+          }
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: config,
+        request: {}
+      };
+    };
+    return config;
+  }
 
   // Sign write (non-GET) requests if private key OR connected Web3 wallet is active
   if (method !== 'GET' && (privateKey || (isWalletConnected && walletAddress))) {
-    const effectiveApiKey = resolveApiKey({ apiKeyName, privateKey, isTestnet, walletAddress });
+    const effectiveApiKey = resolveApiKey({ apiKeyName, privateKey, walletAddress });
 
     if (!effectiveApiKey) {
       return Promise.reject(new Error('Invalid credentials: could not resolve wallet address'));
@@ -47,7 +58,6 @@ perpsClient.interceptors.request.use(async (config) => {
         payload,
         privateKey,
         'futures',
-        isTestnet,
         effectiveApiKey,
         useBrowserWallet
       );
@@ -57,11 +67,11 @@ perpsClient.interceptors.request.use(async (config) => {
 
       if (typeof window !== 'undefined') {
         console.log(
-          `[perpsClient] %c${isTestnet ? 'TESTNET' : 'MAINNET'} (${useBrowserWallet ? 'Web3Wallet' : 'PK'})%c ${method} ${config.url}`
+          `[perpsClient] %cMAINNET (${useBrowserWallet ? 'Web3Wallet' : 'PK'})%c ${method} ${config.url}`
           + `\n  X-API-Key  = ${effectiveApiKey}`
           + `\n  X-API-Nonce= ${nonce}`
           + `\n  action     = ${actionType}`,
-          isTestnet ? 'color:#fbbf24;font-weight:bold' : 'color:#22d3ee;font-weight:bold',
+          'color:#22d3ee;font-weight:bold',
           'color:inherit',
         );
       }
@@ -73,23 +83,17 @@ perpsClient.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Unwrap axios → the value we return to callers IS the JSON body.
-// Keeps the rest of the codebase simple: `const body = await perpsClient.get(...)`.
 perpsClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    // Surface SoDEX backend error message (often hidden in nested fields)
-    // so users see "api key not found" instead of generic 401/400.
     const data = error?.response?.data;
     const msg = data?.error ?? data?.message ?? data?.msg
       ?? (typeof data === 'string' ? data : null)
       ?? error?.message;
     if (msg && typeof msg === 'string') {
       const lower = msg.toLowerCase();
-      const isTestnet = useSettingsStore.getState().isTestnet;
-      // Add a registration hint when the backend reports a missing key.
       if (lower.includes('api key not found') || lower.includes('apikey not found')) {
-        error.message = `${msg} — register an API key for this address at ${isTestnet ? 'testnet.sodex.com' : 'sodex.com'} → Settings → API Keys, then paste its name in Settings → ${isTestnet ? 'Testnet' : 'Mainnet'} Credentials.`;
+        error.message = `${msg} — please authorize your wallet in settings.`;
       } else {
         error.message = msg;
       }

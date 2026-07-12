@@ -17,7 +17,7 @@ import { createAndRegisterApiKey } from '../api/apiKeyService';
 
 export const WalletConnect: React.FC<{ className?: string }> = ({ className }) => {
   const store = useSettingsStore();
-  const { isWalletConnected, walletAddress, connectWallet, disconnectWallet, privateKey, apiKeyExpiry, isTestnet } = store;
+  const { isWalletConnected, walletAddress, connectWallet, disconnectWallet, privateKey, apiKeyExpiry } = store;
   
   const [isConnecting, setIsConnecting] = useState(false);
   const [hasMetaMask, setHasMetaMask] = useState(false);
@@ -105,18 +105,12 @@ export const WalletConnect: React.FC<{ className?: string }> = ({ className }) =
     
     setIsAuthorizing(true);
     try {
-      const { privateKey: newPk, apiKeyName } = await createAndRegisterApiKey(days, walletAddress, isTestnet);
+      const { privateKey: newPk, apiKeyName } = await createAndRegisterApiKey(days, walletAddress);
       
       // Save to store
-      if (isTestnet) {
-        store.setTestnetPrivateKey(newPk);
-        store.setTestnetApiKeyName(apiKeyName);
-        store.setTestnetEvmAddress(walletAddress);
-      } else {
-        store.setMainnetPrivateKey(newPk);
-        store.setMainnetApiKeyName(apiKeyName);
-        store.setMainnetEvmAddress(walletAddress);
-      }
+      store.setPrivateKey(newPk);
+      store.setApiKeyName(apiKeyName);
+      store.setEvmAddress(walletAddress);
       
       const expiry = Date.now() + days * 86400 * 1000;
       store.setApiKeyExpiry(expiry);

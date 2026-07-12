@@ -106,35 +106,6 @@ const WalletSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </p>
           </div>
 
-          {/* Network */}
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1.5 mb-2">
-              <Globe size={11} />
-              Network
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['Mainnet', 'Testnet'] as const).map((net) => {
-                const isTestnet = net === 'Testnet';
-                const active = store.isTestnet === isTestnet;
-                return (
-                  <button
-                    key={net}
-                    onClick={() => store.setIsTestnet(isTestnet)}
-                    className={cn(
-                      'py-2.5 text-xs font-semibold rounded-lg border transition-all',
-                      active
-                        ? 'bg-primary/10 border-primary/40 text-primary'
-                        : 'bg-background/40 border-border text-text-muted hover:border-border-hover hover:text-text-secondary',
-                    )}
-                  >
-                    {net}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-
 
           {/* Done Button */}
           <div className="pt-2">
@@ -223,15 +194,8 @@ export const Topbar: React.FC = () => {
 
         {/* Network badge */}
         <div className="hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-white/[0.03]">
-          <span
-            className={cn(
-              'w-1.5 h-1.5 rounded-full shrink-0',
-              store.isTestnet ? 'bg-amber-400' : 'bg-success',
-            )}
-          />
-          <span className="text-text-secondary font-medium">
-            {store.isTestnet ? 'Testnet' : 'Mainnet'}
-          </span>
+          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-success" />
+          <span className="text-text-secondary font-medium">Mainnet</span>
         </div>
 
         {/* Connection status */}
