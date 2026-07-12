@@ -127,15 +127,6 @@ export const Settings: React.FC = () => {
                 >
                   Test Connection
                 </Button>
-                <Button
-                  variant="danger"
-                  icon={<Unplug size={14} />}
-                  onClick={store.disconnect}
-                  className="ml-auto"
-                  title="Clears mainnet credentials only"
-                >
-                  Disconnect Mainnet
-                </Button>
               </div>
             </div>
           )}
