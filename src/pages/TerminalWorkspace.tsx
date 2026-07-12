@@ -8,6 +8,9 @@ export const TerminalWorkspace: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background p-2 md:p-3 gap-3">
+      {/* TOP MAIN WORKSPACE GRID */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
+        
         {/* LEFT / CENTER: CHART & AI OVERLAY (8 Cols) */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-3 min-h-0 overflow-hidden bg-surface border border-border rounded-2xl p-3 shadow-xl relative">
           {/* Chart Header Bar */}
