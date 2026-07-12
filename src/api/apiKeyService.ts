@@ -72,7 +72,7 @@ export async function createAndRegisterApiKey(
   
   // Generate a valid name (alphanumeric, short)
   const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
-  const apiKeyName = `Terminal_${randomStr}`;
+  const apiKeyName = `Key${randomStr}`;
 
   // 3. Compute expiresAt (Unix milliseconds)
   const expiresAt = Date.now() + days * 86400 * 1000;
@@ -92,7 +92,7 @@ export async function createAndRegisterApiKey(
     AddAPIKey: [
       { name: "accountID", type: "uint64" },
       { name: "name", type: "string" },
-      { name: "type", type: "uint8" },
+      { name: "keyType", type: "uint8" },
       { name: "publicKey", type: "bytes" },
       { name: "expiresAt", type: "uint64" },
       { name: "nonce", type: "uint64" }
@@ -102,7 +102,7 @@ export async function createAndRegisterApiKey(
   const message = {
     accountID: accountID,
     name: apiKeyName,
-    type: 1, // 1 for EVM
+    keyType: 1, // 1 for EVM
     publicKey: agentWallet.address,
     expiresAt: expiresAt,
     nonce: nonce
