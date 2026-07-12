@@ -157,7 +157,7 @@ export async function createAndRegisterApiKey(
   const payload = {
     accountID: accountID,
     name: apiKeyName,
-    type: 1,
+    keyType: 1,
     publicKey: agentWallet.address,
     expiresAt: expiresAt
   };
@@ -177,14 +177,22 @@ export async function createAndRegisterApiKey(
   const spotRes = await fetch(`${spotEndpoint}/accounts/api-keys`, fetchOpts);
   if (!spotRes.ok) {
     const errorText = await spotRes.text();
-    throw new Error(`Failed to authorize API key (Spot): ${errorText}`);
+    throw new Error(`Failed to authorize API key (Spot HTTP Error): ${errorText}`);
+  }
+  const spotJson = await spotRes.json();
+  if (spotJson.code !== 0) {
+    throw new Error(`Failed to authorize API key (Spot): ${spotJson.error || spotJson.msg || JSON.stringify(spotJson)}`);
   }
 
   // Register on PERPS
   const perpsRes = await fetch(`${perpsEndpoint}/accounts/api-keys`, fetchOpts);
   if (!perpsRes.ok) {
     const errorText = await perpsRes.text();
-    throw new Error(`Failed to authorize API key (Perps): ${errorText}`);
+    throw new Error(`Failed to authorize API key (Perps HTTP Error): ${errorText}`);
+  }
+  const perpsJson = await perpsRes.json();
+  if (perpsJson.code !== 0) {
+    throw new Error(`Failed to authorize API key (Perps): ${perpsJson.error || perpsJson.msg || JSON.stringify(perpsJson)}`);
   }
 
   // Return the newly created agent credentials
