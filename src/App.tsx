@@ -2,7 +2,6 @@ import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
-import { AiConsoleButton } from './components/AiConsoleButton';
 import { useSettingsStore } from './store/settingsStore';
 // Settings loaded synchronously to avoid Suspense stall issues
 import { Settings } from './pages/Settings';
@@ -30,15 +29,10 @@ const lazyFrom = (mod: LazyImport, key: string) => lazy(() => mod().then((m) => 
 })));
 
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
-const StrategyMarketplace = lazyFrom(() => import('./pages/StrategyMarketplace').then(m => ({ default: m.StrategyMarketplace })), 'StrategyMarketplace');
-const TelegramIntegration = lazyFrom(() => import('./pages/TelegramIntegration').then(m => ({ default: m.TelegramIntegration })), 'TelegramIntegration');
 const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })), 'Alerts');
-const AiConsole    = lazyFrom(() => import('./pages/AiConsole').then(m => ({ default: m.AiConsole })), 'AiConsole');
 
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
-const AiAlphaMatrix     = lazyFrom(() => import('./pages/AiAlphaMatrix').then(m => ({ default: m.AiAlphaMatrix })), 'AiAlphaMatrix');
 const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
-const ResearchHub       = lazyFrom(() => import('./pages/ResearchHub').then(m => ({ default: m.ResearchHub })), 'ResearchHub');
 const MirrorTool        = lazyFrom(() => import('./pages/MirrorTool').then(m => ({ default: m.MirrorTool })), 'MirrorTool');
 import { HeaderDock } from './components/HeaderDock';
 
@@ -133,22 +127,13 @@ function App() {
                     <Route path="/account"          element={<AccountAndRisk />} />
                     <Route path="/positions"       element={<Navigate to="/account" replace />} />
                     <Route path="/risk"            element={<Navigate to="/account" replace />} />
-                    <Route path="/alpha"           element={<AiAlphaMatrix />} />
-                    <Route path="/btc-predictor"   element={<Navigate to="/alpha" replace />} />
                     <Route path="/trading-bots"    element={<TradingBots />} />
                     <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
                     <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
                     <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
                     <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
                     <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
-                    <Route path="/research"        element={<ResearchHub />} />
-                    <Route path="/intel"           element={<Navigate to="/research" replace />} />
-                    <Route path="/market-intel"    element={<Navigate to="/research" replace />} />
-                    <Route path="/backtesting"     element={<Navigate to="/research" replace />} />
-                    <Route path="/marketplace"     element={<StrategyMarketplace />} />
-                    <Route path="/telegram"        element={<TelegramIntegration />} />
                     <Route path="/alerts"          element={<Alerts />} />
-                    <Route path="/ai-console"      element={<AiConsole />} />
                     <Route path="/mirror/*"        element={<MirrorTool />} />
                     <Route path="*"                element={<Navigate to="/terminal" replace />} />
                   </Routes>

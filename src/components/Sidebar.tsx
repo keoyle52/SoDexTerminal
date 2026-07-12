@@ -10,24 +10,9 @@ const NAV_SECTIONS = [
   {
     label: 'Trading & Execution',
     items: [
-      { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/terminal',      icon: LayoutDashboard, label: 'Terminal' },
       { to: '/trading-bots',  icon: Layers,         label: 'Trading Bots', badge: '5 Bots' },
       { to: '/positions',     icon: LineChart,       label: 'Positions' },
-    ],
-  },
-  {
-    label: 'AI & Intelligence',
-    items: [
-      { to: '/btc-predictor', icon: Brain,         label: 'BTC Predictor', badge: 'AI Pro' },
-      { to: '/market-intel',  icon: BarChart2,      label: 'Market Intel' },
-      { to: '/backtesting',   icon: FlaskConical,   label: 'Backtesting & VaR' },
-    ],
-  },
-  {
-    label: 'Ecosystem & Tools',
-    items: [
-      { to: '/telegram',      icon: MessageSquare,  label: 'Telegram Bot' },
-      { to: '/marketplace',   icon: Award,          label: 'Marketplace' },
     ],
   },
 ];

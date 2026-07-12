@@ -13,11 +13,8 @@ import { useTickers } from '../api/queries';
 const NAV_TABS = [
   { to: '/terminal', label: 'Terminal', icon: Zap, badge: 'Live Desk' },
   { to: '/trading-bots', label: 'Automated Bots', icon: Bot, badge: 'Studio' },
-  { to: '/alpha', label: 'Price Predictor', icon: Brain, badge: 'Gemini AI' },
   { to: '/mirror', label: 'Mirror', icon: Copy, badge: 'AI Copy' },
-  { to: '/research', label: 'Research Hub', icon: BarChart2, badge: 'Intel & Quant' },
   { to: '/account', label: 'Account & Risk', icon: Shield },
-  { to: '/telegram', label: 'Telegram Bot', icon: Layers },
 ];
 
 export const HeaderDock: React.FC = () => {
