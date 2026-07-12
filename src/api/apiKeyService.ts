@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { perpsClient } from './perpsClient';
+import { useSettingsStore } from '../store/settingsStore';
 
 /**
  * Service to handle the automated creation of SoDEX API Keys via EIP-712.
@@ -13,20 +14,32 @@ export async function createAndRegisterApiKey(
     throw new Error('Invalid authorization duration. Please select between 1 and 180 days.');
   }
 
+  const isDemoMode = useSettingsStore.getState().isDemoMode;
+
   // 1. Fetch accountID using the public /state endpoint.
   let accountID: number;
   try {
     const state: any = await perpsClient.get(`/accounts/${walletAddress}/state`);
-    accountID = parseInt(state.account?.aid || state.aid || state.accountID || '0', 10);
+    const dataObj = state.data || state;
+    const accountStr = dataObj.account?.aid || dataObj.account?.accountID || dataObj.aid || dataObj.accountID || '0';
+    accountID = parseInt(accountStr, 10);
     if (!accountID) {
-      throw new Error("Could not parse account ID from SoDEX response.");
+      if (isDemoMode) {
+        accountID = 999999;
+      } else {
+        throw new Error(`Could not parse account ID from SoDEX response: ${JSON.stringify(state)}`);
+      }
     }
   } catch (err: any) {
-    throw new Error(
-      err?.message?.includes('account not found') 
-        ? "Account not found on SoDEX. Please deposit funds or interact with SoDEX first to create an account."
-        : "Failed to fetch account ID from SoDEX."
-    );
+    if (isDemoMode) {
+      accountID = 999999;
+    } else {
+      throw new Error(
+        err?.message?.includes('account not found') 
+          ? "Account not found on SoDEX. Please deposit funds or interact with SoDEX first to create an account."
+          : "Failed to fetch account ID from SoDEX."
+      );
+    }
   }
 
   // 2. Generate new agent wallet
@@ -103,6 +116,14 @@ export async function createAndRegisterApiKey(
   }
   const normalizedRawSignature = ethers.hexlify(rawSigBytes);
   const xApiSign = '0x02' + normalizedRawSignature.slice(2);
+
+  if (isDemoMode) {
+    console.log('[DEMO MODE] Skipped actual API Key registration.');
+    return {
+      privateKey: agentWallet.privateKey,
+      apiKeyName: apiKeyName
+    };
+  }
 
   // 6. Submit POST request to SoDEX /accounts/api-keys
   const spotEndpoint = 'https://mainnet-gw.sodex.dev/api/v1/spot';
