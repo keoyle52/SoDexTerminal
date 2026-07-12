@@ -23,22 +23,21 @@ export async function createAndRegisterApiKey(
     const dataObj = state.data || state;
     const accountStr = dataObj.account?.aid || dataObj.account?.accountID || dataObj.aid || dataObj.accountID || '0';
     accountID = parseInt(accountStr, 10);
-    if (!accountID) {
+    if (!accountID || accountID <= 0) {
       if (isDemoMode) {
         accountID = 999999;
       } else {
-        throw new Error(`Could not parse account ID from SoDEX response: ${JSON.stringify(state)}`);
+        throw new Error("ACCOUNT_NOT_FOUND");
       }
     }
   } catch (err: any) {
     if (isDemoMode) {
       accountID = 999999;
     } else {
-      throw new Error(
-        err?.message?.includes('account not found') 
-          ? "Account not found on SoDEX. Please deposit funds or interact with SoDEX first to create an account."
-          : "Failed to fetch account ID from SoDEX."
-      );
+      if (err?.message === 'ACCOUNT_NOT_FOUND' || err?.message?.includes('account not found')) {
+        throw new Error("SoDEX Mainnet account not found. Please deposit funds on SoDEX first to create your on-chain account, or switch to Demo Mode.");
+      }
+      throw new Error(`Failed to fetch account ID from SoDEX: ${err?.message || 'Unknown Error'}`);
     }
   }
 
