@@ -1,6 +1,5 @@
 import React from 'react';
 import { TradingChart } from '../components/TradingChart';
-import { AiOrchestratorPanel } from '../components/AiOrchestratorPanel';
 import { Activity, Briefcase } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
@@ -11,8 +10,8 @@ export const TerminalWorkspace: React.FC = () => {
       {/* TOP MAIN WORKSPACE GRID */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
         
-        {/* LEFT / CENTER: CHART & AI OVERLAY (8 Cols) */}
-        <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-3 min-h-0 overflow-hidden bg-surface border border-border rounded-2xl p-3 shadow-xl relative">
+        {/* FULL WIDTH: CHART */}
+        <div className="lg:col-span-12 flex flex-col gap-3 min-h-0 overflow-hidden bg-surface border border-border rounded-2xl p-3 shadow-xl relative">
           {/* Chart Header Bar */}
           <div className="flex items-center justify-between shrink-0 border-b border-border/80 pb-2.5 flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -31,11 +30,6 @@ export const TerminalWorkspace: React.FC = () => {
               <TradingChart symbol="SOSO-USD" />
             </div>
           </div>
-        </div>
-
-        {/* RIGHT: AI ORCHESTRATOR RECOMMENDATIONS PANEL (4 Cols) */}
-        <div className="lg:col-span-5 xl:col-span-4 flex flex-col min-h-0 overflow-hidden bg-surface border border-border rounded-2xl shadow-xl">
-          <AiOrchestratorPanel />
         </div>
       </div>
 

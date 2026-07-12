@@ -18,7 +18,6 @@ import { DcaBot } from './DcaBot';
 import { TwapBot } from './TwapBot';
 import { MarketMakerBot } from './MarketMakerBot';
 import { SignalBot } from './SignalBot';
-import { NewsBot } from './NewsBot';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 
 // --- Wave 3 Autonomous Agent Component ---
@@ -236,7 +235,7 @@ const Wave3AgentConsole: React.FC = () => {
   );
 };
 
-type BotTab = 'wave3' | 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal' | 'news' | 'howItWorks';
+type BotTab = 'wave3' | 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal' | 'howItWorks';
 
 const BOTS_CONFIG: Record<BotTab, { label: string; icon: React.ElementType; component: React.ComponentType | null }> = {
   wave3: { label: 'Wave 3 Autonomous', icon: Sparkles, component: null },
@@ -245,7 +244,6 @@ const BOTS_CONFIG: Record<BotTab, { label: string; icon: React.ElementType; comp
   twap: { label: 'TWAP Bot', icon: Repeat, component: TwapBot },
   marketmaker: { label: 'Market Maker', icon: Layers, component: MarketMakerBot },
   signal: { label: 'Signal Bot', icon: Activity, component: SignalBot },
-  news: { label: 'News Bot', icon: Newspaper, component: NewsBot },
   howItWorks: { label: 'How it Works', icon: ShieldCheck, component: BotsHowItWorks },
 };
 

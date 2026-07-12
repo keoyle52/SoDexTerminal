@@ -166,8 +166,6 @@ function App() {
         }}
       />
       
-      {/* AI Console Floating Button */}
-      <AiConsoleButton />
     </div>
   );
 }
