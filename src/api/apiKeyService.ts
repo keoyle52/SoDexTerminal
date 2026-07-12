@@ -89,7 +89,7 @@ export async function createAndRegisterApiKey(
     AddAPIKey: [
       { name: "accountID", type: "uint64" },
       { name: "name", type: "string" },
-      { name: "keyType", type: "uint8" },
+      { name: "type", type: "uint8" },
       { name: "publicKey", type: "bytes" },
       { name: "expiresAt", type: "uint64" },
       { name: "nonce", type: "uint64" }
@@ -99,7 +99,7 @@ export async function createAndRegisterApiKey(
   const message = {
     accountID: accountID,
     name: apiKeyName,
-    keyType: 1, // 1 for EVM
+    type: 1, // 1 for EVM
     publicKey: agentWallet.address,
     expiresAt: expiresAt,
     nonce: nonce
@@ -157,7 +157,7 @@ export async function createAndRegisterApiKey(
   const payload = {
     accountID: accountID,
     name: apiKeyName,
-    keyType: 1,
+    type: 1,
     publicKey: agentWallet.address,
     expiresAt: expiresAt
   };
