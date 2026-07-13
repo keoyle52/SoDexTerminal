@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
   Wallet, TrendingUp, BarChart3, Shield, X as XIcon, 
-  AlertTriangle, ShieldCheck, Activity, Info 
+  AlertTriangle, ShieldCheck, Activity, Info, Cpu, Play, StopCircle, ShieldAlert 
 } from 'lucide-react';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { StatCard, Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { useSettingsStore } from '../store/settingsStore';
+import { useBotStore } from '../store/botStore';
+import { useWave3Store } from '../store/wave3Store';
 import {
   fetchPositions,
   fetchBalances,
@@ -81,7 +84,26 @@ export const Positions: React.FC = () => {
   const store = useSettingsStore();
   const { confirmOrders } = store;
 
-  const [activeTab, setActiveTab] = useState<'open' | 'risk' | 'history'>('open');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'open' | 'bots' | 'risk' | 'history'>('open');
+
+  useEffect(() => {
+    if (queryTab === 'bots') {
+      setActiveTab('bots');
+    } else if (queryTab === 'risk') {
+      setActiveTab('risk');
+    } else if (queryTab === 'history') {
+      setActiveTab('history');
+    } else {
+      setActiveTab('open');
+    }
+  }, [queryTab]);
+
+  const handleTabChange = (tab: 'open' | 'bots' | 'risk' | 'history') => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
   const [positions, setPositions] = useState<PositionRow[]>([]);
   const [historyFills, setHistoryFills] = useState<HistoricalFill[]>([]);
   const [marginBalance, setMarginBalance] = useState(0);
@@ -383,10 +405,10 @@ export const Positions: React.FC = () => {
 
         {/* Tab Selector */}
         <div className="flex bg-[#0B0E11] border border-border p-0.5 rounded-sm">
-          {(['open', 'risk', 'history'] as const).map((tab) => (
+          {(['open', 'bots', 'risk', 'history'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleTabChange(tab)}
               className={cn(
                 'px-2.5 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer',
                 activeTab === tab
@@ -394,7 +416,7 @@ export const Positions: React.FC = () => {
                   : 'text-text-secondary hover:text-text-primary'
               )}
             >
-              {tab === 'open' ? 'Open Positions' : tab === 'risk' ? 'Risk Control' : 'Closed History'}
+              {tab === 'open' ? 'Open Positions' : tab === 'bots' ? 'Active Bots' : tab === 'risk' ? 'Risk Control' : 'Closed History'}
             </button>
           ))}
         </div>
@@ -738,6 +760,147 @@ export const Positions: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'bots' && (
+          <div className="flex-1 bg-surface border border-border rounded-sm flex flex-col p-0 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-[#101317] select-none">
+              <div className="flex items-center gap-2">
+                <Cpu size={14} className="text-primary" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">
+                  Active Quant Bots
+                </span>
+              </div>
+            </div>
+            
+            <div className="overflow-auto flex-1 p-4 space-y-4">
+              {/* Bot Cards List */}
+              {(() => {
+                const botStore = useBotStore();
+                const wave3Store = useWave3Store();
+                
+                const activeBotsList = [
+                  {
+                    name: 'Wave 3 Autonomous Agent',
+                    type: 'WAVE3',
+                    running: wave3Store.isAgentRunning,
+                    symbol: wave3Store.targetCoin,
+                    market: wave3Store.market,
+                    budget: wave3Store.investment,
+                    pnl: wave3Store.activePosition?.pnl || 0,
+                    pnlLabel: 'PnL',
+                    stopAction: () => {
+                      wave3Store.setAgentRunning(false);
+                      wave3Store.setActivePosition(null);
+                      wave3Store.addLog('Agent halted via Accounts Active Bots dashboard', 'WARNING');
+                      toast.success('Wave 3 Agent halted.');
+                    }
+                  },
+                  {
+                    name: 'Grid Trading Bot',
+                    type: 'GRID',
+                    running: botStore.gridBot.status === 'RUNNING',
+                    symbol: botStore.gridBot.symbol,
+                    market: botStore.gridBot.isSpot ? 'spot' : 'perps',
+                    budget: parseFloat(botStore.gridBot.amountUsdt) || 0,
+                    pnl: botStore.gridBot.realizedPnl,
+                    pnlLabel: 'Realized PnL',
+                    stopAction: () => {
+                      botStore.gridBot.setField('status', 'STOPPED');
+                      toast.success('Grid Bot halted.');
+                    }
+                  },
+                  {
+                    name: 'Consensus Signal Bot',
+                    type: 'SIGNAL',
+                    running: botStore.signalBot.status === 'RUNNING',
+                    symbol: botStore.signalBot.symbol,
+                    market: botStore.signalBot.isSpot ? 'spot' : 'perps',
+                    budget: parseFloat(botStore.signalBot.amountUsdt) || 0,
+                    pnl: botStore.signalBot.realizedPnl,
+                    pnlLabel: 'Realized PnL',
+                    stopAction: () => {
+                      botStore.signalBot.setField('status', 'STOPPED');
+                      toast.success('Signal Bot halted.');
+                    }
+                  },
+                  {
+                    name: 'Market Maker Bot',
+                    type: 'MM',
+                    running: botStore.marketMakerBot.status === 'RUNNING',
+                    symbol: botStore.marketMakerBot.symbol,
+                    market: 'spot',
+                    budget: parseFloat(botStore.marketMakerBot.budgetUsdt) || 0,
+                    pnl: botStore.marketMakerBot.volumeUsdt,
+                    pnlLabel: 'Session Volume',
+                    stopAction: () => {
+                      botStore.marketMakerBot.setField('status', 'STOPPED');
+                      toast.success('Market Maker Bot halted.');
+                    }
+                  }
+                ];
+
+                const runningCount = activeBotsList.filter(b => b.running).length;
+
+                if (runningCount === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center text-center p-12 text-text-muted select-none">
+                      <Cpu size={32} className="text-text-muted mb-2 opacity-50" />
+                      <h4 className="text-xs font-bold text-text-secondary">No Bots Running</h4>
+                      <p className="text-[10px] text-text-muted max-w-[240px] mt-1 leading-normal">
+                        All quant execution engines are idle. Deploy a bot strategy from the Automated Bots studio to start trading.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {activeBotsList.map((bot, i) => {
+                      if (!bot.running) return null;
+                      return (
+                        <div key={i} className="p-4 rounded-xl border border-border bg-[#101317]/50 flex flex-col justify-between space-y-4 hover:border-border-hover transition-colors relative overflow-hidden">
+                          {/* Pulsing indicator */}
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 select-none">
+                            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                            <span className="text-[8px] font-black text-success uppercase tracking-wider">Running</span>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-bold text-text-primary">{bot.name}</h4>
+                            <p className="text-[10px] text-text-secondary font-mono">
+                              Asset: <strong className="text-text-primary">{bot.symbol}</strong> • Market: <span className="uppercase">{bot.market}</span>
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono select-none">
+                            <div className="p-2 rounded-lg bg-[#0B0E11] border border-border/40">
+                              <span className="text-text-muted text-[8px] block uppercase font-sans font-bold">Invested</span>
+                              <span className="text-text-primary font-bold">${bot.budget.toFixed(2)}</span>
+                            </div>
+                            <div className="p-2 rounded-lg bg-[#0B0E11] border border-border/40">
+                              <span className="text-text-muted text-[8px] block uppercase font-sans font-bold">{bot.pnlLabel}</span>
+                              <span className={cn("font-bold", bot.pnl >= 0 ? "text-success" : "text-danger")}>
+                                {bot.pnl >= 0 ? '+' : ''}${bot.pnl.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={bot.stopAction}
+                            className="w-full py-2 rounded-lg border border-danger/20 hover:border-danger/40 bg-danger/5 hover:bg-danger/10 text-danger font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <StopCircle size={12} />
+                            Stop Bot & Liquidate
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -3,8 +3,19 @@ import { TradingChart } from '../components/TradingChart';
 import { AiOrchestratorPanel } from '../components/AiOrchestratorPanel';
 import { Briefcase } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useBotStore } from '../store/botStore';
+import { useWave3Store } from '../store/wave3Store';
 
 export const TerminalWorkspace: React.FC = () => {
+  const botStore = useBotStore();
+  const wave3Store = useWave3Store();
+  
+  const runningCount = 
+    (wave3Store.isAgentRunning ? 1 : 0) +
+    (botStore.gridBot.status === 'RUNNING' ? 1 : 0) +
+    (botStore.signalBot.status === 'RUNNING' ? 1 : 0) +
+    (botStore.marketMakerBot.status === 'RUNNING' ? 1 : 0);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
       {/* MAIN WORKSPACE GRID */}
@@ -32,15 +43,15 @@ export const TerminalWorkspace: React.FC = () => {
       {/* BOTTOM QUICK ACCESS STRIP */}
       <div className="h-8 shrink-0 flex items-center justify-between px-4 bg-[#0B0E11] border-t border-border text-[10px] text-text-secondary select-none font-mono">
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-          <span>Active Execution Daemons: <strong className="text-text-primary">2 Bots Running</strong></span>
+          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${runningCount > 0 ? 'bg-success' : 'bg-white/20'}`} />
+          <span>Active Execution Daemons: <strong className="text-text-primary">{runningCount} Bot{runningCount !== 1 ? 's' : ''} Running</strong></span>
         </div>
         <NavLink
-          to="/account"
+          to="/account?tab=bots"
           className="flex items-center gap-1 font-bold text-primary hover:underline hover:text-primary/80 transition-colors"
         >
           <Briefcase size={11} />
-          <span>Positions & Orders Manager →</span>
+          <span>Manage Active Bots →</span>
         </NavLink>
       </div>
     </div>

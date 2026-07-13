@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Sparkles, Grid2X2, Clock, Repeat, Layers, Activity, Play, StopCircle, 
-  ShieldAlert, ShieldCheck, Cpu, Brain, X, Zap
+  ShieldAlert, ShieldCheck, Cpu, Brain, X, Zap, TrendingUp, TrendingDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useWave3Store } from '../store/wave3Store';
@@ -172,21 +172,48 @@ const Wave3AgentConsole: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 rounded-sm bg-[#0B0E11] border border-border flex flex-col justify-between">
-                  <div>
-                    <div className="text-[9px] text-text-secondary uppercase tracking-widest font-bold mb-1">Live Regime</div>
-                    <div className="text-sm font-bold text-text-primary">{w3.currentRegime.replace('_', ' ')}</div>
+                <div className="p-3.5 rounded-xl bg-[#0B0E11] border border-border flex items-center gap-3.5 relative overflow-hidden select-none">
+                  {/* Glowing Radar Circle */}
+                  <div className="relative w-11 h-11 shrink-0 flex items-center justify-center rounded-full border border-white/10 bg-white/[0.02]">
+                    {w3.currentRegime === 'CONSOLIDATION' ? (
+                      <>
+                        <span className="absolute inset-0 rounded-full border border-warning/30 animate-ping opacity-60" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-warning shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse" />
+                      </>
+                    ) : w3.currentRegime === 'TRENDING_UP' ? (
+                      <>
+                        <span className="absolute inset-0 rounded-full border border-success/30 animate-ping opacity-60" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                        <TrendingUp size={12} className="text-success absolute top-1.5" />
+                      </>
+                    ) : w3.currentRegime === 'TRENDING_DOWN' ? (
+                      <>
+                        <span className="absolute inset-0 rounded-full border border-danger/30 animate-ping opacity-60" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-danger shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                        <TrendingDown size={12} className="text-danger absolute bottom-1.5" />
+                      </>
+                    ) : (
+                      <>
+                        <span className="absolute inset-0 rounded-full border border-purple-500/30 animate-ping opacity-60" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
+                        <Activity size={12} className="text-purple-400 absolute" />
+                      </>
+                    )}
                   </div>
-                  <div className={cn(
-                    "mt-2 px-2 py-0.5 rounded-sm border text-[10px] font-bold text-center",
-                    w3.currentRegime === 'TRENDING_UP' ? 'text-success bg-success/10 border-success/20' :
-                    w3.currentRegime === 'TRENDING_DOWN' ? 'text-danger bg-danger/10 border-danger/20' :
-                    w3.currentRegime === 'HIGH_VOLATILITY' ? 'text-warning bg-warning/10 border-warning/20' :
-                    'text-text-secondary bg-white/5 border-white/10'
-                  )}>
-                    {w3.currentRegime === 'TRENDING_UP' ? 'Strong Bullish' :
-                     w3.currentRegime === 'TRENDING_DOWN' ? 'Strong Bearish' :
-                     w3.currentRegime === 'HIGH_VOLATILITY' ? 'Volatile' : 'Neutral'}
+                  <div>
+                    <div className="text-[9px] text-text-secondary uppercase tracking-widest font-bold">Live Regime</div>
+                    <div className="text-xs font-black text-text-primary font-mono mt-0.5">{w3.currentRegime.replace('_', ' ')}</div>
+                    <div className={cn(
+                      "text-[9px] font-bold mt-0.5",
+                      w3.currentRegime === 'TRENDING_UP' ? 'text-success' :
+                      w3.currentRegime === 'TRENDING_DOWN' ? 'text-danger' :
+                      w3.currentRegime === 'HIGH_VOLATILITY' ? 'text-purple-400' :
+                      'text-warning'
+                    )}>
+                      {w3.currentRegime === 'TRENDING_UP' ? 'Bullish Breakout' :
+                       w3.currentRegime === 'TRENDING_DOWN' ? 'Bearish Breakout' :
+                       w3.currentRegime === 'HIGH_VOLATILITY' ? 'Extreme Volatility' : 'Consolidating'}
+                    </div>
                   </div>
                 </div>
 
@@ -235,6 +262,18 @@ const Wave3AgentConsole: React.FC = () => {
                 {w3.isAgentRunning ? <StopCircle size={16} /> : <Play size={16} fill="currentColor" />}
                 {w3.isAgentRunning ? 'HALT AUTONOMOUS AGENT' : 'START AUTONOMOUS AGENT'}
               </button>
+
+              {w3.isAgentRunning && w3.currentRegime === 'CONSOLIDATION' && (
+                <div className="mt-4 p-4 rounded-xl border border-warning/30 bg-warning/5 text-warning flex items-start gap-3 shadow-[0_0_15px_rgba(245,158,11,0.1)] animate-pulse">
+                  <ShieldAlert className="shrink-0 mt-0.5 text-warning" size={16} />
+                  <div>
+                    <h4 className="text-xs font-bold text-text-primary">Capital Preservation Mode Active</h4>
+                    <p className="text-[10px] text-text-secondary mt-1 leading-relaxed">
+                      The agent has detected a consolidation (flat) phase in the market. To safeguard capital from fee-drag and chop, all operations have been suspended. The bot is actively monitoring the market and will resume once a clear trending breakout occurs.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

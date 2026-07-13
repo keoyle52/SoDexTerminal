@@ -41,11 +41,28 @@ export interface LocalAiDiagnosticsResult {
  * 1. Regime Classifier & Trend Predictor
  * Computes a real-time quantitative trend regime based on actual market price.
  */
+const normalizeSymbolBase = (s: string): string => {
+  if (!s) return '';
+  return s.toUpperCase()
+    .replace(/_/g, '-')
+    .replace(/^V/, '')
+    .replace(/VUSDC$/, '')
+    .replace(/USDT$/, '')
+    .replace(/USD$/, '')
+    .replace(/-$/, '');
+};
+
+/**
+ * 1. Regime Classifier & Trend Predictor
+ * Computes a real-time quantitative trend regime based on actual market price.
+ */
 export async function localAiClassifyRegime(symbol: string): Promise<LocalAiRegimeResult> {
   try {
     const rawPrices = await fetchMarkPrices();
     const pricesArr = Array.isArray(rawPrices) ? rawPrices : [];
-    const symbolPrice = pricesArr.find((p: any) => p.symbol === symbol || p.symbol === symbol.replace(/^v/, '').replace(/vUSDC$/, 'USD'));
+    
+    const targetBase = normalizeSymbolBase(symbol);
+    const symbolPrice = pricesArr.find((p: any) => normalizeSymbolBase(p.symbol) === targetBase);
     const markPrice = parseFloat(symbolPrice?.markPrice ?? symbolPrice?.price ?? 100);
 
     // Simple deterministic rule based on symbol character properties to simulate different asset states
@@ -99,7 +116,9 @@ export async function localAiAutoConfigure(symbol: string, botType: string): Pro
   try {
     const rawPrices = await fetchMarkPrices();
     const pricesArr = Array.isArray(rawPrices) ? rawPrices : [];
-    const symbolPrice = pricesArr.find((p: any) => p.symbol === symbol || p.symbol === symbol.replace(/^v/, '').replace(/vUSDC$/, 'USD'));
+    
+    const targetBase = normalizeSymbolBase(symbol);
+    const symbolPrice = pricesArr.find((p: any) => normalizeSymbolBase(p.symbol) === targetBase);
     const markPrice = parseFloat(symbolPrice?.markPrice ?? symbolPrice?.price ?? 100);
 
     if (botType === 'GRID') {

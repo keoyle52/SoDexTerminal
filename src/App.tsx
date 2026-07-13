@@ -29,6 +29,7 @@ const lazyFrom = (mod: LazyImport, key: string) => lazy(() => mod().then((m) => 
 })));
 
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
+const BacktestStudio  = lazyFrom(() => import('./pages/BacktestStudio').then(m => ({ default: m.BacktestStudio })), 'BacktestStudio');
 
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
 const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
@@ -127,6 +128,7 @@ function App() {
                     <Route path="/positions"       element={<Navigate to="/account" replace />} />
                     <Route path="/risk"            element={<Navigate to="/account" replace />} />
                     <Route path="/trading-bots"    element={<TradingBots />} />
+                    <Route path="/backtest"        element={<BacktestStudio />} />
                     <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
                     <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
                     <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />

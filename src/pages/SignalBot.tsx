@@ -118,6 +118,8 @@ export const SignalBot: React.FC = () => {
     
     const fresh = useBotStore.getState().signalBot;
     const market = fresh.isSpot ? 'spot' : 'perps';
+    
+    // 1. Cancel server-side TP/SL stop orders
     const stopIds: string[] = [];
     fresh.activePositions.forEach((p) => {
       if (p.tpOrderId) stopIds.push(p.tpOrderId);
@@ -125,10 +127,31 @@ export const SignalBot: React.FC = () => {
     });
     if (!isDemoMode && stopIds.length > 0) {
       await Promise.all(stopIds.map((id) =>
-        cancelOrder(id, fresh.symbol, market).catch(() => { /* stop may already be gone */ }),
+        cancelOrder(id, fresh.symbol, market).catch(() => { /* stop may already be gone */ })
       ));
       addLog(`Cancelled ${stopIds.length} pending stop order(s)`, 'info');
     }
+
+    // 2. Close/Liquidate active positions
+    if (fresh.activePositions.length > 0) {
+      addLog(`Liquidating ${fresh.activePositions.length} active position(s) immediately...`, 'info');
+      await Promise.all(fresh.activePositions.map(async (pos) => {
+        try {
+          const closeSide = pos.side === 'LONG' ? 2 : 1; // 1=BUY, 2=SELL to close
+          await placeOrder({
+            symbol: fresh.symbol,
+            side: closeSide as (1 | 2),
+            type: 2 as (1 | 2), // Market order
+            quantity: String(pos.quantity)
+          }, market);
+          addLog(`Liquidated ${pos.side} position for ${fresh.symbol} @ Market`, 'success');
+        } catch (err) {
+          addLog(`Failed to close position: ${getErrorMessage(err)}`, 'error');
+        }
+      }));
+      state.setField('activePositions', []);
+    }
+
     state.setField('status', 'STOPPED');
     addLog(`Bot stopped${reason ? `: ${reason}` : ''}`, 'warn');
   }, [addLog, state, isDemoMode]);
@@ -183,6 +206,7 @@ export const SignalBot: React.FC = () => {
       }
 
       // Resolve decimals & size
+      if (!runningRef.current) return;
       const sizeQty = amountUsdt / currentPrice;
       const orderParams = {
         symbol: fresh.symbol,
@@ -195,6 +219,7 @@ export const SignalBot: React.FC = () => {
         await updatePerpsLeverage(fresh.symbol, parseInt(fresh.leverage));
       }
 
+      if (!runningRef.current) return;
       const res = await placeOrder(orderParams, market);
       const resData = (res as any)?.data ?? res;
       const orderId = String(resData?.orderID ?? resData?.orderId ?? `demo-${Date.now()}`);
@@ -204,6 +229,7 @@ export const SignalBot: React.FC = () => {
 
       if (!isDemoMode) {
         for (let i = 0; i < 5; i++) {
+          if (!runningRef.current) return;
           await new Promise((r) => setTimeout(r, 500));
           try {
             const stat = await fetchOrderStatus(orderId, fresh.symbol, market) as any;
@@ -215,6 +241,15 @@ export const SignalBot: React.FC = () => {
             }
           } catch {}
         }
+      }
+
+      if (!runningRef.current) {
+        // Safe check: if bot was stopped while the order was executing, try to close it
+        try {
+          const closeSide = decision === 'LONG' ? 2 : 1;
+          await placeOrder({ symbol: fresh.symbol, side: closeSide as (1 | 2), type: 2 as (1 | 2), quantity: String(actualQty) }, market);
+        } catch {}
+        return;
       }
 
       // Calculate TP/SL
@@ -233,7 +268,7 @@ export const SignalBot: React.FC = () => {
       }
 
       // Server-side TP/SL for perps
-      if (!isDemoMode && !fresh.isSpot) {
+      if (!isDemoMode && !fresh.isSpot && runningRef.current) {
         if (tpPrice > 0) {
           try {
             const tpRes = await placeOrder({
@@ -253,7 +288,7 @@ export const SignalBot: React.FC = () => {
             addLog(`Server-side TP failed (client-side failsafe will handle it): ${getErrorMessage(e)}`, 'warn');
           }
         }
-        if (slPrice > 0) {
+        if (slPrice > 0 && runningRef.current) {
           try {
             const slRes = await placeOrder({
               symbol: fresh.symbol,
@@ -271,6 +306,15 @@ export const SignalBot: React.FC = () => {
             addLog(`Server-side SL stop failed (client-side failsafe will handle it): ${getErrorMessage(e)}`, 'warn');
           }
         }
+      }
+
+      if (!runningRef.current) {
+        // Safe check: if bot was stopped while placing stops, clean up/close position
+        try {
+          const closeSide = decision === 'LONG' ? 2 : 1;
+          await placeOrder({ symbol: fresh.symbol, side: closeSide as (1 | 2), type: 2 as (1 | 2), quantity: String(actualQty) }, market);
+        } catch {}
+        return;
       }
 
       const newPos: SignalPosition = {

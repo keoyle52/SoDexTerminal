@@ -12,6 +12,7 @@ import {
   updatePerpsLeverage,
   getPerpsSymbolMeta,
   type PerpsSymbolMeta,
+  fetchPositions,
 } from '../api/services';
 import { recommendGridBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
@@ -463,7 +464,30 @@ export const GridBot: React.FC = () => {
 
     try {
       await cancelAllOrders(s.symbol, market);
+      addLog({ message: 'Cancelled all grid limit orders' });
     } catch {}
+
+    // Close any active perp positions opened by this bot
+    if (market === 'perps') {
+      try {
+        const activePositions = await fetchPositions();
+        const pos = activePositions.find((p: any) => p.symbol === s.symbol);
+        const posSize = parseFloat(pos?.size ?? pos?.quantity ?? '0');
+        if (posSize !== 0) {
+          addLog({ message: `Liquidating active perp position of size ${posSize} @ Market...` });
+          const closeSide = posSize > 0 ? 2 : 1; // 1=BUY, 2=SELL to close
+          await placeOrder({
+            symbol: s.symbol,
+            side: closeSide as (1 | 2),
+            type: 2 as (1 | 2), // MARKET order
+            quantity: String(Math.abs(posSize))
+          }, 'perps');
+          addLog({ message: `Grid Bot position successfully liquidated @ Market` });
+        }
+      } catch (err) {
+        addLog({ message: `Failed to liquidate grid position: ${getErrorMessage(err)}` });
+      }
+    }
 
     const isErrorStop = typeof reason === 'string' && reason.startsWith('ERROR');
     s.setField('status', isErrorStop ? 'ERROR' : 'STOPPED');

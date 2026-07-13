@@ -13,6 +13,7 @@ import { useTickers } from '../api/queries';
 const NAV_TABS = [
   { to: '/terminal', label: 'Terminal', icon: Zap, badge: 'Live Desk' },
   { to: '/trading-bots', label: 'Automated Bots', icon: Bot, badge: 'Studio' },
+  { to: '/backtest', label: 'Backtest Studio', icon: BarChart2 },
   { to: '/mirror', label: 'Mirror', icon: Copy, badge: 'AI Copy' },
   { to: '/account', label: 'Account & Risk', icon: Shield },
 ];
