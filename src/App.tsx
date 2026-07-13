@@ -29,12 +29,10 @@ const lazyFrom = (mod: LazyImport, key: string) => lazy(() => mod().then((m) => 
 })));
 
 const TradingBots  = lazyFrom(() => import('./pages/TradingBots').then(m => ({ default: m.TradingBots })), 'TradingBots');
-const Alerts       = lazyFrom(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })), 'Alerts');
 
 const TerminalWorkspace = lazyFrom(() => import('./pages/TerminalWorkspace').then(m => ({ default: m.TerminalWorkspace })), 'TerminalWorkspace');
 const AccountAndRisk    = lazyFrom(() => import('./pages/AccountAndRisk').then(m => ({ default: m.AccountAndRisk })), 'AccountAndRisk');
 const MirrorTool        = lazyFrom(() => import('./pages/MirrorTool').then(m => ({ default: m.MirrorTool })), 'MirrorTool');
-const Backtesting       = lazyFrom(() => import('./pages/Backtesting').then(m => ({ default: m.Backtesting })), 'Backtesting');
 import { HeaderDock } from './components/HeaderDock';
 
 /**
@@ -128,14 +126,12 @@ function App() {
                     <Route path="/account"          element={<AccountAndRisk />} />
                     <Route path="/positions"       element={<Navigate to="/account" replace />} />
                     <Route path="/risk"            element={<Navigate to="/account" replace />} />
-                    <Route path="/backtesting"     element={<Backtesting />} />
                     <Route path="/trading-bots"    element={<TradingBots />} />
                     <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
                     <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
                     <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
                     <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
                     <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
-                    <Route path="/alerts"          element={<Alerts />} />
                     <Route path="/mirror/*"        element={<MirrorTool />} />
                     <Route path="*"                element={<Navigate to="/terminal" replace />} />
                   </Routes>
