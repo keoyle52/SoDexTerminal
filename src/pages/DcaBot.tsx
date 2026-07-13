@@ -376,9 +376,28 @@ export const DcaBot: React.FC = () => {
   const configPanel = (
     <>
       {/* Market */}
-      <div>
-        <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
-        <SymbolSelector market={isSpot ? 'spot' : 'perps'} value={symbol} onChange={setSymbol} disabled={isRunning} />
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
+          <SymbolSelector market={isSpot ? 'spot' : 'perps'} value={symbol} onChange={(val) => {
+            setSymbol(val);
+            if (val.includes('SOSO')) {
+              setIsSpot(true);
+              setSymbol('vSOSO-vUSDC');
+            }
+          }} disabled={isRunning} />
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => { if (!isRunning) setIsSpot(true); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all cursor-pointer', isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isRunning && 'opacity-50')}>Spot</button>
+          <button 
+            type="button" 
+            onClick={() => { if (!isRunning && !symbol.includes('SOSO')) setIsSpot(false); }} 
+            disabled={symbol.includes('SOSO')}
+            className={cn('flex-1 py-2 text-xs rounded-lg border transition-all cursor-pointer', !isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', (isRunning || symbol.includes('SOSO')) && 'opacity-50 cursor-not-allowed')}
+          >
+            Perps
+          </button>
+        </div>
       </div>
       
       {/* Direction & Amount */}

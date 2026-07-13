@@ -775,11 +775,24 @@ export const SignalBot: React.FC = () => {
       <div className="flex flex-col gap-3">
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider block">Trading Pair</label>
         <div>
-          <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(val) => state.setField('symbol', val)} disabled={isLocked} />
+          <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(val) => {
+            state.setField('symbol', val);
+            if (val.includes('SOSO')) {
+              state.setField('isSpot', true);
+              state.setField('symbol', 'vSOSO-vUSDC');
+            }
+          }} disabled={isLocked} />
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { if (!isLocked) state.setField('isSpot', true); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}>Spot</button>
-          <button onClick={() => { if (!isLocked) state.setField('isSpot', false); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', !state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}>Perps</button>
+          <button type="button" onClick={() => { if (!isLocked) state.setField('isSpot', true); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all cursor-pointer', state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}>Spot</button>
+          <button 
+            type="button" 
+            onClick={() => { if (!isLocked && !state.symbol.includes('SOSO')) state.setField('isSpot', false); }} 
+            disabled={state.symbol.includes('SOSO')}
+            className={cn('flex-1 py-2 text-xs rounded-lg border transition-all cursor-pointer', !state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', (isLocked || state.symbol.includes('SOSO')) && 'opacity-50 cursor-not-allowed')}
+          >
+            Perps
+          </button>
         </div>
         {!state.isSpot && (
           <Input label="Leverage (x)" type="number" value={state.leverage} onChange={(e) => state.setField('leverage', e.target.value)} disabled={isLocked} />

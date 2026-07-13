@@ -19,6 +19,13 @@ import { MarketMakerBot } from './MarketMakerBot';
 import { SignalBot } from './SignalBot';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 
+const SosoLogo: React.FC<{ className?: string }> = ({ className }) => (
+  <svg viewBox="0 0 100 100" className={className} xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="48" fill="#F0B90B" />
+    <text x="50" y="66" fontSize="50" fontWeight="black" fontFamily="system-ui, -apple-system, sans-serif" fill="#000000" textAnchor="middle">S</text>
+  </svg>
+);
+
 const COINS = [
   { value: 'BTC-USD', logo: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg' },
   { value: 'ETH-USD', logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg' },
@@ -97,7 +104,7 @@ const Wave3AgentConsole: React.FC = () => {
                   >
                     <div className="flex items-center gap-2">
                       {selectedCoin.isSoso ? (
-                        <Brain size={14} className="text-purple-400" />
+                        <SosoLogo className="w-4 h-4 shrink-0" />
                       ) : (
                         <img src={selectedCoin.logo} className="w-4 h-4" alt={selectedCoin.value} />
                       )}
@@ -124,7 +131,7 @@ const Wave3AgentConsole: React.FC = () => {
                           )}
                         >
                           {coin.isSoso ? (
-                            <Brain size={14} className="text-purple-400" />
+                            <SosoLogo className="w-4 h-4 shrink-0" />
                           ) : (
                             <img src={coin.logo} className="w-4 h-4" alt={coin.value} />
                           )}
