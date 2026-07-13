@@ -131,7 +131,8 @@ export async function localAiAutoConfigure(symbol: string, botType: string): Pro
     } catch {}
 
     if (botType === 'GRID') {
-      const spacingPct = 0.05; // 5% range
+      const isBtc = symbol.toUpperCase().includes('BTC');
+      const spacingPct = isBtc ? 0.022 : 0.045; // 2.2% for BTC (4.4% total), 4.5% for others (9% total)
       return {
         lowerPrice: (markPrice * (1 - spacingPct)).toFixed(2),
         upperPrice: (markPrice * (1 + spacingPct)).toFixed(2),

@@ -261,7 +261,13 @@ export function recommendGridBot(ctx: MarketContext, budgetUsdt = 200): Recommen
   const vol = bucketVolatility(ctx.atrPct);
   const atrProjected = ctx.price * ctx.atrPct * 8;            // ATR × ~8h horizon
   const realisedRange = (ctx.high24h - ctx.low24h) / 2;
-  const halfRange = Math.max(atrProjected, realisedRange, ctx.price * 0.015); // floor: ±1.5%
+  
+  const isBtc = ctx.symbol.toUpperCase().includes('BTC');
+  const maxHalfRange = isBtc ? ctx.price * 0.022 : ctx.price * 0.045; // cap range at ±2.2% for BTC, ±4.5% for others
+  
+  let halfRange = Math.max(atrProjected, realisedRange, ctx.price * 0.012); // floor at ±1.2%
+  halfRange = Math.min(halfRange, maxHalfRange);
+  
   const lower = ctx.price - halfRange;
   const upper = ctx.price + halfRange;
 
