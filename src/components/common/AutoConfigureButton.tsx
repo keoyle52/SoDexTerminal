@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { Sparkles } from 'lucide-react';
 import { cn, getErrorMessage } from '../../lib/utils';
 import { buildContext, type RecommendationResult, type Preset } from '../../api/aiAutoConfig';
+import { localAiAutoConfigure } from '../../api/localAiEngine';
 
 /**
  * Reusable "AI Auto-Configure" button for every bot page.
@@ -51,8 +52,26 @@ export const AutoConfigureButton: React.FC<AutoConfigureButtonProps> = ({
   const run = useCallback(async () => {
     setBusy(true);
     try {
-      const ctx = await buildContext(symbol, market);
-      const result = recommender(ctx);
+      let result;
+      try {
+        const ctx = await buildContext(symbol, market);
+        result = recommender(ctx);
+      } catch (err) {
+        console.warn('buildContext failed, falling back to localAiAutoConfigure:', err);
+        let botType = 'GRID';
+        const recommenderName = recommender.name;
+        if (recommenderName.includes('Grid') || recommenderName.includes('grid')) botType = 'GRID';
+        else if (recommenderName.includes('Dca') || recommenderName.includes('dca')) botType = 'DCA';
+        else if (recommenderName.includes('Twap') || recommenderName.includes('twap')) botType = 'TWAP';
+        else if (recommenderName.includes('Market') || recommenderName.includes('Maker') || recommenderName.includes('mm') || recommenderName.includes('MM')) botType = 'MM';
+        else if (recommenderName.includes('Signal') || recommenderName.includes('signal')) botType = 'SIGNAL';
+
+        const localPreset = await localAiAutoConfigure(symbol, botType);
+        result = {
+          preset: localPreset,
+          rationale: `Local Quantitative AI formulated optimal configurations based on current ticker bounds for ${symbol} (${botType} setup).`
+        };
+      }
       onApply(result.preset);
       toast.success(result.rationale, { duration: 7_000 });
     } catch (err) {

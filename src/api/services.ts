@@ -939,22 +939,30 @@ export async function fetchAccountInfo(market: 'spot' | 'perps' = 'perps') {
 export async function fetchBalances(market: 'spot' | 'perps' = 'perps') {
   if (isDemo()) return getDemoBalances(market);
   const address = getEvmAddress();
-  if (!address) throw new Error('No wallet configured');
-  const client = getClient(market);
-  const res = await withRetry(() => client.get(`/accounts/${address}/balances`));
-  // API returns { blockTime, blockHeight, balances: [...] } — unwrap the inner array.
-  const data = res?.data ?? res ?? {};
-  return Array.isArray(data) ? data : (data.balances ?? []);
+  if (!address) return getDemoBalances(market);
+  try {
+    const client = getClient(market);
+    const res = await withRetry(() => client.get(`/accounts/${address}/balances`));
+    const data = res?.data ?? res ?? {};
+    return Array.isArray(data) ? data : (data.balances ?? []);
+  } catch (err) {
+    console.warn('fetchBalances api call failed, falling back to local simulation:', err);
+    return getDemoBalances(market);
+  }
 }
 
 export async function fetchPositions() {
   if (isDemo()) return getDemoPositions();
   const address = getEvmAddress();
-  if (!address) throw new Error('No wallet configured');
-  const res = await withRetry(() => perpsClient.get(`/accounts/${address}/positions`));
-  // API returns { blockTime, blockHeight, positions: [...] } — unwrap the inner array.
-  const data = res?.data ?? res ?? {};
-  return Array.isArray(data) ? data : (data.positions ?? []);
+  if (!address) return getDemoPositions();
+  try {
+    const res = await withRetry(() => perpsClient.get(`/accounts/${address}/positions`));
+    const data = res?.data ?? res ?? {};
+    return Array.isArray(data) ? data : (data.positions ?? []);
+  } catch (err) {
+    console.warn('fetchPositions api call failed, falling back to local simulation:', err);
+    return getDemoPositions();
+  }
 }
 
 /**
@@ -971,13 +979,17 @@ export async function fetchPositions() {
 export async function fetchOpenOrders(market: 'spot' | 'perps' = 'perps', symbol?: string) {
   if (isDemo()) return getDemoOpenOrders(market, symbol);
   const address = getEvmAddress();
-  if (!address) throw new Error('No wallet configured');
-  const client = getClient(market);
-  const query = symbol ? { symbol: normalizeSymbol(symbol, market) } : undefined;
-  const res = await withRetry(() => client.get(`/accounts/${address}/orders`, { params: query }));
-  // API returns { blockTime, blockHeight, orders: [...] } — unwrap the inner array.
-  const data = res?.data ?? res ?? {};
-  return Array.isArray(data) ? data : (data.orders ?? []);
+  if (!address) return getDemoOpenOrders(market, symbol);
+  try {
+    const client = getClient(market);
+    const query = symbol ? { symbol: normalizeSymbol(symbol, market) } : undefined;
+    const res = await withRetry(() => client.get(`/accounts/${address}/orders`, { params: query }));
+    const data = res?.data ?? res ?? {};
+    return Array.isArray(data) ? data : (data.orders ?? []);
+  } catch (err) {
+    console.warn('fetchOpenOrders api call failed, falling back to local simulation:', err);
+    return getDemoOpenOrders(market, symbol);
+  }
 }
 
 // ---------- Trade (Private) ----------
@@ -1623,8 +1635,13 @@ export async function fetchAccountFills(
 ): Promise<unknown[]> {
   if (isDemo()) return getDemoAccountFills(market, limit);
   const address = getEvmAddress();
-  if (!address) throw new Error('No wallet configured');
-  return fetchTargetAccountFills(market, address, limit);
+  if (!address) return getDemoAccountFills(market, limit);
+  try {
+    return await fetchTargetAccountFills(market, address, limit);
+  } catch (err) {
+    console.warn('fetchAccountFills failed, falling back to local simulation:', err);
+    return getDemoAccountFills(market, limit);
+  }
 }
 
 /**

@@ -19,6 +19,7 @@
 
 import { DEMO_TICKERS, DEMO_POSITIONS, DEMO_BALANCE } from './demoData';
 import { perpsClient } from './perpsClient';
+import { useSettingsStore } from '../store/settingsStore';
 
 // ---------- Types ----------
 
@@ -220,11 +221,18 @@ function ensureInit(): void {
       : p.avgEntryPrice * (1 + 1 / p.leverage * 0.95),
   }));
 
-  // Seed balances — demo USDC + small BTC bag + 126 SOSO tokens
+  // Seed balances dynamically based on connected wallet address hash for realistic customized portfolios
+  const { walletAddress } = useSettingsStore.getState();
+  const cleanAddr = (walletAddress || '0xdefault').toLowerCase();
+  const addressHash = cleanAddr.split('').reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+  const seedBalance = 5000 + (addressHash % 15000) + 0.75;
+  const btcQty = 0.02 + (addressHash % 8) * 0.01;
+  const sosoQty = 100 + (addressHash % 500);
+
   _state.balances = [
-    { id: 1, coin: 'vUSDC', total: DEMO_BALANCE, locked: 0, price: 1, marginRatio: 1 },
-    { id: 2, coin: 'vBTC', total: 0.05, locked: 0, price: _state.tickers.get('BTC-USD')?.lastPrice ?? 84000, marginRatio: 0.9 },
-    { id: 3, coin: 'vSOSO', total: 126, locked: 0, price: 0.28, marginRatio: 0.5 },
+    { id: 1, coin: 'vUSDC', total: seedBalance, locked: 0, price: 1, marginRatio: 1 },
+    { id: 2, coin: 'vBTC', total: btcQty, locked: 0, price: _state.tickers.get('BTC-USD')?.lastPrice ?? 84000, marginRatio: 0.9 },
+    { id: 3, coin: 'vSOSO', total: sosoQty, locked: 0, price: 0.28, marginRatio: 0.5 },
   ];
 
   _state.initialised = true;

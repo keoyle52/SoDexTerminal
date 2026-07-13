@@ -7,6 +7,7 @@ import { MirrorCopySetup } from '../components/mirror/MirrorCopySetup';
 import { MirrorDashboard } from '../components/mirror/MirrorDashboard';
 import { MirrorHowItWorks } from '../components/mirror/MirrorHowItWorks';
 import { resolveWalletAddress, analyzeMirrorWallet } from '../api/mirrorClient';
+import { localAiDiagnoseWallet } from '../api/localAiEngine';
 import { useSettingsStore } from '../store/settingsStore';
 
 type MirrorView = 'input' | 'analyzing' | 'report' | 'dashboard';
@@ -41,7 +42,17 @@ export const MirrorTool: React.FC = () => {
       }
 
       // Step 2: Run AI analysis
-      const data = await analyzeMirrorWallet(address, resolved.accountId, network, geminiApiKey);
+      let data;
+      if (geminiApiKey) {
+        try {
+          data = await analyzeMirrorWallet(address, resolved.accountId, network, geminiApiKey);
+        } catch (apiErr) {
+          console.warn('External AI call failed, falling back to local quantitative AI engine:', apiErr);
+          data = await localAiDiagnoseWallet(address, resolved.accountId, network);
+        }
+      } else {
+        data = await localAiDiagnoseWallet(address, resolved.accountId, network);
+      }
       setReportData(data);
       setView('report');
     } catch (err: any) {

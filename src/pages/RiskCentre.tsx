@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, ShieldAlert, AlertTriangle, Activity, Lock, Cpu, Search, Loader2, Play } from 'lucide-react';
 import { useSettingsStore } from '../store/settingsStore';
 import { resolveWalletAddress, analyzeMirrorWallet } from '../api/mirrorClient';
+import { localAiDiagnoseWallet } from '../api/localAiEngine';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 
@@ -61,8 +62,20 @@ export const RiskCentre: React.FC = () => {
       }
 
       // Step 2: Analyze wallet risk metrics via AI engine
-      toast.loading(`Analyzing transaction history and calculating VaR...`, { id: toastId });
-      const data = await analyzeMirrorWallet(address, resolved.accountId, net, geminiApiKey);
+      let data;
+      if (geminiApiKey) {
+        try {
+          toast.loading(`Analyzing transaction history and calculating VaR...`, { id: toastId });
+          data = await analyzeMirrorWallet(address, resolved.accountId, net, geminiApiKey);
+        } catch (apiErr) {
+          console.warn('External AI call failed, falling back to local quantitative AI engine:', apiErr);
+          data = await localAiDiagnoseWallet(address, resolved.accountId, net);
+        }
+      } else {
+        toast.loading(`Analyzing transaction history (Local AI Engine)...`, { id: toastId });
+        data = await localAiDiagnoseWallet(address, resolved.accountId, net);
+      }
+
       setReportData(data);
       cachedReportData = data;
       cachedAddress = address;
