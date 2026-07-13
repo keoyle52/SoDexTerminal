@@ -7,6 +7,7 @@ export interface Wave3Log {
   timestamp: string;
   message: string;
   type: 'INFO' | 'ACTION' | 'WARNING' | 'SUCCESS';
+  agent?: 'SYSTEM' | 'MACRO' | 'TECHNICAL' | 'SENTIMENT' | 'RISK';
 }
 
 export interface Wave3Position {
@@ -46,7 +47,7 @@ interface Wave3Store {
   setActiveAction: (action: string) => void;
 
   logs: Wave3Log[];
-  addLog: (message: string, type?: Wave3Log['type']) => void;
+  addLog: (message: string, type?: Wave3Log['type'], agent?: Wave3Log['agent']) => void;
   clearLogs: () => void;
 
   activePosition: Wave3Position | null;
@@ -80,13 +81,14 @@ export const useWave3Store = create<Wave3Store>((set) => ({
   setActiveAction: (action) => set({ activeAction: action }),
 
   logs: [],
-  addLog: (message, type = 'INFO') => set((state) => ({
+  addLog: (message, type = 'INFO', agent) => set((state) => ({
     logs: [
       {
         id: Math.random().toString(36).substring(7),
         timestamp: new Date().toISOString(),
         message,
-        type
+        type,
+        agent
       },
       ...state.logs
     ].slice(0, 100)
