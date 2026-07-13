@@ -20,10 +20,7 @@ import { SignalBot } from './SignalBot';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 
 const SosoLogo: React.FC<{ className?: string }> = ({ className }) => (
-  <svg viewBox="0 0 100 100" className={className} xmlns="http://www.w3.org/2000/svg">
-    <circle cx="50" cy="50" r="48" fill="#F0B90B" />
-    <text x="50" y="66" fontSize="50" fontWeight="black" fontFamily="system-ui, -apple-system, sans-serif" fill="#000000" textAnchor="middle">S</text>
-  </svg>
+  <img src="/soso.png" className={className} alt="SOSO" />
 );
 
 const COINS = [
@@ -175,13 +172,53 @@ const Wave3AgentConsole: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 rounded-sm bg-[#0B0E11] border border-border">
-                  <div className="text-[9px] text-text-secondary uppercase tracking-widest font-bold mb-1">Live Regime</div>
-                  <div className="text-sm font-bold text-text-primary">{w3.currentRegime.replace('_', ' ')}</div>
+                <div className="p-3 rounded-sm bg-[#0B0E11] border border-border flex flex-col justify-between">
+                  <div>
+                    <div className="text-[9px] text-text-secondary uppercase tracking-widest font-bold mb-1">Live Regime</div>
+                    <div className="text-sm font-bold text-text-primary">{w3.currentRegime.replace('_', ' ')}</div>
+                  </div>
+                  <div className={cn(
+                    "mt-2 px-2 py-0.5 rounded-sm border text-[10px] font-bold text-center",
+                    w3.currentRegime === 'TRENDING_UP' ? 'text-success bg-success/10 border-success/20' :
+                    w3.currentRegime === 'TRENDING_DOWN' ? 'text-danger bg-danger/10 border-danger/20' :
+                    w3.currentRegime === 'HIGH_VOLATILITY' ? 'text-warning bg-warning/10 border-warning/20' :
+                    'text-text-secondary bg-white/5 border-white/10'
+                  )}>
+                    {w3.currentRegime === 'TRENDING_UP' ? 'Strong Bullish' :
+                     w3.currentRegime === 'TRENDING_DOWN' ? 'Strong Bearish' :
+                     w3.currentRegime === 'HIGH_VOLATILITY' ? 'Volatile' : 'Neutral'}
+                  </div>
                 </div>
-                <div className="p-3 rounded-sm bg-[#0B0E11] border border-border">
-                  <div className="text-[9px] text-text-secondary uppercase tracking-widest font-bold mb-1">Active Action</div>
-                  <div className="text-sm font-bold text-purple-400">{w3.activeAction.replace('_', ' ')}</div>
+
+                <div className="p-3 rounded-sm bg-[#0B0E11] border border-border flex flex-col justify-between">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="text-[9px] text-text-secondary uppercase tracking-widest font-bold mb-0.5">SoSo Sentiment</div>
+                      <div className="text-sm font-black text-text-primary font-mono">
+                        {w3.currentRegime === 'TRENDING_UP' ? '82' :
+                         w3.currentRegime === 'TRENDING_DOWN' ? '24' :
+                         w3.currentRegime === 'HIGH_VOLATILITY' ? '65' : '50'}/100
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 space-y-0.5">
+                    <div className="h-1 w-full bg-white/5 rounded-sm relative overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-red-500 via-yellow-500 to-emerald-500 transition-all duration-500 rounded-sm"
+                        style={{ 
+                          width: `${
+                            w3.currentRegime === 'TRENDING_UP' ? 82 :
+                            w3.currentRegime === 'TRENDING_DOWN' ? 24 :
+                            w3.currentRegime === 'HIGH_VOLATILITY' ? 65 : 50
+                          }%` 
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[7px] text-text-muted font-bold font-mono">
+                      <span>BEAR</span>
+                      <span>BULL</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -213,15 +250,32 @@ const Wave3AgentConsole: React.FC = () => {
                     Size: ${w3.activePosition.size} • Entry: ${w3.activePosition.entryPrice.toFixed(4)}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[9px] text-text-secondary uppercase font-bold mb-0.5">Unrealized PnL</div>
-                  <NumberDisplay 
-                    value={w3.activePosition.pnl} 
-                    prefix="$" 
-                    decimals={4} 
-                    trend={w3.activePosition.pnl > 0 ? "up" : w3.activePosition.pnl < 0 ? "down" : "neutral"} 
-                    className="text-lg font-bold" 
-                  />
+                <div className="flex items-center gap-4">
+                  {/* Mini Sparkline */}
+                  <div className="w-16 h-8 shrink-0">
+                    <svg className="w-full h-full" viewBox="0 0 60 20">
+                      <path
+                        d={w3.activePosition.pnl >= 0 
+                          ? "M 0 15 Q 15 5, 30 12 T 60 2" 
+                          : "M 0 5 Q 15 15, 30 8 T 60 18"
+                        }
+                        fill="none"
+                        stroke={w3.activePosition.pnl >= 0 ? "#00B574" : "#EF454A"}
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[9px] text-text-secondary uppercase font-bold mb-0.5">Unrealized PnL</div>
+                    <NumberDisplay 
+                      value={w3.activePosition.pnl} 
+                      prefix="$" 
+                      decimals={4} 
+                      trend={w3.activePosition.pnl > 0 ? "up" : w3.activePosition.pnl < 0 ? "down" : "neutral"} 
+                      className="text-lg font-bold" 
+                    />
+                  </div>
                 </div>
               </div>
             </div>
