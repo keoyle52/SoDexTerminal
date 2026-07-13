@@ -349,7 +349,10 @@ export const TwapBot: React.FC = () => {
       <AutoConfigureButton
         symbol={symbol}
         market={isSpot ? 'spot' : 'perps'}
-        recommender={recommendTwapBot}
+        recommender={(ctx) => {
+          const currentBudget = parseFloat(totalAmount) * (ctx.price || 100);
+          return recommendTwapBot(ctx, currentBudget || 1000);
+        }}
         hidden={isRunning}
         onApply={(preset) => {
           if (preset.slices)      setSlices(String(preset.slices));

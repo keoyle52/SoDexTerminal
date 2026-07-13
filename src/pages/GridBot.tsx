@@ -505,7 +505,7 @@ export const GridBot: React.FC = () => {
       <AutoConfigureButton
         symbol={state.symbol}
         market={state.isSpot ? 'spot' : 'perps'}
-        recommender={recommendGridBot}
+        recommender={(ctx) => recommendGridBot(ctx, parseFloat(String(state.totalInvestment)) || 200)}
         hidden={isRunning}
         onApply={(preset) => {
           if (preset.upperPrice) state.setField('upperPrice', String(preset.upperPrice));

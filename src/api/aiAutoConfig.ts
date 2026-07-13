@@ -332,7 +332,7 @@ export function recommendTwapBot(ctx: MarketContext, totalUsdt = 1000): Recommen
  * `amountPerOrder`: 50 USDT default — small enough to be safe, large
  * enough that the resulting position is meaningful after 10-20 orders.
  */
-export function recommendDcaBot(ctx: MarketContext): RecommendationResult {
+export function recommendDcaBot(ctx: MarketContext, budgetUsdt = 500): RecommendationResult {
   const vol = bucketVolatility(ctx.atrPct);
   const trending = ctx.change24hPct > 1.5;
   const mode: 'fixed' | 'buy-the-dip' = trending ? 'buy-the-dip' : 'fixed';
@@ -340,6 +340,9 @@ export function recommendDcaBot(ctx: MarketContext): RecommendationResult {
   const dipPct = mode === 'buy-the-dip'
     ? Math.max(0.4, Math.min(2.0, ctx.atrPct * 100 * 1.5))
     : 0;
+
+  const maxOrders = 10;
+  const amountPerOrder = Math.max(5, Math.floor(budgetUsdt / maxOrders));
 
   return {
     preset: {

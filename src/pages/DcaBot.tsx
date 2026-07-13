@@ -378,7 +378,11 @@ export const DcaBot: React.FC = () => {
       <AutoConfigureButton
         symbol={symbol}
         market={isSpot ? 'spot' : 'perps'}
-        recommender={recommendDcaBot}
+        recommender={(ctx) => {
+          const px = currentPrice > 0 ? currentPrice : (ctx.price || 100);
+          const currentBudget = (parseFloat(amountPerOrder) * px) * (parseInt(maxOrders) || 10);
+          return recommendDcaBot(ctx, currentBudget || 500);
+        }}
         hidden={isRunning}
         onApply={(preset) => {
           if (preset.intervalMin) setIntervalSec(String(parseInt(String(preset.intervalMin)) * 60));
