@@ -420,6 +420,19 @@ export const MarketMakerBot: React.FC = () => {
 
   const configPanel = (
     <>
+      <AutoConfigureButton
+        symbol={mm.symbol}
+        market="spot"
+        recommender={(ctx) => recommendMarketMakerBot(ctx, parseFloat(mm.budgetUsdt) || 100)}
+        hidden={isRunning}
+        onApply={(preset) => {
+          if (preset.layers)        setField('layers',        String(preset.layers));
+          if (preset.spreadBps)     setField('spreadBps',     String(preset.spreadBps));
+          if (preset.requoteBps)    setField('requoteBps',    String(preset.requoteBps));
+          if (preset.orderSizeUsdt) setField('orderSizeUsdt', String(preset.orderSizeUsdt));
+          if (preset.makerFeeRate)  setField('makerFeeRate',  String(preset.makerFeeRate));
+        }}
+      />
       <div>
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
         <SymbolSelector market="spot" value={mm.symbol} onChange={(val) => setField('symbol', val)} disabled={isRunning} />

@@ -346,6 +346,17 @@ export const TwapBot: React.FC = () => {
 
   const configPanel = (
     <>
+      <AutoConfigureButton
+        symbol={symbol}
+        market={isSpot ? 'spot' : 'perps'}
+        recommender={recommendTwapBot}
+        hidden={isRunning}
+        onApply={(preset) => {
+          if (preset.slices)      setSlices(String(preset.slices));
+          if (preset.intervalSec) setIntervalSec(String(preset.intervalSec));
+          if (preset.orderType === 'limit') setOrderType('LIMIT');
+        }}
+      />
       {/* Market */}
       <div className="flex flex-col gap-3">
         <div>

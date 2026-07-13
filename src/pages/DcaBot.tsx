@@ -375,6 +375,30 @@ export const DcaBot: React.FC = () => {
   // Build UI panels for BotLayout
   const configPanel = (
     <>
+      <AutoConfigureButton
+        symbol={symbol}
+        market={isSpot ? 'spot' : 'perps'}
+        recommender={recommendDcaBot}
+        hidden={isRunning}
+        onApply={(preset) => {
+          if (preset.intervalMin) setIntervalSec(String(parseInt(String(preset.intervalMin)) * 60));
+          if (preset.maxOrders)   setMaxOrders(String(preset.maxOrders));
+          if (preset.amountPerOrder) {
+            const px = currentPrice > 0 ? currentPrice : 0;
+            if (px > 0) {
+              const baseAmt = parseFloat(String(preset.amountPerOrder)) / px;
+              setAmountPerOrder(baseAmt.toFixed(6));
+            }
+          }
+          if (preset.mode === 'buy-the-dip') {
+            setCondition('BUY_THE_DIP');
+            if (preset.dipPct) setDipPercent(String(preset.dipPct));
+          } else if (preset.mode === 'fixed') {
+            setCondition('NONE');
+          }
+        }}
+      />
+      
       {/* Market */}
       <div className="flex flex-col gap-3">
         <div>
