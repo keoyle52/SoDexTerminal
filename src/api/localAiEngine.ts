@@ -1,4 +1,5 @@
 import { fetchPositions, fetchBalances, fetchMarkPrices, fetchAccountFills } from './services';
+import { fetchRealMainnetPrices, getMainnetPriceForSymbol } from './sosoServices';
 
 export interface LocalAiRegimeResult {
   regime: 'TRENDING_UP' | 'TRENDING_DOWN' | 'CONSOLIDATION' | 'HIGH_VOLATILITY';
@@ -119,7 +120,15 @@ export async function localAiAutoConfigure(symbol: string, botType: string): Pro
     
     const targetBase = normalizeSymbolBase(symbol);
     const symbolPrice = pricesArr.find((p: any) => normalizeSymbolBase(p.symbol) === targetBase);
-    const markPrice = parseFloat(symbolPrice?.markPrice ?? symbolPrice?.price ?? 100);
+    let markPrice = parseFloat(symbolPrice?.markPrice ?? symbolPrice?.price ?? 100);
+
+    try {
+      const mainnetPrices = await fetchRealMainnetPrices();
+      const mainnetPrice = getMainnetPriceForSymbol(symbol, mainnetPrices);
+      if (mainnetPrice > 0) {
+        markPrice = mainnetPrice;
+      }
+    } catch {}
 
     if (botType === 'GRID') {
       const spacingPct = 0.05; // 5% range

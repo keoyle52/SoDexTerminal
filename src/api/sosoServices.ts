@@ -421,3 +421,64 @@ export function extractCoinFromNews(title: string, fallback = 'BTC'): string {
   }
   return fallback.toUpperCase();
 }
+
+export interface MainnetPrices {
+  btc: { price: number; change24h: number };
+  eth: { price: number; change24h: number };
+  sol: { price: number; change24h: number };
+  soso: { price: number; change24h: number };
+}
+
+let _mainnetPricesCache: { data: MainnetPrices; ts: number } | null = null;
+
+export async function fetchRealMainnetPrices(): Promise<MainnetPrices> {
+  if (_mainnetPricesCache && Date.now() - _mainnetPricesCache.ts < 15000) {
+    return _mainnetPricesCache.data;
+  }
+  
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,soso-value&vs_currencies=usd&include_24hr_change=true');
+    if (res.ok) {
+      const data = await res.json();
+      const prices: MainnetPrices = {
+        btc: {
+          price: data.bitcoin?.usd ?? 98450,
+          change24h: data.bitcoin?.usd_24h_change ?? 1.2
+        },
+        eth: {
+          price: data.ethereum?.usd ?? 3420,
+          change24h: data.ethereum?.usd_24h_change ?? 0.8
+        },
+        sol: {
+          price: data.solana?.usd ?? 182.4,
+          change24h: data.solana?.usd_24h_change ?? -0.5
+        },
+        soso: {
+          price: data['soso-value']?.usd ?? 0.2918,
+          change24h: data['soso-value']?.usd_24h_change ?? 2.4
+        }
+      };
+      _mainnetPricesCache = { data: prices, ts: Date.now() };
+      return prices;
+    }
+  } catch (err) {
+    console.warn('[fetchRealMainnetPrices] failed to fetch from CoinGecko, using fallback:', err);
+  }
+  
+  const prices: MainnetPrices = {
+    btc: { price: 98450, change24h: 1.2 },
+    eth: { price: 3420, change24h: 0.8 },
+    sol: { price: 182.4, change24h: -0.5 },
+    soso: { price: 0.2918, change24h: 2.4 }
+  };
+  return prices;
+}
+
+export function getMainnetPriceForSymbol(symbol: string, mainnetPrices: MainnetPrices): number {
+  const sym = symbol.toUpperCase().replace(/_/g, '-').replace(/^V/, '');
+  if (sym.includes('BTC')) return mainnetPrices.btc.price;
+  if (sym.includes('ETH')) return mainnetPrices.eth.price;
+  if (sym.includes('SOL')) return mainnetPrices.sol.price;
+  if (sym.includes('SOSO')) return mainnetPrices.soso.price;
+  return 1.0;
+}

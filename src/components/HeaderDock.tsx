@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { deriveAddressFromPrivateKey } from '../api/signer';
-import { fetchSosoIndices } from '../api/sosoServices';
+import { fetchSosoIndices, fetchRealMainnetPrices } from '../api/sosoServices';
 import { OnboardingTour } from './OnboardingTour';
 import { useTickers } from '../api/queries';
 
@@ -39,7 +39,42 @@ export const HeaderDock: React.FC = () => {
 
   const { data: rawTickers } = useTickers('spot');
 
-  // Continually update ticker prices based on react-query response
+  // Fetch real mainnet prices from CoinGecko for marquee tape to align with real life
+  useEffect(() => {
+    let mounted = true;
+    const updatePrices = async () => {
+      try {
+        const prices = await fetchRealMainnetPrices();
+        if (mounted) {
+          setTickerPrices((prev) => ({
+            ...prev,
+            'BTC-USD': { price: prices.btc.price, change: prices.btc.change24h },
+            'ETH-USD': { price: prices.eth.price, change: prices.eth.change24h },
+            'SOL-USD': { price: prices.sol.price, change: prices.sol.change24h },
+            'SOSO-USD': { price: prices.soso.price, change: prices.soso.change24h },
+            'BTC_USDC': { price: prices.btc.price, change: prices.btc.change24h },
+            'vBTC_vUSDC': { price: prices.btc.price, change: prices.btc.change24h },
+            'ETH_USDC': { price: prices.eth.price, change: prices.eth.change24h },
+            'vETH_vUSDC': { price: prices.eth.price, change: prices.eth.change24h },
+            'SOL_USDC': { price: prices.sol.price, change: prices.sol.change24h },
+            'vSOL_vUSDC': { price: prices.sol.price, change: prices.sol.change24h },
+            'WSOSO_vUSDC': { price: prices.soso.price, change: prices.soso.change24h },
+            'WSOSO_USDC': { price: prices.soso.price, change: prices.soso.change24h },
+          }));
+        }
+      } catch (err) {
+        console.warn('Header marquee mainnet price update failed:', err);
+      }
+    };
+    void updatePrices();
+    const interval = setInterval(updatePrices, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Fallback continually update ticker prices based on react-query response
   useEffect(() => {
     if (!rawTickers || !Array.isArray(rawTickers) || rawTickers.length === 0) return;
     
@@ -49,6 +84,10 @@ export const HeaderDock: React.FC = () => {
         const p = parseFloat(t.markPrice ?? t.lastPrice ?? 0);
         if (p > 0) {
           const sym = String(t.symbol ?? '');
+          // Do not overwrite if we already got it from fetchRealMainnetPrices
+          if (sym.includes('BTC') || sym.includes('ETH') || sym.includes('SOL') || sym.includes('SOSO')) {
+            continue;
+          }
           const prevEntry = updated[sym];
           const prevPrice = prevEntry?.price || 0;
           const change = prevPrice > 0 && prevPrice !== p

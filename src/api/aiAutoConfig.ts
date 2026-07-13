@@ -37,6 +37,7 @@
  */
 
 import { fetchKlines, fetchOrderbook } from './services';
+import { fetchRealMainnetPrices, getMainnetPriceForSymbol } from './sosoServices';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -182,16 +183,37 @@ export async function buildContext(symbol: string, market: 'spot' | 'perps'): Pr
   const mid = (bestBid + bestAsk) / 2;
   const spreadBps = mid > 0 ? ((bestAsk - bestBid) / mid) * 10_000 : 0;
 
+  let finalLast = last;
+  let finalHigh24h = high24h;
+  let finalLow24h = low24h;
+  let finalBestBid = bestBid > 0 ? bestBid : last;
+  let finalBestAsk = bestAsk > 0 ? bestAsk : last;
+
+  try {
+    const mainnetPrices = await fetchRealMainnetPrices();
+    const mainnetPrice = getMainnetPriceForSymbol(symbol, mainnetPrices);
+    if (mainnetPrice > 0 && last > 0) {
+      const ratio = mainnetPrice / last;
+      finalLast = mainnetPrice;
+      finalHigh24h = high24h * ratio;
+      finalLow24h = low24h * ratio;
+      finalBestBid = finalBestBid * ratio;
+      finalBestAsk = finalBestAsk * ratio;
+    }
+  } catch (err) {
+    console.warn('[buildContext] failed to fetch mainnet price scaling ratio:', err);
+  }
+
   return {
     symbol,
     market,
-    price: last,
+    price: finalLast,
     atrPct,
     change24hPct,
-    high24h,
-    low24h,
-    bestBid: bestBid > 0 ? bestBid : last,
-    bestAsk: bestAsk > 0 ? bestAsk : last,
+    high24h: finalHigh24h,
+    low24h: finalLow24h,
+    bestBid: finalBestBid,
+    bestAsk: finalBestAsk,
     spreadBps: Math.max(0, spreadBps),
   };
 }
