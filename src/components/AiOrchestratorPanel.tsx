@@ -93,27 +93,55 @@ export const AiOrchestratorPanel: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Filter out logs that belong to agents to list them in consensus board
-  const agentLogs = w3State.logs.filter(l => l.agent !== undefined);
-
-  // Helper for agent UI properties
-  const getAgentProps = (agent: string) => {
-    switch (agent) {
-      case 'MACRO':
-        return { label: 'Macro Agent', icon: Globe, color: 'text-sky-400', bg: 'bg-sky-500/5 border-sky-500/10' };
-      case 'TECHNICAL':
-        return { label: 'Technical Agent', icon: Cpu, color: 'text-indigo-400', bg: 'bg-indigo-500/5 border-indigo-500/10' };
-      case 'SENTIMENT':
-        return { label: 'Sentiment Agent', icon: MessageSquare, color: 'text-amber-400', bg: 'bg-amber-500/5 border-amber-500/10' };
-      case 'RISK':
-        return { label: 'Risk Officer', icon: Shield, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border-emerald-500/10' };
-      default:
-        return { label: 'System', icon: Brain, color: 'text-primary', bg: 'bg-primary/5 border-primary/10' };
+  // Parse latest data for each agent from w3State logs
+  const getAgentLatest = (agentType: 'MACRO' | 'TECHNICAL' | 'SENTIMENT' | 'RISK') => {
+    const log = w3State.logs.find(l => l.agent === agentType);
+    if (!log) {
+      return { vote: 'WAITING', msg: 'Awaiting initialization...', score: null };
     }
+    const msg = log.message.replace(/^(Macro Agent:|Technical Agent:|Sentiment Agent:|Risk Officer:)/i, '').trim();
+    let vote = 'HOLD';
+    let score: number | null = null;
+
+    if (agentType === 'MACRO') {
+      if (msg.includes('bias: LONG')) vote = 'LONG';
+      else if (msg.includes('bias: SHORT')) vote = 'SHORT';
+    } else if (agentType === 'TECHNICAL') {
+      if (msg.includes('execution: LONG')) vote = 'LONG';
+      else if (msg.includes('execution: SHORT')) vote = 'SHORT';
+      else if (msg.includes('execution: VOLATILITY GRID')) vote = 'GRID';
+    } else if (agentType === 'SENTIMENT') {
+      if (msg.includes('bias: LONG')) vote = 'LONG';
+      else if (msg.includes('bias: SHORT')) vote = 'SHORT';
+      const scoreMatch = msg.match(/score of (\d+)\/100/);
+      if (scoreMatch) score = parseInt(scoreMatch[1]);
+    } else if (agentType === 'RISK') {
+      if (msg.includes('Voting: APPROVED')) vote = 'APPROVED';
+      else vote = 'BLOCKED';
+    }
+    return { vote, msg, score };
   };
 
+  const macro = getAgentLatest('MACRO');
+  const technical = getAgentLatest('TECHNICAL');
+  const sentiment = getAgentLatest('SENTIMENT');
+  const risk = getAgentLatest('RISK');
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-3.5 gap-3.5 bg-surface text-xs leading-relaxed border-t lg:border-t-0 select-none">
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-3.5 gap-3.5 bg-surface text-xs leading-relaxed border-t lg:border-t-0 select-none scrollbar-none">
+      {/* CSS Animation Inject */}
+      <style>{`
+        @keyframes dash {
+          to {
+            stroke-dashoffset: -20;
+          }
+        }
+        .animate-dash-line {
+          stroke-dasharray: 4 2;
+          animation: dash 1.5s linear infinite;
+        }
+      `}</style>
+
       {/* Panel Header */}
       <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
         <div className="flex items-center gap-2">
@@ -147,92 +175,138 @@ export const AiOrchestratorPanel: React.FC = () => {
           <span>Computing AI metrics...</span>
         </div>
       ) : w3State.isAgentRunning ? (
-        /* --- RUNNING STATE: MULTI-AGENT CONSENSUS LOG BOARD --- */
-        <div className="flex-1 flex flex-col min-h-0 gap-3.5">
-          {/* Agent Status Indicators */}
-          <div className="p-3 rounded-sm bg-[#0B0E11] border border-border space-y-2 shrink-0">
-            <span className="text-[9px] uppercase tracking-wider font-bold text-text-secondary block">
-              Consensus Members
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-[10px]">
-              <div className="flex items-center gap-1.5 font-mono text-text-primary">
-                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                <span>Macro Agent</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-mono text-text-primary">
-                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                <span>Technical Agent</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-mono text-text-primary">
-                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                <span>Sentiment Agent</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-mono text-text-primary">
-                <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", riskState.currentRiskLevel === 'CRITICAL' ? 'bg-danger animate-ping' : 'bg-success')} />
-                <span>Risk Officer</span>
-              </div>
+        /* --- RUNNING STATE: SCHEMATIC MULTI-AGENT PLATFORM --- */
+        <div className="flex-1 flex flex-col min-h-0 gap-3">
+          
+          {/* Top Panel: Final Decision and Real-Time Position */}
+          <div className="p-3 rounded-sm bg-[#161A20] border border-border space-y-1.5 shrink-0 animate-fade-in relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl pointer-events-none" />
+            <div className="flex justify-between items-center text-[10px] relative z-10 border-b border-border/40 pb-1.5 mb-1.5">
+              <span className="text-text-secondary font-bold">Orchestrator Decision:</span>
+              <span className="px-2 py-0.5 rounded-sm bg-primary/10 text-primary border border-primary/20 font-bold uppercase tracking-wider animate-pulse">
+                {w3State.activeAction.replace('DEPLOY_', '')}
+              </span>
             </div>
-          </div>
-
-          {/* Consensus Active Status */}
-          <div className="p-3 rounded-sm bg-[#161A20] border border-border space-y-1.5 shrink-0">
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="text-text-secondary">Orchestrator State:</span>
-              <strong className="text-primary font-mono uppercase">{w3State.activeAction.replace('DEPLOY_', '')}</strong>
-            </div>
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="text-text-secondary">Consensus Regime:</span>
-              <strong className="text-text-primary font-mono">{w3State.currentRegime}</strong>
-            </div>
-            {w3State.activePosition && (
-              <div className="mt-2 p-2 rounded-sm bg-[#0B0E11] border border-border/60 text-[9px] font-mono space-y-1">
+            
+            {w3State.activePosition ? (
+              <div className="grid grid-cols-2 gap-2 text-[9px] font-mono relative z-10">
                 <div className="flex justify-between">
-                  <span>Bot Type:</span>
+                  <span className="text-text-muted">Active Position:</span>
                   <span className="text-text-primary font-semibold">{w3State.activePosition.botType}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Direction:</span>
+                  <span className="text-text-muted">Side:</span>
                   <span className={cn('font-bold', w3State.activePosition.side === 'LONG' ? 'text-success' : 'text-danger')}>
                     {w3State.activePosition.side}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>PnL:</span>
+                <div className="flex justify-between col-span-2 border-t border-border/20 pt-1">
+                  <span className="text-text-muted">Acc. PnL:</span>
                   <span className={cn('font-bold', w3State.activePosition.pnl >= 0 ? 'text-success' : 'text-danger')}>
                     {w3State.activePosition.pnl >= 0 ? '+' : ''}{w3State.activePosition.pnl.toFixed(2)} USDT
                   </span>
                 </div>
               </div>
+            ) : (
+              <div className="text-center py-1 text-[9px] text-text-muted font-mono relative z-10">
+                Holding Cash reserves. Watching breakouts.
+              </div>
             )}
           </div>
 
-          {/* Log Discussion Board */}
-          <div className="flex-1 flex flex-col min-h-0 border border-border rounded-sm bg-[#0B0E11] p-2 space-y-2">
-            <span className="text-[9px] uppercase tracking-wider font-bold text-text-muted select-none shrink-0">
-              Live Discussion Feed
+          {/* Schematic Diagram Grid */}
+          <div className="relative w-full aspect-[4/3.1] border border-border bg-[#0B0E11] rounded-sm overflow-hidden select-none shrink-0">
+            {/* SVG Connections Overlay with viewBox */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ zIndex: 0 }}>
+              {/* Paths from agents to central Consensus Hub (50, 50) */}
+              <line x1="22" y1="22" x2="50" y2="50" stroke="#00d4ff" strokeWidth="0.8" className="animate-dash-line" />
+              <line x1="78" y1="22" x2="50" y2="50" stroke="#f0b90b" strokeWidth="0.8" className="animate-dash-line" />
+              <line x1="22" y1="78" x2="50" y2="50" stroke="#818cf8" strokeWidth="0.8" className="animate-dash-line" />
+              {/* Path from Consensus Hub (50, 50) to Risk Officer (78, 78) */}
+              <line x1="50" y1="50" x2="78" y2="78" stroke="#10b981" strokeWidth="1" className="animate-dash-line" />
+            </svg>
+            
+            {/* Central Consensus Hub Node */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-surface border border-primary/30 flex flex-col items-center justify-center shadow-lg shadow-primary/20 z-20">
+              <span className="text-[6px] text-text-muted font-bold tracking-widest leading-none">HUB</span>
+              <span className="text-[8px] font-black text-primary font-mono leading-none mt-0.5">{w3State.currentRegime.substring(0, 4)}</span>
+            </div>
+
+            {/* Node: Macro Agent (Top Left) */}
+            <div className="absolute top-[8%] left-[6%] w-[38%] max-w-[120px] bg-surface border border-sky-500/20 rounded p-1.5 z-10 flex flex-col items-center shadow-md">
+              <div className="flex items-center gap-1 text-sky-400 font-bold text-[8px] tracking-wider uppercase leading-none">
+                <Globe size={9} className="shrink-0" /> Macro Agent
+              </div>
+              <div className={cn(
+                "text-[9px] font-black font-mono mt-1 leading-none",
+                macro.vote === 'LONG' ? 'text-success animate-pulse' : macro.vote === 'SHORT' ? 'text-danger animate-pulse' : 'text-text-secondary'
+              )}>
+                {macro.vote}
+              </div>
+            </div>
+
+            {/* Node: Sentiment Agent (Top Right) */}
+            <div className="absolute top-[8%] right-[6%] w-[38%] max-w-[120px] bg-surface border border-amber-500/20 rounded p-1.5 z-10 flex flex-col items-center shadow-md">
+              <div className="flex items-center gap-1 text-amber-400 font-bold text-[8px] tracking-wider uppercase leading-none">
+                <MessageSquare size={9} className="shrink-0" /> Sentiment
+              </div>
+              <div className={cn(
+                "text-[9px] font-black font-mono mt-1 leading-none",
+                sentiment.vote === 'LONG' ? 'text-success animate-pulse' : sentiment.vote === 'SHORT' ? 'text-danger animate-pulse' : 'text-text-secondary'
+              )}>
+                {sentiment.vote} {sentiment.score ? `(${sentiment.score})` : ''}
+              </div>
+            </div>
+
+            {/* Node: Technical Agent (Bottom Left) */}
+            <div className="absolute bottom-[8%] left-[6%] w-[38%] max-w-[120px] bg-surface border border-indigo-500/20 rounded p-1.5 z-10 flex flex-col items-center shadow-md">
+              <div className="flex items-center gap-1 text-indigo-400 font-bold text-[8px] tracking-wider uppercase leading-none">
+                <Cpu size={9} className="shrink-0" /> Technical
+              </div>
+              <div className={cn(
+                "text-[9px] font-black font-mono mt-1 leading-none",
+                technical.vote === 'LONG' ? 'text-success animate-pulse' : technical.vote === 'SHORT' ? 'text-danger animate-pulse' : technical.vote === 'GRID' ? 'text-warning animate-pulse' : 'text-text-secondary'
+              )}>
+                {technical.vote}
+              </div>
+            </div>
+
+            {/* Node: Risk Officer (Bottom Right) */}
+            <div className="absolute bottom-[8%] right-[6%] w-[38%] max-w-[120px] bg-surface border border-emerald-500/20 rounded p-1.5 z-10 flex flex-col items-center shadow-md">
+              <div className="flex items-center gap-1 text-emerald-400 font-bold text-[8px] tracking-wider uppercase leading-none">
+                <Shield size={9} className="shrink-0" /> Risk Officer
+              </div>
+              <div className={cn(
+                "text-[9px] font-black font-mono mt-1 leading-none",
+                risk.vote === 'APPROVED' ? 'text-success animate-pulse' : 'text-danger animate-pulse'
+              )}>
+                {risk.vote}
+              </div>
+            </div>
+          </div>
+
+          {/* Discussion Transcripts Feed (Bottom of Schematic) */}
+          <div className="flex-1 flex flex-col min-h-0 border border-border/80 rounded-sm bg-[#0B0E11] p-2 space-y-1.5">
+            <span className="text-[9px] uppercase tracking-wider font-bold text-text-muted select-none shrink-0 block">
+              Active Agent Logs
             </span>
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 font-mono text-[9px] scrollbar-none">
-              {agentLogs.map((l) => {
-                const props = getAgentProps(l.agent || '');
-                const Icon = props.icon;
-                return (
-                  <div key={l.id} className={cn("p-2 border rounded-sm transition-all duration-300 animate-fade-in", props.bg)}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Icon size={10} className={props.color} />
-                      <span className={cn("font-bold", props.color)}>{props.label}</span>
-                      <span className="text-[7px] text-text-muted ml-auto font-sans">
-                        {new Date(l.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <div className="text-text-primary leading-normal whitespace-pre-wrap">{l.message.replace(/^(Macro Agent:|Technical Agent:|Sentiment Agent:|Risk Officer:)/, '').trim()}</div>
-                  </div>
-                );
-              })}
-              {agentLogs.length === 0 && (
-                <div className="text-center text-text-muted py-10 font-sans text-[10px]">
-                  Gathering consensus... Discussion logs will appear here.
-                </div>
-              )}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-[9px] scrollbar-none">
+              <div className="space-y-1">
+                <span className="text-sky-400 font-bold">🌍 Macro:</span>
+                <span className="text-text-secondary"> {macro.msg}</span>
+              </div>
+              <div className="space-y-1 border-t border-border/20 pt-1">
+                <span className="text-indigo-400 font-bold">💻 Tech:</span>
+                <span className="text-text-secondary"> {technical.msg}</span>
+              </div>
+              <div className="space-y-1 border-t border-border/20 pt-1">
+                <span className="text-amber-400 font-bold">💬 Sentiment:</span>
+                <span className="text-text-secondary"> {sentiment.msg}</span>
+              </div>
+              <div className="space-y-1 border-t border-border/20 pt-1">
+                <span className="text-emerald-400 font-bold">🛡️ Risk:</span>
+                <span className="text-text-secondary"> {risk.msg}</span>
+              </div>
             </div>
           </div>
         </div>
