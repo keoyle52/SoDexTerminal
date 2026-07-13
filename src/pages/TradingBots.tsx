@@ -19,14 +19,22 @@ import { MarketMakerBot } from './MarketMakerBot';
 import { SignalBot } from './SignalBot';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 
-// --- Wave 3 Autonomous Agent Component ---
+const COINS = [
+  { value: 'BTC-USD', logo: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg' },
+  { value: 'ETH-USD', logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg' },
+  { value: 'SOL-USD', logo: 'https://cryptologos.cc/logos/solana-sol-logo.svg' },
+  { value: 'SOSO-USD', logo: '', isSoso: true }
+];
+
 const Wave3AgentConsole: React.FC = () => {
   const w3 = useWave3Store();
   const { currentRiskLevel } = useRiskStore();
   const [showPreFlight, setShowPreFlight] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const isSoso = w3.targetCoin.startsWith('SOSO');
+  const selectedCoin = COINS.find(c => c.value === w3.targetCoin) || COINS[0];
 
   const handleStartRequest = () => {
     if (w3.isAgentRunning) {
@@ -45,7 +53,7 @@ const Wave3AgentConsole: React.FC = () => {
     <>
       <div className="flex flex-col lg:flex-row gap-4 select-none">
         <div className="flex-1 space-y-4">
-          <div className="p-5 rounded-sm bg-surface border border-border relative overflow-hidden">
+          <div className="p-5 rounded-sm bg-surface border border-border relative">
             <div className="flex items-start justify-between mb-6 relative z-10">
               <div>
                 <div className="flex items-center gap-2">
@@ -76,15 +84,55 @@ const Wave3AgentConsole: React.FC = () => {
 
             <div className="space-y-4 relative z-10">
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5 block">Target Asset</label>
-                  <div className="w-full bg-[#0B0E11] border border-border rounded-sm h-9 px-3 font-bold text-text-primary flex items-center justify-between opacity-80 font-mono text-xs">
+                  <button 
+                    type="button"
+                    onClick={() => !w3.isAgentRunning && setDropdownOpen(!dropdownOpen)}
+                    disabled={w3.isAgentRunning}
+                    className={cn(
+                      "w-full bg-[#0B0E11] border border-border rounded-sm h-9 px-3 font-bold text-text-primary flex items-center justify-between font-mono text-xs cursor-pointer select-none",
+                      w3.isAgentRunning && "opacity-80 cursor-not-allowed"
+                    )}
+                  >
                     <div className="flex items-center gap-2">
-                      <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.svg" className="w-4 h-4" alt="BTC" />
-                      <span>BTC-USD</span>
+                      {selectedCoin.isSoso ? (
+                        <Brain size={14} className="text-purple-400" />
+                      ) : (
+                        <img src={selectedCoin.logo} className="w-4 h-4" alt={selectedCoin.value} />
+                      )}
+                      <span>{selectedCoin.value}</span>
                     </div>
-                    <span className="text-[9px] text-purple-400 border border-purple-500/20 px-1.5 py-0.2 rounded-sm bg-purple-500/5">FIXED</span>
-                  </div>
+                    <span className="text-text-muted text-[10px]">▼</span>
+                  </button>
+                  {dropdownOpen && !w3.isAgentRunning && (
+                    <div className="absolute left-0 right-0 mt-1 bg-[#101317] border border-border rounded-sm shadow-xl z-50 overflow-hidden">
+                      {COINS.map(coin => (
+                        <button
+                          key={coin.value}
+                          type="button"
+                          onClick={() => {
+                            w3.setTargetCoin(coin.value);
+                            if (coin.isSoso) {
+                              w3.setMarket('spot');
+                            }
+                            setDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full px-3 py-2 text-left hover:bg-[#1C2026] flex items-center gap-2 font-mono text-xs text-text-primary transition-colors cursor-pointer",
+                            w3.targetCoin === coin.value && "bg-[#1C2026] text-primary"
+                          )}
+                        >
+                          {coin.isSoso ? (
+                            <Brain size={14} className="text-purple-400" />
+                          ) : (
+                            <img src={coin.logo} className="w-4 h-4" alt={coin.value} />
+                          )}
+                          <span>{coin.value}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5 block">Market</label>
@@ -106,30 +154,16 @@ const Wave3AgentConsole: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 font-mono">
-                <div>
-                  <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5 block">Investment</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-xs">$</span>
-                    <input 
-                      type="number" 
-                      value={w3.investment} 
-                      onChange={(e) => w3.setInvestment(Number(e.target.value))} 
-                      className="w-full bg-[#0B0E11] border border-border rounded-sm h-9 pl-7 pr-3 text-xs font-bold text-text-primary focus:outline-none focus:border-primary transition-colors" 
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5 block">Max Drawdown</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      value={w3.maxDrawdownPct} 
-                      onChange={(e) => w3.setMaxDrawdownPct(Number(e.target.value))} 
-                      className="w-full bg-[#0B0E11] border border-border rounded-sm h-9 px-3 pr-7 text-xs font-bold text-text-primary focus:outline-none focus:border-primary transition-colors" 
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-xs">%</span>
-                  </div>
+              <div className="font-mono">
+                <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5 block">Investment</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-xs">$</span>
+                  <input 
+                    type="number" 
+                    value={w3.investment} 
+                    onChange={(e) => w3.setInvestment(Number(e.target.value))} 
+                    className="w-full bg-[#0B0E11] border border-border rounded-sm h-9 pl-7 pr-3 text-xs font-bold text-text-primary focus:outline-none focus:border-primary transition-colors" 
+                  />
                 </div>
               </div>
 
