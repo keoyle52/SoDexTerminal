@@ -1,5 +1,5 @@
 import React from 'react';
-import { Network, Cpu, ShieldCheck, Zap, ArrowRight, Database, Code, Lock } from 'lucide-react';
+import { Network, Cpu, ShieldCheck, Zap, ArrowRight, Database, Code, Lock, Globe, MessageSquare } from 'lucide-react';
 
 interface BotsHowItWorksProps {
   botType?: 'Grid' | 'DCA' | 'TWAP' | 'Market Maker' | 'Signal' | 'News';
@@ -15,7 +15,7 @@ export const BotsHowItWorks: React.FC<BotsHowItWorksProps> = ({ botType }) => {
       case 'Market Maker': return "Market Maker provides localized liquidity. It posts Post-Only (GTX) limit orders to earn the Maker rebate. If the spread becomes too narrow compared to the fee tier, Fee Drag Protection automatically suspends quoting to prevent bleeding.";
       case 'Signal': return "Signal Bot listens to multi-indicator strategies (RSI, MACD, Bollinger). When combined with our Risk Shield, it evaluates the SoSoValue AI score in real-time before entering the signal, blocking false-positive signals in highly volatile regimes.";
       case 'News': return "News Bot consumes high-speed RSS and sentiment feeds via our AI pipeline. It executes orders within milliseconds of a sentiment breakout, instantly applying a trailing stop-loss to lock in profits from volatility spikes.";
-      default: return "Our autonomous trading engine interacts directly with the SoDEX API. It uses sophisticated AI models and sub-millisecond execution to manage your crypto portfolio.";
+      default: return "Our autonomous trading engine interacts directly with the SoDEX API. It leverages a collaborative Multi-Agent Consensus mechanism to run 24/7 self-operating quantitative strategies.";
     }
   };
 
@@ -57,14 +57,14 @@ export const BotsHowItWorks: React.FC<BotsHowItWorksProps> = ({ botType }) => {
           <ArrowRight className="hidden md:block text-text-muted shrink-0 animate-pulse" size={32} />
           <ArrowRight className="md:hidden text-text-muted shrink-0 rotate-90 my-2 animate-pulse" size={32} />
 
-          {/* Node 2: Core Engine & AI */}
+          {/* Node 2: Multi-Agent Consensus HUB */}
           <div className="flex-[1.2] w-full bg-surface-2/80 backdrop-blur border border-primary/30 p-5 rounded-2xl flex flex-col items-center text-center relative group shadow-[0_0_20px_rgba(37,99,235,0.1)]">
             <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-primary animate-pulse" />
             <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
               <Cpu className="text-primary" size={24} />
             </div>
-            <h4 className="font-bold text-text-primary text-sm mb-1">Algorithmic Engine & AI</h4>
-            <p className="text-xs text-text-muted">Calculates order parameters, applies the Universal Risk Shield, and makes quantitative trading decisions.</p>
+            <h4 className="font-bold text-text-primary text-sm mb-1">Multi-Agent Consensus HUB</h4>
+            <p className="text-xs text-text-muted">Macro, Technical, Sentiment, and Risk agents collaboratively vote in real-time, aggregating indicators to make automated trading decisions.</p>
           </div>
 
           <ArrowRight className="hidden md:block text-text-muted shrink-0 animate-pulse" size={32} />
@@ -76,7 +76,7 @@ export const BotsHowItWorks: React.FC<BotsHowItWorksProps> = ({ botType }) => {
               <Zap className="text-success" size={24} />
             </div>
             <h4 className="font-bold text-text-primary text-sm mb-1">Secure Execution</h4>
-            <p className="text-xs text-text-muted">Cryptographically signs order payloads and instantly places Maker or Taker orders on your behalf.</p>
+            <p className="text-xs text-text-muted">Cryptographically signs order payloads using delegated session keys and places orders on SoDEX.</p>
           </div>
 
         </div>

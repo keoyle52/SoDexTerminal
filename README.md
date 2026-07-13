@@ -75,6 +75,21 @@ Simulate quantitative strategies before deploying live capital:
 
 ---
 
+## 🏆 Alignment with the "One-Person On-Chain Hedge Fund" Thesis
+
+The ultimate goal of the SoSoValue Buildathon is to enable developers to build a **"One-Person On-Chain Hedge Fund."** Sodex PowerOps fulfills this thesis across all three core dimensions:
+
+1.  **Macro & Quantitative Research (The Brain):**
+    A hedge fund starts with data. By fusing **SoSoValue's** institutional flows, Spot ETF inflows, SSI Sentiment indicators, and corporate treasury indexes with technical oscillators, the platform provides a complete market intelligence dashboard. The **Neural Wallet Diagnostics** tool acts as a research analyst, evaluating historical wallet performance and profiling risk.
+2.  **Collaborative Multi-Agent Consensus (The Committee):**
+    Instead of relying on basic, static rule-triggers, Sodex PowerOps replicates an **investment committee**. The *Macro, Technical, Sentiment, and Risk agents* debate and vote on every price tick. No execution happens unless the Risk Officer approves the consensus, ensuring institutional-grade decision logic.
+3.  **Algorithmic Non-Custodial Execution (The Execution Desk):**
+    A fund must manage risk and execute efficiently on-chain. Through **Session Key Delegation**, users delegate temporary trading rights to the autonomous bots while keeping their assets safely in MetaMask or WalletConnect. The central **Flash Crash Risk Shield** and **Fee Drag Protection** act as automated risk controllers, protecting capital from liquidity dry-ups and transaction fee erosion.
+
+By packaging research, consensus modeling, risk management, and secure on-chain execution into a single unified terminal, Sodex PowerOps turns any individual trader into a self-sufficient, institutional-grade hedge fund.
+
+---
+
 ## 🏗 Tech Stack
 
 *   **Frontend:** React 19, TypeScript, Vite 8, Zustand v5 (Persisted slices).
