@@ -155,9 +155,9 @@ export const HeaderDock: React.FC = () => {
   const soso = tickerPrices['WSOSO_vUSDC'] || tickerPrices['WSOSO_USDC'] || tickerPrices['SOSO-USD'] || { price: 0, change: 0 };
 
   return (
-    <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border">
+    <header className="flex flex-col shrink-0 z-40 bg-surface/30 backdrop-blur-md border-b border-border/50">
       {/* 1. TOP LIVE TICKER TAPE (Real-Time Live Updates) */}
-      <div className="h-7 bg-[#0B0E11] border-b border-border flex items-center px-4 overflow-x-auto text-[10px] font-mono select-none space-x-6 text-text-secondary shrink-0 scrollbar-none">
+      <div className="h-7 bg-black/20 border-b border-border/30 flex items-center px-4 overflow-x-auto text-[10px] font-mono select-none space-x-6 text-text-secondary shrink-0 scrollbar-none">
         {(() => {
           const isUp = soso.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;

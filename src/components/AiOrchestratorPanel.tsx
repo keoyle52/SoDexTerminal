@@ -174,8 +174,7 @@ export const AiOrchestratorPanel: React.FC = () => {
           <Loader2 size={16} className="animate-spin text-primary" />
           <span>Computing AI metrics...</span>
         </div>
-      ) : w3State.isAgentRunning ? (
-        /* --- RUNNING STATE: SCHEMATIC MULTI-AGENT PLATFORM --- */
+      ) : (
         <div className="flex-1 flex flex-col min-h-0 gap-3">
           
           {/* Top Panel: Final Decision and Real-Time Position */}
@@ -183,12 +182,12 @@ export const AiOrchestratorPanel: React.FC = () => {
             <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl pointer-events-none" />
             <div className="flex justify-between items-center text-[10px] relative z-10 border-b border-border/40 pb-1.5 mb-1.5">
               <span className="text-text-secondary font-bold">Orchestrator Decision:</span>
-              <span className="px-2 py-0.5 rounded-sm bg-primary/10 text-primary border border-primary/20 font-bold uppercase tracking-wider animate-pulse">
-                {w3State.activeAction.replace('DEPLOY_', '')}
+              <span className="px-2 py-0.5 rounded-sm bg-primary/10 text-primary border border-primary/20 font-bold uppercase tracking-wider">
+                {w3State.isAgentRunning ? w3State.activeAction.replace('DEPLOY_', '') : 'STANDBY'}
               </span>
             </div>
             
-            {w3State.activePosition ? (
+            {w3State.isAgentRunning && w3State.activePosition ? (
               <div className="grid grid-cols-2 gap-2 text-[9px] font-mono relative z-10">
                 <div className="flex justify-between">
                   <span className="text-text-muted">Active Position:</span>
@@ -209,27 +208,29 @@ export const AiOrchestratorPanel: React.FC = () => {
               </div>
             ) : (
               <div className="text-center py-1 text-[9px] text-text-muted font-mono relative z-10">
-                Holding Cash reserves. Watching breakouts.
+                {w3State.isAgentRunning ? 'Holding Cash reserves. Watching breakouts.' : 'Consensus engine is stopped.'}
               </div>
             )}
           </div>
 
-          {/* Schematic Diagram Grid */}
+          {/* Schematic Diagram Grid (Always Visible) */}
           <div className="relative w-full aspect-[4/3.1] border border-border bg-[#0B0E11] rounded-sm overflow-hidden select-none shrink-0">
             {/* SVG Connections Overlay with viewBox */}
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ zIndex: 0 }}>
               {/* Paths from agents to central Consensus Hub (50, 50) */}
-              <line x1="22" y1="22" x2="50" y2="50" stroke="#00d4ff" strokeWidth="0.8" className="animate-dash-line" />
-              <line x1="78" y1="22" x2="50" y2="50" stroke="#f0b90b" strokeWidth="0.8" className="animate-dash-line" />
-              <line x1="22" y1="78" x2="50" y2="50" stroke="#818cf8" strokeWidth="0.8" className="animate-dash-line" />
+              <line x1="22" y1="22" x2="50" y2="50" stroke={w3State.isAgentRunning ? "#00d4ff" : "#ffffff"} strokeWidth="0.8" opacity={w3State.isAgentRunning ? "1" : "0.15"} className={w3State.isAgentRunning ? "animate-dash-line" : ""} />
+              <line x1="78" y1="22" x2="50" y2="50" stroke={w3State.isAgentRunning ? "#f0b90b" : "#ffffff"} strokeWidth="0.8" opacity={w3State.isAgentRunning ? "1" : "0.15"} className={w3State.isAgentRunning ? "animate-dash-line" : ""} />
+              <line x1="22" y1="78" x2="50" y2="50" stroke={w3State.isAgentRunning ? "#818cf8" : "#ffffff"} strokeWidth="0.8" opacity={w3State.isAgentRunning ? "1" : "0.15"} className={w3State.isAgentRunning ? "animate-dash-line" : ""} />
               {/* Path from Consensus Hub (50, 50) to Risk Officer (78, 78) */}
-              <line x1="50" y1="50" x2="78" y2="78" stroke="#10b981" strokeWidth="1" className="animate-dash-line" />
+              <line x1="50" y1="50" x2="78" y2="78" stroke={w3State.isAgentRunning ? "#10b981" : "#ffffff"} strokeWidth="1" opacity={w3State.isAgentRunning ? "1" : "0.15"} className={w3State.isAgentRunning ? "animate-dash-line" : ""} />
             </svg>
             
             {/* Central Consensus Hub Node */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-surface border border-primary/30 flex flex-col items-center justify-center shadow-lg shadow-primary/20 z-20">
               <span className="text-[6px] text-text-muted font-bold tracking-widest leading-none">HUB</span>
-              <span className="text-[8px] font-black text-primary font-mono leading-none mt-0.5">{w3State.currentRegime.substring(0, 4)}</span>
+              <span className="text-[8px] font-black text-primary font-mono leading-none mt-0.5">
+                {w3State.isAgentRunning ? w3State.currentRegime.substring(0, 4) : 'IDLE'}
+              </span>
             </div>
 
             {/* Node: Macro Agent (Top Left) */}
@@ -239,9 +240,10 @@ export const AiOrchestratorPanel: React.FC = () => {
               </div>
               <div className={cn(
                 "text-[9px] font-black font-mono mt-1 leading-none",
+                !w3State.isAgentRunning ? "text-text-muted" :
                 macro.vote === 'LONG' ? 'text-success animate-pulse' : macro.vote === 'SHORT' ? 'text-danger animate-pulse' : 'text-text-secondary'
               )}>
-                {macro.vote}
+                {w3State.isAgentRunning ? macro.vote : 'STANDBY'}
               </div>
             </div>
 
@@ -252,9 +254,10 @@ export const AiOrchestratorPanel: React.FC = () => {
               </div>
               <div className={cn(
                 "text-[9px] font-black font-mono mt-1 leading-none",
+                !w3State.isAgentRunning ? "text-text-muted" :
                 sentiment.vote === 'LONG' ? 'text-success animate-pulse' : sentiment.vote === 'SHORT' ? 'text-danger animate-pulse' : 'text-text-secondary'
               )}>
-                {sentiment.vote} {sentiment.score ? `(${sentiment.score})` : ''}
+                {w3State.isAgentRunning ? (sentiment.vote + (sentiment.score ? ` (${sentiment.score})` : '')) : 'STANDBY'}
               </div>
             </div>
 
@@ -265,9 +268,10 @@ export const AiOrchestratorPanel: React.FC = () => {
               </div>
               <div className={cn(
                 "text-[9px] font-black font-mono mt-1 leading-none",
+                !w3State.isAgentRunning ? "text-text-muted" :
                 technical.vote === 'LONG' ? 'text-success animate-pulse' : technical.vote === 'SHORT' ? 'text-danger animate-pulse' : technical.vote === 'GRID' ? 'text-warning animate-pulse' : 'text-text-secondary'
               )}>
-                {technical.vote}
+                {w3State.isAgentRunning ? technical.vote : 'STANDBY'}
               </div>
             </div>
 
@@ -278,133 +282,101 @@ export const AiOrchestratorPanel: React.FC = () => {
               </div>
               <div className={cn(
                 "text-[9px] font-black font-mono mt-1 leading-none",
+                !w3State.isAgentRunning ? "text-text-muted" :
                 risk.vote === 'APPROVED' ? 'text-success animate-pulse' : 'text-danger animate-pulse'
               )}>
-                {risk.vote}
+                {w3State.isAgentRunning ? risk.vote : 'STANDBY'}
               </div>
             </div>
           </div>
 
-          {/* Discussion Transcripts Feed (Bottom of Schematic) */}
-          <div className="flex-1 flex flex-col min-h-0 border border-border/80 rounded-sm bg-[#0B0E11] p-2 space-y-1.5">
-            <span className="text-[9px] uppercase tracking-wider font-bold text-text-muted select-none shrink-0 block">
-              Active Agent Logs
-            </span>
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-[9px] scrollbar-none">
-              <div className="space-y-1">
-                <span className="text-sky-400 font-bold">🌍 Macro:</span>
-                <span className="text-text-secondary"> {macro.msg}</span>
-              </div>
-              <div className="space-y-1 border-t border-border/20 pt-1">
-                <span className="text-indigo-400 font-bold">💻 Tech:</span>
-                <span className="text-text-secondary"> {technical.msg}</span>
-              </div>
-              <div className="space-y-1 border-t border-border/20 pt-1">
-                <span className="text-amber-400 font-bold">💬 Sentiment:</span>
-                <span className="text-text-secondary"> {sentiment.msg}</span>
-              </div>
-              <div className="space-y-1 border-t border-border/20 pt-1">
-                <span className="text-emerald-400 font-bold">🛡️ Risk:</span>
-                <span className="text-text-secondary"> {risk.msg}</span>
+          {w3State.isAgentRunning ? (
+            /* Running Sub-Section: Transcripts */
+            <div className="flex-1 flex flex-col min-h-0 border border-border/80 rounded-sm bg-[#0B0E11] p-2 space-y-1.5">
+              <span className="text-[9px] uppercase tracking-wider font-bold text-text-muted select-none shrink-0 block">
+                Active Agent Logs
+              </span>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-[9px] scrollbar-none">
+                <div className="space-y-1">
+                  <span className="text-sky-400 font-bold">🌍 Macro:</span>
+                  <span className="text-text-secondary"> {macro.msg}</span>
+                </div>
+                <div className="space-y-1 border-t border-border/20 pt-1">
+                  <span className="text-indigo-400 font-bold">💻 Tech:</span>
+                  <span className="text-text-secondary"> {technical.msg}</span>
+                </div>
+                <div className="space-y-1 border-t border-border/20 pt-1">
+                  <span className="text-amber-400 font-bold">💬 Sentiment:</span>
+                  <span className="text-text-secondary"> {sentiment.msg}</span>
+                </div>
+                <div className="space-y-1 border-t border-border/20 pt-1">
+                  <span className="text-emerald-400 font-bold">🛡️ Risk:</span>
+                  <span className="text-text-secondary"> {risk.msg}</span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            /* Stopped Sub-Section: Recommendations */
+            <div className="flex-1 flex flex-col min-h-0 gap-3.5">
+              {/* Market Regime Card */}
+              <div className="p-3 rounded-sm bg-[#0B0E11] border border-border space-y-1.5 animate-fade-in shrink-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-text-secondary flex items-center gap-1">
+                    <Cpu size={11} /> Live Market Regime
+                  </span>
+                  <span className={cn(
+                    "px-1.5 py-0.2 rounded-sm border font-bold text-[9px]",
+                    data.regime.includes('UP') ? "bg-success-soft text-success border-success/20" :
+                    data.regime.includes('DOWN') ? "bg-danger/10 text-danger border-danger/20" :
+                    "bg-warning/10 text-warning border-warning/20"
+                  )}>
+                    {data.regime}
+                  </span>
+                </div>
+                <p className="text-text-primary font-bold text-xs">SOSO-USD Regime Analysis</p>
+                <p className="text-text-secondary text-[10px] leading-normal font-sans">
+                  {data.rationale}
+                </p>
+              </div>
+
+              {/* AI Recommendation Box */}
+              <div className="p-3 rounded-sm bg-[#161A20] border border-border space-y-2.5 animate-fade-in shrink-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-text-primary flex items-center gap-1">
+                    <Zap size={13} className="text-warning" /> Recommended Strategy
+                  </span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-sm bg-warning/10 text-warning border border-warning/20">
+                    Grid Bot (Auto-Range)
+                  </span>
+                </div>
+
+                <div className="space-y-1 text-[10px] text-text-secondary bg-[#0B0E11] p-2 rounded-sm border border-border/60 font-mono">
+                  <div className="flex justify-between">
+                    <span>Target Price Range:</span>
+                    <strong className="text-text-primary">{data.range}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Optimal Grid Levels:</span>
+                    <strong className="text-text-primary">{data.gridLevels} Levels</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Est. 24h Yield:</span>
+                    <strong className="text-success font-bold">{data.dailyYield}</strong>
+                  </div>
+                </div>
+
+                <NavLink
+                  to="/trading-bots?bot=grid"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-sm bg-primary text-white font-bold hover:bg-primary/95 transition-all text-xs h-8"
+                >
+                  <Bot size={13} />
+                  <span>Deploy Grid Bot Studio</span>
+                  <ArrowRight size={12} />
+                </NavLink>
+              </div>
+            </div>
+          )}
         </div>
-      ) : (
-        /* --- STOPPED STATE: GENERAL RECOMMENDATIONS --- */
-        <>
-          {/* Market Regime Card */}
-          <div className="p-3 rounded-sm bg-[#0B0E11] border border-border space-y-1.5 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] uppercase tracking-wider font-bold text-text-secondary flex items-center gap-1">
-                <Cpu size={11} /> Live Market Regime
-              </span>
-              <span className={cn(
-                "px-1.5 py-0.2 rounded-sm border font-bold text-[9px]",
-                data.regime.includes('UP') ? "bg-success-soft text-success border-success/20" :
-                data.regime.includes('DOWN') ? "bg-danger/10 text-danger border-danger/20" :
-                "bg-warning/10 text-warning border-warning/20"
-              )}>
-                {data.regime}
-              </span>
-            </div>
-            <p className="text-text-primary font-bold text-xs">SOSO-USD Regime Analysis</p>
-            <p className="text-text-secondary text-[10px] leading-normal font-sans">
-              {data.rationale}
-            </p>
-          </div>
-
-          {/* AI Recommendation Box */}
-          <div className="p-3 rounded-sm bg-[#161A20] border border-border space-y-2.5 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-text-primary flex items-center gap-1">
-                <Zap size={13} className="text-warning" /> Recommended Strategy
-              </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-sm bg-warning/10 text-warning border border-warning/20">
-                Grid Bot (Auto-Range)
-              </span>
-            </div>
-
-            <div className="space-y-1 text-[10px] text-text-secondary bg-[#0B0E11] p-2 rounded-sm border border-border/60 font-mono">
-              <div className="flex justify-between">
-                <span>Target Price Range:</span>
-                <strong className="text-text-primary">{data.range}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Optimal Grid Levels:</span>
-                <strong className="text-text-primary">{data.gridLevels} Levels</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Est. 24h Yield:</span>
-                <strong className="text-success font-bold">{data.dailyYield}</strong>
-              </div>
-            </div>
-
-            <NavLink
-              to="/trading-bots?bot=grid"
-              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-sm bg-primary text-white font-bold hover:bg-primary/95 transition-all text-xs h-8"
-            >
-              <Bot size={13} />
-              <span>Deploy Grid Bot Studio</span>
-              <ArrowRight size={12} />
-            </NavLink>
-          </div>
-
-          {/* AI Intent Stream */}
-          <div className="space-y-1.5 animate-fade-in">
-            <span className="text-[9px] uppercase tracking-wider font-bold text-text-muted block">
-              Gemini Signal Validation Matrix
-            </span>
-            <div className="space-y-1.5">
-              <div className="p-2 rounded-sm bg-[#0B0E11] border border-border/60 flex items-center justify-between font-mono">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={12} className="text-success shrink-0" />
-                  <span className="text-text-secondary font-sans">13-Signal Consensus</span>
-                </div>
-                <span className="text-success font-bold">{data.consensus}</span>
-              </div>
-
-              <div className="p-2 rounded-sm bg-[#0B0E11] border border-border/60 flex items-center justify-between font-mono">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={12} className="text-success shrink-0" />
-                  <span className="text-text-secondary font-sans">SoSoValue ETF Net Inflow</span>
-                </div>
-                <span className={cn(
-                  "font-bold",
-                  data.etfInflow.startsWith('+') ? "text-success" : "text-danger"
-                )}>{data.etfInflow}</span>
-              </div>
-
-              <div className="p-2 rounded-sm bg-[#0B0E11] border border-border/60 flex items-center justify-between font-mono">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={12} className="text-success shrink-0" />
-                  <span className="text-text-secondary font-sans">Fear & Greed Index</span>
-                </div>
-                <span className="text-primary font-bold">{data.fearGreed}</span>
-              </div>
-            </div>
-          </div>
-        </>
       )}
     </div>
   );
