@@ -422,7 +422,7 @@ export const BacktestStudio: React.FC = () => {
             <div className="space-y-6 flex-1 flex flex-col min-h-0">
               
               {/* Stats Grid */}
-              <div className="grid grid-cols-4 gap-4 select-none">
+              <div className="grid grid-cols-5 gap-3 select-none">
                 
                 {/* Metric 1 */}
                 <div className="p-4 rounded-xl border border-border bg-[#101317]/40 flex flex-col justify-between">
@@ -485,6 +485,20 @@ export const BacktestStudio: React.FC = () => {
                       {result.totalTrades}
                     </div>
                     <p className="text-[8px] text-text-muted mt-0.5 font-sans font-bold">ORDER FILLS RECORDED</p>
+                  </div>
+                </div>
+
+                {/* Metric 5 */}
+                <div className="p-4 rounded-xl border border-border bg-[#101317]/40 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-text-secondary">
+                    <span className="text-[9px] font-bold uppercase tracking-wider">Volume Traded</span>
+                    <TrendingUp size={13} className="text-warning" />
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-sm font-black font-mono text-warning">
+                      ${result.volumeUsdt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </div>
+                    <p className="text-[8px] text-text-muted mt-0.5 font-sans font-bold">TOTAL SIMULATED VOLUME</p>
                   </div>
                 </div>
 

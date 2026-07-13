@@ -20,6 +20,7 @@ export interface BacktestResult {
   maxDrawdownPct: number;
   equityCurve: { time: number; balance: number }[];
   trades: BacktestTrade[];
+  volumeUsdt: number;
 }
 
 export async function runBacktest(
@@ -76,6 +77,7 @@ export async function runBacktest(
   let totalReturnPct = 0;
   let maxDrawdownPct = 0;
   let peakBalance = budgetUsdt;
+  let volumeUsdt = 0;
   
   const trades: BacktestTrade[] = [];
   const equityCurve: { time: number; balance: number }[] = [];
@@ -87,6 +89,7 @@ export async function runBacktest(
   const pushTrade = (side: 'BUY' | 'SELL', price: number, qty: number, reason: string, pnl?: number) => {
     const timeStr = new Date(klines[trades.length + 50]?.time || Date.now()).toLocaleTimeString();
     trades.push({ time: timeStr, side, price, qty, pnl, reason });
+    volumeUsdt += price * qty;
     if (pnl !== undefined) {
       closingTradesCount++;
       if (pnl > 0) winningTrades++;
@@ -385,6 +388,7 @@ export async function runBacktest(
     winRatePct,
     maxDrawdownPct: parseFloat(maxDrawdownPct.toFixed(2)),
     equityCurve,
-    trades
+    trades,
+    volumeUsdt: parseFloat(volumeUsdt.toFixed(2))
   };
 }
