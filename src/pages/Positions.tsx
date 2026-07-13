@@ -719,58 +719,66 @@ export const Positions: React.FC = () => {
                   {
                     name: 'Wave 3 Autonomous Agent',
                     type: 'WAVE3',
-                    running: wave3Store.isAgentRunning,
-                    symbol: wave3Store.targetCoin,
-                    market: wave3Store.market,
-                    budget: Number(wave3Store.investment || 0),
-                    pnl: Number(wave3Store.activePosition?.pnl || 0),
+                    running: !!wave3Store?.isAgentRunning,
+                    symbol: wave3Store?.targetCoin || 'BTC-USD',
+                    market: wave3Store?.market || 'perps',
+                    budget: Number(wave3Store?.investment || 0),
+                    pnl: Number(wave3Store?.activePosition?.pnl || 0),
                     pnlLabel: 'PnL',
                     stopAction: () => {
-                      wave3Store.setAgentRunning(false);
-                      wave3Store.setActivePosition(null);
-                      wave3Store.addLog('Agent halted via Accounts Active Bots dashboard', 'WARNING');
+                      if (wave3Store) {
+                        wave3Store.setAgentRunning(false);
+                        wave3Store.setActivePosition(null);
+                        wave3Store.addLog('Agent halted via Accounts Active Bots dashboard', 'WARNING');
+                      }
                       toast.success('Wave 3 Agent halted.');
                     }
                   },
                   {
                     name: 'Grid Trading Bot',
                     type: 'GRID',
-                    running: botStore.gridBot.status === 'RUNNING',
-                    symbol: botStore.gridBot.symbol,
-                    market: botStore.gridBot.isSpot ? 'spot' : 'perps',
-                    budget: Number(parseFloat(botStore.gridBot.amountUsdt) || 0),
-                    pnl: Number(botStore.gridBot.realizedPnl || 0),
+                    running: botStore?.gridBot?.status === 'RUNNING',
+                    symbol: botStore?.gridBot?.symbol || 'BTC-USD',
+                    market: botStore?.gridBot?.isSpot ? 'spot' : 'perps',
+                    budget: Number(parseFloat(botStore?.gridBot?.amountUsdt || '0') || 0),
+                    pnl: Number(botStore?.gridBot?.realizedPnl || 0),
                     pnlLabel: 'Realized PnL',
                     stopAction: () => {
-                      botStore.gridBot.setField('status', 'STOPPED');
+                      if (botStore?.gridBot) {
+                        botStore.gridBot.setField('status', 'STOPPED');
+                      }
                       toast.success('Grid Bot halted.');
                     }
                   },
                   {
                     name: 'Consensus Signal Bot',
                     type: 'SIGNAL',
-                    running: botStore.signalBot.status === 'RUNNING',
-                    symbol: botStore.signalBot.symbol,
-                    market: botStore.signalBot.isSpot ? 'spot' : 'perps',
-                    budget: Number(parseFloat(botStore.signalBot.amountUsdt) || 0),
-                    pnl: Number(botStore.signalBot.realizedPnl || 0),
+                    running: botStore?.signalBot?.status === 'RUNNING',
+                    symbol: botStore?.signalBot?.symbol || 'BTC-USD',
+                    market: botStore?.signalBot?.isSpot ? 'spot' : 'perps',
+                    budget: Number(parseFloat(botStore?.signalBot?.amountUsdt || '0') || 0),
+                    pnl: Number(botStore?.signalBot?.realizedPnl || 0),
                     pnlLabel: 'Realized PnL',
                     stopAction: () => {
-                      botStore.signalBot.setField('status', 'STOPPED');
+                      if (botStore?.signalBot) {
+                        botStore.signalBot.setField('status', 'STOPPED');
+                      }
                       toast.success('Signal Bot halted.');
                     }
                   },
                   {
                     name: 'Market Maker Bot',
                     type: 'MM',
-                    running: botStore.marketMakerBot.status === 'RUNNING',
-                    symbol: botStore.marketMakerBot.symbol,
+                    running: botStore?.marketMakerBot?.status === 'RUNNING',
+                    symbol: botStore?.marketMakerBot?.symbol || 'BTC-USD',
                     market: 'spot',
-                    budget: Number(parseFloat(botStore.marketMakerBot.budgetUsdt) || 0),
-                    pnl: Number(botStore.marketMakerBot.volumeUsdt || 0),
+                    budget: Number(parseFloat(botStore?.marketMakerBot?.budgetUsdt || '0') || 0),
+                    pnl: Number(botStore?.marketMakerBot?.volumeUsdt || 0),
                     pnlLabel: 'Session Volume',
                     stopAction: () => {
-                      botStore.marketMakerBot.setField('status', 'STOPPED');
+                      if (botStore?.marketMakerBot) {
+                        botStore.marketMakerBot.setField('status', 'STOPPED');
+                      }
                       toast.success('Market Maker Bot halted.');
                     }
                   }

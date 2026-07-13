@@ -321,6 +321,10 @@ export const MarketMakerBot: React.FC = () => {
         await stopBotInternalRef.current();
         return;
       }
+      if (feeBudget > 0 && postFillMm.feesUsdt >= feeBudget) {
+        await stopBotInternalRef.current();
+        return;
+      }
 
       const requoteThreshold = (parseFloat(mm.requoteBps) || 5) * BPS;
       const toCancel: { id: string; cloid: string }[] = [];
@@ -467,6 +471,11 @@ export const MarketMakerBot: React.FC = () => {
         <Input label="Re-quote Threshold (bps)" type="number" min="1" step="0.5" value={mm.requoteBps} onChange={(e) => setField('requoteBps', e.target.value)} disabled={isRunning} />
       </div>
       
+      <div className="grid grid-cols-2 gap-3 mt-2">
+        <Input label="Volume Target (USDT)" type="number" min="0" step="1" placeholder="Infinite" value={mm.volumeTargetUsdt} onChange={(e) => setField('volumeTargetUsdt', e.target.value)} disabled={isRunning} />
+        <Input label="Fee Budget (USDT)" type="number" min="0" step="0.1" placeholder="Infinite" value={mm.feeBudgetUsdt} onChange={(e) => setField('feeBudgetUsdt', e.target.value)} disabled={isRunning} />
+      </div>
+
       <Input label="Maker Fee Rate" type="number" min="0" step="0.00001" value={mm.makerFeeRate} onChange={(e) => setField('makerFeeRate', e.target.value)} disabled={isRunning} />
     </>
   );

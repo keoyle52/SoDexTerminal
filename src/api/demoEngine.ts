@@ -306,16 +306,11 @@ function ensureInit(): void {
 
   _state.initialised = true;
   startTicker();
-  void fetchAndInitRealTickers();
 }
 
 function startTicker(): void {
   if (_state.tickTimer) return;
   _state.tickTimer = setInterval(tick, TICK_MS);
-  if (!_state.syncTickersTimer) {
-    _state.syncTickersTimer = setInterval(syncRealTickers, 3000);
-    void syncRealTickers();
-  }
 }
 function stopTicker(): void {
   if (_state.tickTimer) clearInterval(_state.tickTimer);
