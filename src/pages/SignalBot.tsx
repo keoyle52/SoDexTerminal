@@ -14,7 +14,8 @@ import {
 } from '../api/services';
 import { 
   evaluateSignals, resolveSignals, PARAM_LABELS, type CandleData, 
-  type SignalResult, type CombineMode, type SignalConfig, type SignalType 
+  type SignalResult, type CombineMode, type SignalConfig, type SignalType,
+  createDefaultSignals
 } from '../api/signalEngine';
 import { recommendSignalBot } from '../api/aiAutoConfig';
 import { cn, getErrorMessage } from '../lib/utils';
@@ -95,6 +96,21 @@ export const SignalBot: React.FC = () => {
       void loadStudioData();
     }
   }, [studioOpen, state.symbol]);
+
+  // Migration Check: merge any newly added default signals if they are missing in the localStorage store.
+  useEffect(() => {
+    const currentSignals = state.signals || [];
+    const defaultPresets = createDefaultSignals();
+    const existingTypes = currentSignals.map(s => s.type);
+    const missing = defaultPresets.filter(p => !existingTypes.includes(p.type));
+    if (missing.length > 0) {
+      const generatedMissing = missing.map((p, i) => ({
+        ...p,
+        id: `signal-${p.type}-${Date.now()}-${i}`
+      }));
+      state.setField('signals', [...currentSignals, ...generatedMissing]);
+    }
+  }, []);
 
   const stopBot = useCallback(async (reason?: string) => {
     runningRef.current = false;
@@ -1205,6 +1221,31 @@ export const SignalBot: React.FC = () => {
               <p className="text-[10px] text-text-secondary max-w-[280px] mt-2 font-mono leading-normal">
                 {decision.reasoning}
               </p>
+            </div>
+
+            {/* Consensus Strategy Explanation */}
+            <div className="p-4 rounded-xl border border-border bg-[#101317]/50 space-y-2 text-[10px] text-text-secondary select-none">
+              <span className="font-bold text-text-primary uppercase tracking-wider block flex items-center gap-1">
+                <HelpCircle size={12} className="text-primary" />
+                Consensus Rules Engine
+              </span>
+              <div className="space-y-1 leading-normal font-sans">
+                {state.combineMode === 'ANY' && (
+                  <p>
+                    <span className="text-primary font-bold">ANY Mode:</span> The orchestrator triggers an entry order if <strong className="text-text-primary">at least one</strong> enabled signal fires. If multiple opposing signals fire, the direction with the higher aggregate strength is selected.
+                  </p>
+                )}
+                {state.combineMode === 'ALL' && (
+                  <p>
+                    <span className="text-primary font-bold">ALL Mode:</span> <strong className="text-text-primary">All enabled indicators</strong> must agree on the direction (all BUY or all SELL). If even a single indicator goes NEUTRAL or opposes, no trade will execute.
+                  </p>
+                )}
+                {state.combineMode === 'MAJORITY' && (
+                  <p>
+                    <span className="text-primary font-bold">MAJORITY Mode:</span> Trigger fires if <strong className="text-text-primary">more than 50%</strong> of active (non-neutral) signals agree on a direction. Ideal for balancing indicators that filter noise.
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Signal Trigger List */}
