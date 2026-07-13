@@ -5,27 +5,40 @@ import { resolveWalletAddress, analyzeMirrorWallet } from '../api/mirrorClient';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 
+// Session-level memory cache for wallet diagnostics
+let cachedReportData: any = null;
+let cachedAddress: string = '';
+let cachedNetwork: string = '';
+
 export const RiskCentre: React.FC = () => {
   const store = useSettingsStore();
   const geminiApiKey = store.sosoApiKey || store.geminiApiKey || '';
 
-  const [addressInput, setAddressInput] = useState(store.walletAddress || '');
-  const [network, setNetwork] = useState('ethereum');
+  const [addressInput, setAddressInput] = useState(cachedAddress || store.walletAddress || '');
+  const [network, setNetwork] = useState(cachedNetwork || 'ethereum');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<any>(null);
+  const [reportData, setReportData] = useState<any>(cachedReportData);
 
-  // Auto-run analysis on mount if a wallet address is connected in settings and no report is loaded yet
+  // Auto-run analysis on mount if a wallet address is connected and not cached yet
   useEffect(() => {
-    if (store.walletAddress && !reportData && !loading && !error) {
-      handleAnalyze(store.walletAddress, network);
+    if (store.walletAddress) {
+      const isCached = cachedAddress.toLowerCase() === store.walletAddress.toLowerCase() && cachedReportData;
+      if (!isCached && !reportData && !loading && !error) {
+        handleAnalyze(store.walletAddress, network);
+      }
     }
   }, [store.walletAddress]);
 
-  // Sync addressInput if the store wallet address changes
+  // Sync addressInput and clear cache if store wallet address changes to a new one
   useEffect(() => {
-    if (store.walletAddress) {
+    if (store.walletAddress && store.walletAddress.toLowerCase() !== cachedAddress.toLowerCase()) {
       setAddressInput(store.walletAddress);
+      setReportData(null);
+      cachedReportData = null;
+      cachedAddress = '';
+      cachedNetwork = '';
+      handleAnalyze(store.walletAddress, network);
     }
   }, [store.walletAddress]);
 
@@ -51,6 +64,9 @@ export const RiskCentre: React.FC = () => {
       toast.loading(`Analyzing transaction history and calculating VaR...`, { id: toastId });
       const data = await analyzeMirrorWallet(address, resolved.accountId, net, geminiApiKey);
       setReportData(data);
+      cachedReportData = data;
+      cachedAddress = address;
+      cachedNetwork = net;
       toast.success('Risk diagnostics completed successfully!', { id: toastId });
     } catch (err: any) {
       console.error('[RiskCentre resolve error]:', err);
@@ -217,6 +233,9 @@ export const RiskCentre: React.FC = () => {
                   onClick={() => {
                     setReportData(null);
                     setError(null);
+                    cachedReportData = null;
+                    cachedAddress = '';
+                    cachedNetwork = '';
                   }}
                   className="px-3 py-1.5 border border-border bg-surface hover:bg-surface-hover rounded-sm text-xs font-bold text-text-primary transition-colors cursor-pointer"
                 >
