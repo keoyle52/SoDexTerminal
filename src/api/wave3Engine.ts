@@ -157,9 +157,16 @@ export function startWave3Engine() {
         newRegime = 'CONSOLIDATION'; // Tight range -> Market Maker Bot
       }
 
-      if (newRegime !== w3State.currentRegime) {
+      const isInitialRegimeCheck = w3State.logs.length <= 1;
+
+      if (newRegime !== w3State.currentRegime || isInitialRegimeCheck) {
         w3State.setCurrentRegime(newRegime);
-        w3State.addLog(`Market Regime shifted to ${newRegime}. RSI: ${rsi.toFixed(1)} | MACD: ${macd.hist.toFixed(2)} | Vol: ${vol.toFixed(2)}%`, 'INFO');
+        w3State.addLog(`Market Regime identified as ${newRegime}. RSI: ${rsi.toFixed(1)} | MACD: ${macd.hist.toFixed(2)} | Vol: ${vol.toFixed(2)}%`, 'INFO');
+        
+        if (newRegime === 'CONSOLIDATION') {
+          w3State.setActiveAction('WAITING');
+          w3State.addLog(`Market is consolidating (stable). No active trade deployed. Orchestrator is holding capital and waiting for next trend/volatility breakout to preserve capital.`, 'INFO');
+        }
       }
 
       // --- Execution Orchestrator ---
