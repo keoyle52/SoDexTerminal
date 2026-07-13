@@ -375,40 +375,10 @@ export const DcaBot: React.FC = () => {
   // Build UI panels for BotLayout
   const configPanel = (
     <>
-      {/* Auto-Configure */}
-      <AutoConfigureButton
-        symbol={symbol}
-        market={isSpot ? 'spot' : 'perps'}
-        recommender={recommendDcaBot}
-        hidden={isRunning}
-        onApply={(preset) => {
-          if (preset.intervalMin) setIntervalSec(String(parseInt(String(preset.intervalMin)) * 60));
-          if (preset.maxOrders)   setMaxOrders(String(preset.maxOrders));
-          if (preset.amountPerOrder) {
-            const px = currentPrice > 0 ? currentPrice : 0;
-            if (px > 0) {
-              const baseAmt = parseFloat(String(preset.amountPerOrder)) / px;
-              setAmountPerOrder(baseAmt.toFixed(6));
-            }
-          }
-          if (preset.mode === 'buy-the-dip') {
-            setCondition('BUY_THE_DIP');
-            if (preset.dipPct) setDipPercent(String(preset.dipPct));
-          } else if (preset.mode === 'fixed') {
-            setCondition('NONE');
-          }
-        }}
-      />
-      
       {/* Market */}
       <div>
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
         <SymbolSelector market={isSpot ? 'spot' : 'perps'} value={symbol} onChange={setSymbol} disabled={isRunning} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
-        <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
-        <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
       </div>
       
       {/* Direction & Amount */}

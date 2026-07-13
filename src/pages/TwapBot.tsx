@@ -346,26 +346,9 @@ export const TwapBot: React.FC = () => {
 
   const configPanel = (
     <>
-      <AutoConfigureButton
-        symbol={symbol}
-        market={isSpot ? 'spot' : 'perps'}
-        recommender={recommendTwapBot}
-        hidden={isRunning}
-        onApply={(preset) => {
-          if (preset.slices)      setSlices(String(preset.slices));
-          if (preset.intervalSec) setIntervalSec(String(preset.intervalSec));
-          if (preset.orderType === 'limit') setOrderType('LIMIT');
-        }}
-      />
-
       <div>
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
         <SymbolSelector market={isSpot ? 'spot' : 'perps'} value={symbol} onChange={setSymbol} disabled={isRunning} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
-        <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
-        <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

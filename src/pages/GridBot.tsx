@@ -502,22 +502,6 @@ export const GridBot: React.FC = () => {
 
   const configPanel = (
     <>
-      <AutoConfigureButton
-        symbol={state.symbol}
-        market={state.isSpot ? 'spot' : 'perps'}
-        recommender={recommendGridBot}
-        hidden={isRunning}
-        onApply={(preset) => {
-          if (preset.upperPrice) state.setField('upperPrice', String(preset.upperPrice));
-          if (preset.lowerPrice) state.setField('lowerPrice', String(preset.lowerPrice));
-          if (preset.gridLevels) state.setField('gridCount', String(preset.gridLevels));
-          if (preset.gridCount) state.setField('gridCount', String(preset.gridCount));
-          if (preset.amountPerGrid) state.setField('amountPerGrid', String(preset.amountPerGrid));
-          if (preset.spacing) state.setField('spacing', preset.spacing as 'ARITHMETIC' | 'GEOMETRIC');
-          if (preset.mode) state.setField('mode', preset.mode as 'NEUTRAL' | 'LONG' | 'SHORT');
-          if (preset.leverage && !state.isSpot) state.setField('leverage', String(preset.leverage));
-        }}
-      />
       <div>
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 block">Trading Pair</label>
         <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(c: string) => state.setField('symbol', c)} disabled={isRunning} />

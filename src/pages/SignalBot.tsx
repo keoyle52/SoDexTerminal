@@ -774,13 +774,8 @@ export const SignalBot: React.FC = () => {
     <>
       <div className="flex flex-col gap-3">
         <label className="text-xs font-bold text-text-muted uppercase tracking-wider block">Trading Pair</label>
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(val) => state.setField('symbol', val)} disabled={isLocked} />
-          </div>
-          <Button variant="outline" onClick={handleAutoSelectPair} disabled={isLocked || autoPairBusy} className="px-3" title="Auto-Select High Volume Pair">
-            {autoPairBusy ? <Activity className="animate-spin" size={16} /> : <Zap size={16} />}
-          </Button>
+        <div>
+          <SymbolSelector market={state.isSpot ? 'spot' : 'perps'} value={state.symbol} onChange={(val) => state.setField('symbol', val)} disabled={isLocked} />
         </div>
         <div className="flex gap-2">
           <button onClick={() => { if (!isLocked) state.setField('isSpot', true); }} className={cn('flex-1 py-2 text-xs rounded-lg border transition-all', state.isSpot ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/40 text-text-muted hover:border-border-hover', isLocked && 'opacity-50')}>Spot</button>
@@ -789,10 +784,6 @@ export const SignalBot: React.FC = () => {
         {!state.isSpot && (
           <Input label="Leverage (x)" type="number" value={state.leverage} onChange={(e) => state.setField('leverage', e.target.value)} disabled={isLocked} />
         )}
-        <div className="grid grid-cols-2 gap-2 bg-background/50 p-1 rounded-xl border border-border/50">
-          <button type="button" onClick={() => setExecutionMode('SESSION')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SESSION' ? "bg-primary text-background" : "text-text-muted hover:text-text-primary")}>Session (Auto)</button>
-          <button type="button" onClick={() => setExecutionMode('SINGLE')} className={cn("py-2 text-xs font-bold rounded-lg transition-colors", executionMode === 'SINGLE' ? "bg-amber-500 text-background" : "text-text-muted hover:text-text-primary")}>Single (Manual)</button>
-        </div>
       </div>
 
       <div className="flex flex-col gap-3 mt-3">
