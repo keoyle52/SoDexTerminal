@@ -14,7 +14,7 @@ export interface CandleData {
   volume?: number;
 }
 
-export type SignalType = 'RSI' | 'MACD' | 'BB' | 'EMA_CROSS' | 'STOCH_RSI' | 'VOLUME_SPIKE' | 'CUSTOM';
+export type SignalType = 'RSI' | 'MACD' | 'BB' | 'EMA_CROSS' | 'STOCH_RSI' | 'VOLUME_SPIKE' | 'NEWS_SENTIMENT' | 'ETF_FLOW' | 'MACRO_DXY' | 'CUSTOM';
 
 export interface SignalConfig {
   id: string;
@@ -90,6 +90,27 @@ export const SIGNAL_PRESETS: Omit<SignalConfig, 'id'>[] = [
     label: 'Volume Spike',
     description: 'Abnormal volume with directional candle confirmation',
     params: { multiplier: 2, lookback: 20 },
+  },
+  {
+    type: 'NEWS_SENTIMENT',
+    enabled: false,
+    label: 'AI News Sentiment',
+    description: 'Triggers on AI news sentiment scores from SoSoValue breaking news',
+    params: { buyThreshold: 75, sellThreshold: 30 },
+  },
+  {
+    type: 'ETF_FLOW',
+    enabled: false,
+    label: 'ETF Net Flow',
+    description: 'Triggers on daily U.S. Spot ETF net inflows/outflows (in Millions)',
+    params: { buyInflowM: 100, sellOutflowM: -50 },
+  },
+  {
+    type: 'MACRO_DXY',
+    enabled: false,
+    label: 'Macro DXY Correlation',
+    description: 'Triggers on U.S. Dollar Index (DXY) 24h strength or weakness',
+    params: { buyDxyDropPct: 0.15, sellDxyRisePct: 0.1 },
   },
 ];
 
@@ -382,6 +403,73 @@ function evalVolumeSpike(klines: CandleData[], params: Record<string, number>): 
   return { id: '', type: 'VOLUME_SPIKE', label: 'Volume Spike', direction, strength: direction !== 'NEUTRAL' ? Math.min(100, ratio * 30) : 0, value: ratio, threshold: multiplier, description: desc };
 }
 
+function evalNewsSentiment(klines: CandleData[], params: Record<string, number>, config?: SignalConfig, externalData?: any): SignalResult {
+  const buyThreshold = params.buyThreshold ?? 75;
+  const sellThreshold = params.sellThreshold ?? 30;
+  const val = externalData?.newsSentiment ?? 55; 
+  let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  let desc = `News Sentiment: ${val}/100`;
+  let threshold = 50;
+  if (val >= buyThreshold) {
+    direction = 'LONG';
+    threshold = buyThreshold;
+    desc = `AI News Sentiment at ${val} (bullish sentiment > ${buyThreshold}) → LONG`;
+  } else if (val <= sellThreshold) {
+    direction = 'SHORT';
+    threshold = sellThreshold;
+    desc = `AI News Sentiment at ${val} (bearish sentiment < ${sellThreshold}) → SHORT`;
+  } else {
+    desc += ` (Neutral)`;
+  }
+  const strength = direction !== 'NEUTRAL' ? Math.min(100, Math.abs(val - 50) * 2) : 0;
+  return { id: '', type: 'NEWS_SENTIMENT', label: 'AI News Sentiment', direction, strength, value: val, threshold, description: desc };
+}
+
+function evalEtfFlow(klines: CandleData[], params: Record<string, number>, config?: SignalConfig, externalData?: any): SignalResult {
+  const buyInflowM = params.buyInflowM ?? 100;
+  const sellOutflowM = params.sellOutflowM ?? -50;
+  const val = externalData?.etfInflowM ?? 120; 
+  let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  let desc = `Daily ETF Inflow: $${val}M`;
+  let threshold = 0;
+  if (val >= buyInflowM) {
+    direction = 'LONG';
+    threshold = buyInflowM;
+    desc = `ETF Net Inflow is +$${val}M (inflow > +$${buyInflowM}M) → LONG`;
+  } else if (val <= sellOutflowM) {
+    direction = 'SHORT';
+    threshold = sellOutflowM;
+    desc = `ETF Net Outflow is $${val}M (outflow < $${sellOutflowM}M) → SHORT`;
+  } else {
+    desc += ` (Range Bound)`;
+  }
+  const strength = direction !== 'NEUTRAL' ? Math.min(100, Math.abs(val) * 0.5) : 0;
+  return { id: '', type: 'ETF_FLOW', label: 'ETF Net Flow', direction, strength, value: val, threshold, description: desc };
+}
+
+function evalMacroDxy(klines: CandleData[], params: Record<string, number>, config?: SignalConfig, externalData?: any): SignalResult {
+  const buyDxyDropPct = params.buyDxyDropPct ?? 0.15;
+  const sellDxyRisePct = params.sellDxyRisePct ?? 0.1;
+  const val = externalData?.dxyChangePct ?? -0.05; 
+  let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  const sign = val >= 0 ? '+' : '';
+  let desc = `DXY 24h Change: ${sign}${val}%`;
+  let threshold = 0;
+  if (val <= -buyDxyDropPct) {
+    direction = 'LONG';
+    threshold = -buyDxyDropPct;
+    desc = `Macro DXY dropped by ${val.toFixed(2)}% (DXY drops = BTC bullish) → LONG`;
+  } else if (val >= sellDxyRisePct) {
+    direction = 'SHORT';
+    threshold = sellDxyRisePct;
+    desc = `Macro DXY rose by +${val.toFixed(2)}% (DXY rises = BTC bearish) → SHORT`;
+  } else {
+    desc += ` (Range Bound)`;
+  }
+  const strength = direction !== 'NEUTRAL' ? Math.min(100, Math.abs(val) * 200) : 0;
+  return { id: '', type: 'MACRO_DXY', label: 'Macro DXY Correlation', direction, strength, value: val, threshold, description: desc };
+}
+
 function evalCustom(klines: CandleData[], config: SignalConfig): SignalResult {
   const expr = config.customExpression ?? 'return 0;';
   const closes = klines.map(k => k.close);
@@ -407,25 +495,32 @@ function evalCustom(klines: CandleData[], config: SignalConfig): SignalResult {
 
 // ── Public API ───────────────────────────────────────────────────────
 
-const EVALUATORS: Record<SignalType, (klines: CandleData[], params: Record<string, number>, config?: SignalConfig) => SignalResult> = {
+const EVALUATORS: Record<SignalType, (klines: CandleData[], params: Record<string, number>, config?: SignalConfig, externalData?: any) => SignalResult> = {
   RSI: evalRSI,
   MACD: evalMACD,
   BB: evalBB,
   EMA_CROSS: evalEMACross,
   STOCH_RSI: evalStochRSI,
   VOLUME_SPIKE: evalVolumeSpike,
+  NEWS_SENTIMENT: evalNewsSentiment,
+  ETF_FLOW: evalEtfFlow,
+  MACRO_DXY: evalMacroDxy,
   CUSTOM: (klines, _params, config) => evalCustom(klines, config!),
 };
 
 /** Evaluate all enabled signals against the latest kline data. */
-export function evaluateSignals(klines: CandleData[], configs: SignalConfig[]): SignalResult[] {
+export function evaluateSignals(
+  klines: CandleData[],
+  configs: SignalConfig[],
+  externalData?: { newsSentiment?: number; etfInflowM?: number; dxyChangePct?: number }
+): SignalResult[] {
   if (klines.length < 30) return []; // not enough data
   return configs
     .filter(c => c.enabled)
     .map(c => {
       const evaluator = EVALUATORS[c.type];
       if (!evaluator) return null;
-      const result = evaluator(klines, c.params, c);
+      const result = evaluator(klines, c.params, c, externalData);
       return { ...result, id: c.id };
     })
     .filter((r): r is SignalResult => r !== null);
@@ -479,4 +574,10 @@ export const PARAM_LABELS: Record<string, string> = {
   multiplier: 'Volume Multiplier',
   lookback: 'Lookback',
   threshold: 'Threshold',
+  buyThreshold: 'Buy Sentiment Threshold',
+  sellThreshold: 'Sell Sentiment Threshold',
+  buyInflowM: 'Buy Net Inflow ($M)',
+  sellOutflowM: 'Sell Net Outflow ($M)',
+  buyDxyDropPct: 'Buy DXY Drop %',
+  sellDxyRisePct: 'Sell DXY Rise %',
 };

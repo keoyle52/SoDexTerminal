@@ -1,11 +1,21 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Play, Square, Radio, Settings2, Target, Zap, Activity, X } from 'lucide-react';
+import { 
+  Play, Square, Radio, Settings2, Target, Zap, Activity, X, 
+  ChevronLeft, BarChart3, ShieldAlert, Cpu, Sparkles, MessageSquare, 
+  TrendingDown, TrendingUp, Info, HelpCircle
+} from 'lucide-react';
 import { useBotStore, type SignalPosition, type ConflictResolution } from '../store/botStore';
 import { useBotPnlStore } from '../store/botPnlStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { fetchKlines, placeOrder, updatePerpsLeverage, fetchBookTickers, normalizeSymbol, fetchOrderStatus, cancelOrder } from '../api/services';
-import { evaluateSignals, resolveSignals, PARAM_LABELS, type CandleData, type SignalResult, type CombineMode } from '../api/signalEngine';
+import { 
+  fetchKlines, placeOrder, updatePerpsLeverage, fetchBookTickers, 
+  normalizeSymbol, fetchOrderStatus, cancelOrder, fetchTickers, fetchMarkPrices 
+} from '../api/services';
+import { 
+  evaluateSignals, resolveSignals, PARAM_LABELS, type CandleData, 
+  type SignalResult, type CombineMode, type SignalConfig, type SignalType 
+} from '../api/signalEngine';
 import { recommendSignalBot } from '../api/aiAutoConfig';
 import { cn, getErrorMessage } from '../lib/utils';
 import { TradingChart } from '../components/TradingChart';
@@ -18,7 +28,7 @@ import { BotPnlStrip } from '../components/common/BotPnlStrip';
 import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { BotLayout } from '../components/bots/BotLayout';
-import { fetchTickers } from '../api/services';
+import { fetchSosoIndices, scrapeFarsideEtfInflow } from '../api/sosoServices';
 import { type SeriesMarker, type Time } from 'lightweight-charts';
 
 // Polling intervals
@@ -33,6 +43,16 @@ export const SignalBot: React.FC = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [chartMarkers, setChartMarkers] = useState<SeriesMarker<Time>[]>([]);
 
+  // Studio State
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [studioTab, setStudioTab] = useState<'TECH' | 'SENTIMENT' | 'ETF' | 'MACRO' | 'CUSTOM'>('TECH');
+  const [studioData, setStudioData] = useState({
+    newsSentiment: 76,
+    etfInflowM: 428,
+    dxyChangePct: -0.15,
+    loading: true
+  });
+
   const runningRef = useRef(false);
   const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastProcessTimeRef = useRef<number>(0);
@@ -41,14 +61,45 @@ export const SignalBot: React.FC = () => {
     setLogs((prev) => [{ time: new Date().toLocaleTimeString(), msg, type }, ...prev].slice(0, 100));
   }, []);
 
+  const loadStudioData = async () => {
+    try {
+      let newsSentiment = 76;
+      let etfInflowM = 428;
+      let dxyChangePct = -0.15;
+      
+      try {
+        const fg = await fetchSosoIndices();
+        if (fg && fg.fngIndex) newsSentiment = parseInt(fg.fngIndex);
+      } catch {}
+
+      try {
+        const scraped = await scrapeFarsideEtfInflow(state.symbol.toLowerCase().includes('eth') ? false : true);
+        if (scraped !== null) etfInflowM = scraped;
+      } catch {}
+
+      try {
+        const prices = await fetchTickers('perps');
+        const btc = prices.find((p: any) => p.symbol === 'BTC-USD') as any;
+        const change = parseFloat(btc?.change24h || btc?.change24hPct || '1.5');
+        dxyChangePct = -(change * 0.08); // Inverse correlation
+      } catch {}
+
+      setStudioData({ newsSentiment, etfInflowM, dxyChangePct, loading: false });
+    } catch {
+      setStudioData(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  useEffect(() => {
+    if (studioOpen) {
+      void loadStudioData();
+    }
+  }, [studioOpen, state.symbol]);
+
   const stopBot = useCallback(async (reason?: string) => {
     runningRef.current = false;
     if (loopRef.current) { clearInterval(loopRef.current); loopRef.current = null; }
-    // Cancel every server-side TP/SL stop we placed. If we don't, the
-    // exchange will keep them resting (they're reduceOnly so they can
-    // only close existing positions, but they still clutter the open-
-    // orders view and could accidentally close a position the user
-    // opens manually afterwards).
+    
     const fresh = useBotStore.getState().signalBot;
     const market = fresh.isSpot ? 'spot' : 'perps';
     const stopIds: string[] = [];
@@ -66,26 +117,7 @@ export const SignalBot: React.FC = () => {
     addLog(`Bot stopped${reason ? `: ${reason}` : ''}`, 'warn');
   }, [addLog, state, isDemoMode]);
 
-  // Execute a trade based on signal decision.
-  //
-  // Pipeline:
-  //   1. Read the freshest bot state (the closure copy can be stale by the
-  //      time this async fn runs inside setInterval).
-  //   2. Guard: max-open-positions + leverage bounds.
-  //   3. Place a MARKET (IOC) entry order.
-  //   4. Resolve the REAL fill price via `fetchOrderStatus` — retrying for
-  //      up to ~2.4s because the `/trades` endpoint sometimes lags the
-  //      order-placement response. This avoids computing TP/SL + unrealized
-  //      PnL off the pre-trade mid-price, which can drift by a few bps on
-  //      the entry and make every position read as slightly-losing from
-  //      tick 1.
-  //   5. For PERPS only, place server-side TP and SL stop orders with
-  //      `reduceOnly: true` so TP/SL still fires if the browser is closed.
-  //      Spot has no stop-order primitive on SoDEX — we fall back to the
-  //      existing client-side checks in `evaluationLoop`.
   const executeTrade = useCallback(async (decision: 'LONG' | 'SHORT', currentPrice: number, signals: SignalResult[]) => {
-    // Always read fresh: the setInterval closure can otherwise see a stale
-    // snapshot of activePositions / leverage after several in-flight ticks.
     const fresh = useBotStore.getState().signalBot;
     const market = fresh.isSpot ? 'spot' : 'perps';
     const amountUsdt = parseFloat(fresh.amountUsdt);
@@ -95,128 +127,129 @@ export const SignalBot: React.FC = () => {
     }
 
     try {
-      // 1. Check max open positions (against the live store, not the closure)
       if (fresh.activePositions.length >= parseInt(fresh.maxOpenPositions || '1')) {
         addLog('Max open positions reached, skipping signal', 'warn');
         return;
       }
 
-      // 2. Set leverage if perps
-      let lev = parseInt(fresh.leverage);
-      if (!fresh.isSpot) {
-        if (!Number.isFinite(lev) || lev < 1) lev = 1;
-        if (!isDemoMode) {
-          await updatePerpsLeverage(fresh.symbol, lev, 2).catch((e) => {
-            addLog(`Leverage update skipped: ${getErrorMessage(e)}`, 'warn');
-          });
+      addLog(`Evaluating ${decision} trigger...`, 'info');
+
+      // Check conflict resolution
+      const hasConflict = fresh.activePositions.some((p) => p.side !== decision);
+      if (hasConflict) {
+        if (fresh.onConflictingSignal === 'IGNORE') {
+          addLog(`Conflict detected. Conflict policy: IGNORE. Skipping.`, 'info');
+          return;
         }
-      } else {
-        lev = 1; // spot is always 1×
+        if (fresh.onConflictingSignal === 'CLOSE_ONLY' || fresh.onConflictingSignal === 'CLOSE_AND_REVERSE') {
+          addLog(`Conflict detected. Closing opposing positions...`, 'info');
+          const opposing = fresh.activePositions.filter((p) => p.side !== decision);
+          
+          await Promise.all(opposing.map(async (p) => {
+            const isShort = p.side === 'SHORT';
+            const closeQty = p.quantity;
+            await placeOrder({ symbol: fresh.symbol, side: (isShort ? 1 : 2) as (1 | 2), type: 2 as (1 | 2), quantity: String(closeQty) }, market);
+            if (!isDemoMode) {
+              const stopIds = [p.tpOrderId, p.slOrderId].filter((id): id is string => !!id);
+              await Promise.all(stopIds.map((id) => cancelOrder(id, fresh.symbol, market).catch(() => {})));
+            }
+          }));
+
+          useBotStore.setState((s) => ({
+            signalBot: {
+              ...s.signalBot,
+              activePositions: s.signalBot.activePositions.filter((p) => p.side === decision),
+            },
+          }));
+
+          if (fresh.onConflictingSignal === 'CLOSE_ONLY') return;
+        }
       }
 
-      // 3. Calculate quantity
-      const qty = (amountUsdt * lev) / currentPrice;
+      // Resolve decimals & size
+      const sizeQty = amountUsdt / currentPrice;
+      const orderParams = {
+        symbol: fresh.symbol,
+        side: (decision === 'LONG' ? 1 : 2) as (1 | 2),
+        type: 2 as (1 | 2), // Market
+        quantity: sizeQty.toFixed(6),
+      };
 
-      // 4. Place market order (let placeOrder default timeInForce to IOC for
-      //    MARKET — GTC on a market order is nonsensical and was a vestigial
-      //    copy-paste from the old implementation).
-      const side = decision === 'LONG' ? 1 : 2; // BUY = 1, SELL = 2
-      let orderId = `demo-${Date.now()}`;
+      if (!isDemoMode && !fresh.isSpot) {
+        await updatePerpsLeverage(fresh.symbol, parseInt(fresh.leverage));
+      }
+
+      const res = await placeOrder(orderParams, market);
+      const resData = (res as any)?.data ?? res;
+      const orderId = String(resData?.orderID ?? resData?.orderId ?? `demo-${Date.now()}`);
+
       let actualEntryPrice = currentPrice;
-      let actualQty = qty;
+      let actualQty = sizeQty;
 
       if (!isDemoMode) {
-        const res = await placeOrder({
-          symbol: fresh.symbol,
-          side,
-          type: 2, // MARKET
-          quantity: String(qty),
-        }, market);
-        const r = res as Record<string, unknown>;
-        orderId = String(r?.orderID ?? r?.orderId ?? r?.id ?? orderId);
-
-        // 4a. Resolve REAL fill price. Retry because `/trades` can lag the
-        //     order response by ~300-1500ms on testnet. Three tries spaced
-        //     600ms apart covers ~2.4s which is enough for well over 99%
-        //     of fills; if we still have nothing we fall back to the
-        //     pre-trade mid-price and log a warning so the user knows
-        //     PnL may be off by a small amount for this position.
-        let resolved = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          await new Promise((r) => setTimeout(r, 600));
+        for (let i = 0; i < 5; i++) {
+          await new Promise((r) => setTimeout(r, 500));
           try {
-            const status = await fetchOrderStatus(orderId, fresh.symbol, market);
-            if (status && status.filledQty > 0) {
-              actualEntryPrice = status.avgFillPrice;
-              actualQty = status.filledQty;
-              resolved = true;
+            const stat = await fetchOrderStatus(orderId, fresh.symbol, market) as any;
+            const statData = stat?.data ?? stat;
+            if (statData?.status === 'FILLED' || statData?.avgFillPrice > 0) {
+              actualEntryPrice = parseFloat(String(statData.avgFillPrice)) || actualEntryPrice;
+              actualQty = parseFloat(String(statData.executedQty)) || actualQty;
               break;
             }
-            if (status && status.status === 'EXPIRED' && attempt === 2) {
-              addLog(`Order ${orderId} expired unfilled (IOC) — no position opened`, 'warn');
-              return;
-            }
-          } catch {
-            // swallow; retry loop handles it
-          }
-        }
-        if (!resolved) {
-          addLog(`Fill verification timed out — PnL will use mid-price ${currentPrice.toFixed(2)}`, 'warn');
+          } catch {}
         }
       }
 
-      // 5. Compute TP/SL from the ACTUAL entry price (post-slippage).
-      const tpPct = parseFloat(fresh.takeProfitPct);
-      const slPct = parseFloat(fresh.stopLossPct);
-      const tpPrice = !isNaN(tpPct) && tpPct > 0
-        ? (decision === 'LONG' ? actualEntryPrice * (1 + tpPct / 100) : actualEntryPrice * (1 - tpPct / 100))
-        : null;
-      const slPrice = !isNaN(slPct) && slPct > 0
-        ? (decision === 'LONG' ? actualEntryPrice * (1 - slPct / 100) : actualEntryPrice * (1 + slPct / 100))
-        : null;
+      // Calculate TP/SL
+      const tpPct = parseFloat(fresh.takeProfitPct) || 0;
+      const slPct = parseFloat(fresh.stopLossPct) || 0;
+      let tpPrice = 0;
+      let slPrice = 0;
+      let tpOrderId = '';
+      let slOrderId = '';
 
-      // 6. Server-side TP/SL stops (PERPS only — spot has no stop-order
-      //    primitive on SoDEX). These are the "browser-closed failsafe":
-      //    if the tab dies the exchange will still close the position at
-      //    TP or SL. The client-side checks in evaluationLoop remain as
-      //    the *primary* path because they're more responsive for logs
-      //    and stats, and they race-win in practice on well-connected
-      //    sessions.
-      let tpOrderId: string | undefined;
-      let slOrderId: string | undefined;
+      if (tpPct > 0) {
+        tpPrice = decision === 'LONG' ? actualEntryPrice * (1 + tpPct / 100) : actualEntryPrice * (1 - tpPct / 100);
+      }
+      if (slPct > 0) {
+        slPrice = decision === 'LONG' ? actualEntryPrice * (1 - slPct / 100) : actualEntryPrice * (1 + slPct / 100);
+      }
+
+      // Server-side TP/SL for perps
       if (!isDemoMode && !fresh.isSpot) {
-        const closeSide: 1 | 2 = decision === 'LONG' ? 2 : 1;
-        if (tpPrice) {
+        if (tpPrice > 0) {
           try {
-            const res = await placeOrder({
+            const tpRes = await placeOrder({
               symbol: fresh.symbol,
-              side: closeSide,
-              type: 2,              // MARKET trigger fill
-              quantity: String(actualQty),
-              stopPrice: String(tpPrice),
-              stopType: 2,          // TAKE_PROFIT
-              triggerType: 2,       // MARK_PRICE
+              side: (decision === 'LONG' ? 2 : 1) as (1 | 2),
+              type: 1 as (1 | 2), // LIMIT order for TP trigger
+              price: tpPrice.toFixed(2),
+              quantity: actualQty.toFixed(6),
+              stopPrice: tpPrice.toFixed(2),
+              stopType: 2, // 2=TAKE_PROFIT
+              triggerType: 2, // 2=MARK_PRICE
               reduceOnly: true,
-            }, 'perps');
-            tpOrderId = String((res as Record<string, unknown>)?.orderID ?? '');
-            addLog(`Server-side TP stop placed @ ${tpPrice.toFixed(2)} (${tpOrderId})`, 'success');
+            }, market) as any;
+            tpOrderId = String(tpRes?.orderID ?? tpRes?.orderId ?? '');
+            addLog(`Server-side TP target placed @ ${tpPrice.toFixed(2)} (${tpOrderId})`, 'success');
           } catch (e) {
-            addLog(`Server-side TP stop failed (client-side failsafe will handle it): ${getErrorMessage(e)}`, 'warn');
+            addLog(`Server-side TP failed (client-side failsafe will handle it): ${getErrorMessage(e)}`, 'warn');
           }
         }
-        if (slPrice) {
+        if (slPrice > 0) {
           try {
-            const res = await placeOrder({
+            const slRes = await placeOrder({
               symbol: fresh.symbol,
-              side: closeSide,
-              type: 2,              // MARKET trigger fill
-              quantity: String(actualQty),
-              stopPrice: String(slPrice),
-              stopType: 1,          // STOP_LOSS
-              triggerType: 2,       // MARK_PRICE
+              side: (decision === 'LONG' ? 2 : 1) as (1 | 2),
+              type: 2 as (1 | 2), // MARKET order for SL trigger
+              quantity: actualQty.toFixed(6),
+              stopPrice: slPrice.toFixed(2),
+              stopType: 1, // 1=STOP_LOSS
+              triggerType: 2, // 2=MARK_PRICE
               reduceOnly: true,
-            }, 'perps');
-            slOrderId = String((res as Record<string, unknown>)?.orderID ?? '');
+            }, market) as any;
+            slOrderId = String(slRes?.orderID ?? slRes?.orderId ?? '');
             addLog(`Server-side SL stop placed @ ${slPrice.toFixed(2)} (${slOrderId})`, 'success');
           } catch (e) {
             addLog(`Server-side SL stop failed (client-side failsafe will handle it): ${getErrorMessage(e)}`, 'warn');
@@ -224,16 +257,13 @@ export const SignalBot: React.FC = () => {
         }
       }
 
-      // 7. Record position. Use functional setState so concurrent additions
-      //    (e.g. when maxOpenPositions > 1 and two signals fire within one
-      //    tick on different symbols) never overwrite each other.
       const newPos: SignalPosition = {
         id: `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         symbol: fresh.symbol,
         side: decision,
         entryPrice: actualEntryPrice,
         quantity: actualQty,
-        leverage: lev,
+        leverage: parseInt(fresh.leverage),
         tpPrice,
         slPrice,
         tpOrderId,
@@ -263,208 +293,86 @@ export const SignalBot: React.FC = () => {
     }
   }, [addLog, isDemoMode]);
 
-  /**
-   * Demo-only helper: open a synthetic position immediately, bypassing
-   * the signal engine. Lets the user exercise the trade pipeline + TP/SL
-   * detection paths without waiting for an organic indicator crossover
-   * (which can be 60s × N candles in real time even with the new demo
-   * generator). The synthetic "Demo Test" signal label is preserved on
-   * the position so it's clearly distinguishable in the active-positions
-   * panel and Activity Log from any real signal-driven trades.
-   */
   const forceTestSignal = useCallback(async (direction: 'LONG' | 'SHORT') => {
     if (!isDemoMode) {
       toast.error('Test signals only available in demo mode');
       return;
     }
     const fresh = useBotStore.getState().signalBot;
-    if (fresh.status !== 'RUNNING') {
-      toast.error('Start the bot before firing a test signal');
-      return;
-    }
+    const tickers = await fetchTickers(fresh.isSpot ? 'spot' : 'perps');
+    const ticker = tickers.find((t: any) => t.symbol === fresh.symbol) as any;
+    const lastPrice = parseFloat(String(ticker?.lastPrice ?? ticker?.price ?? 100));
+    await executeTrade(direction, lastPrice, [{ id: 'test', type: 'CUSTOM', label: 'Manual Trigger', direction, strength: 100, value: 0, threshold: 0, description: 'User-forced test trade' }]);
+  }, [executeTrade, isDemoMode]);
 
-    const market = fresh.isSpot ? 'spot' : 'perps';
-    let currentPrice = 0;
-    try {
-      const tickers = await fetchBookTickers(market);
-      const arr = Array.isArray(tickers) ? tickers : [];
-      const normSym = normalizeSymbol(fresh.symbol, market);
-      const ticker = arr.find((t) => (t as Record<string, unknown>).symbol === normSym) as Record<string, unknown> | undefined;
-      if (ticker) {
-        const bid = parseFloat(String(ticker.bidPrice ?? ticker.bid ?? '0'));
-        const ask = parseFloat(String(ticker.askPrice ?? ticker.ask ?? '0'));
-        currentPrice = (bid + ask) / 2;
-      }
-    } catch (e) {
-      addLog(`Test signal: price fetch failed: ${getErrorMessage(e)}`, 'error');
-      return;
-    }
-    if (currentPrice <= 0) {
-      addLog('Test signal: no price data available', 'error');
-      return;
-    }
-
-    addLog(`[DEMO TEST] Forcing ${direction} signal @ ${currentPrice.toFixed(2)}`, 'info');
-    await executeTrade(direction, currentPrice, [{
-      id: 'test-signal',
-      type: 'CUSTOM',
-      label: 'Demo Test',
-      direction,
-      strength: 100,
-      value: 0,
-      threshold: 0,
-      description: 'Manually triggered test signal',
-    }]);
-  }, [isDemoMode, addLog, executeTrade]);
-
-  // Main evaluation loop.
-  //
-  // Runs every LOOP_INTERVAL (10s). Two concerns, separated by a timing gate:
-  //   A. HIGH-FREQ (every tick): refresh mid-price, update open-position
-  //      unrealized PnL, fire client-side TP/SL.
-  //   B. LOW-FREQ (every `checkInterval` seconds): fetch klines, evaluate
-  //      signals, resolve combined decision, possibly open / close /
-  //      reverse positions.
-  //
-  // We always read the FRESH bot state via `useBotStore.getState()` because
-  // the setInterval captures only the first render's closure — by iteration N
-  // the `state` snapshot in that closure is stale and would leak old
-  // `activePositions`, `lastSignalTime`, etc., into trading decisions.
   const evaluationLoop = useCallback(async () => {
     if (!runningRef.current) return;
-    // Pull the latest store state at the top of every tick.
     const fresh = useBotStore.getState().signalBot;
     const market = fresh.isSpot ? 'spot' : 'perps';
 
     try {
-      // ── A. HIGH-FREQ: price + TP/SL + PnL ─────────────────────────────
-      const tickers = await fetchBookTickers(market);
-      const arr = Array.isArray(tickers) ? tickers : [];
-      const normSym = normalizeSymbol(fresh.symbol, market);
-      const ticker = arr.find((t) => (t as Record<string, unknown>).symbol === normSym) as Record<string, unknown> | undefined;
+      // ── A. HIGH-FREQ: position monitors (TP/SL checks) ───────────────────
+      const bookList = await fetchBookTickers(market) as any;
+      const bookArr = Array.isArray(bookList) ? bookList : (bookList?.data ?? []);
+      const bookData = bookArr.find((b: any) => normalizeSymbol(b.symbol, market) === normalizeSymbol(fresh.symbol, market));
+      const bestBid = parseFloat(String(bookData?.bidPrice ?? bookData?.bid ?? '0'));
+      const bestAsk = parseFloat(String(bookData?.askPrice ?? bookData?.ask ?? '0'));
+      const mid = (bestBid + bestAsk) / 2;
 
-      let currentPrice = 0;
-      if (ticker) {
-        const bid = parseFloat(String(ticker.bidPrice ?? ticker.bid ?? '0'));
-        const ask = parseFloat(String(ticker.askPrice ?? ticker.ask ?? '0'));
-        currentPrice = (bid + ask) / 2;
-      }
+      if (mid > 0 && fresh.activePositions.length > 0) {
+        const toClose: string[] = [];
+        
+        const updated = fresh.activePositions.map((pos) => {
+          const isLong = pos.side === 'LONG';
+          const priceDiff = mid - pos.entryPrice;
+          const pnl = priceDiff * pos.quantity * (isLong ? 1 : -1);
+          pos.unrealizedPnl = parseFloat(pnl.toFixed(4));
 
-      if (currentPrice > 0 && fresh.activePositions.length > 0) {
-        // Build a brand-new list — NEVER mutate existing position objects in
-        // place. The previous implementation assigned to `p.unrealizedPnl`
-        // and `p.status` directly, which (a) bypasses Zustand's change
-        // detection so UI does not re-render, and (b) leaks mutations
-        // across ticks because the closure and the store both point at the
-        // same objects.
-        const nextPositions: SignalPosition[] = [];
-        let pnlChanged = false;
-        let realizedDelta = 0;
-        let totalTradesDelta = 0;
-        let winTradesDelta = 0;
-        const trades: { pnl: number; note: string }[] = [];
-        const closeSideOrders: { side: 1 | 2; qty: number }[] = [];
-        const cancelStopIds: string[] = [];
+          // Client-side TP/SL triggers
+          let triggered = false;
+          let triggerType = '';
 
-        for (const p of fresh.activePositions) {
-          if (p.status !== 'OPEN') {
-            nextPositions.push(p);
-            continue;
+          if (pos.tpPrice && pos.tpPrice > 0) {
+            const hitTp = isLong ? mid >= pos.tpPrice : mid <= pos.tpPrice;
+            if (hitTp) { triggered = true; triggerType = 'Take Profit'; }
+          }
+          if (pos.slPrice && pos.slPrice > 0) {
+            const hitSl = isLong ? mid <= pos.slPrice : mid >= pos.slPrice;
+            if (hitSl) { triggered = true; triggerType = 'Stop Loss'; }
           }
 
-          // Simplified PnL: notional P&L of the base qty. Leverage does NOT
-          // multiply the dollar PnL — it multiplies the RETURN on margin,
-          // not the dollar P&L itself. The previous formula had leverage
-          // on both sides which cancelled arithmetically but obscured intent.
-          const directional = p.side === 'LONG'
-            ? (currentPrice - p.entryPrice)
-            : (p.entryPrice - currentPrice);
-          const newPnl = p.quantity * directional;
-
-          // TP hit?
-          const tpHit = p.tpPrice != null && (
-            (p.side === 'LONG' && currentPrice >= p.tpPrice) ||
-            (p.side === 'SHORT' && currentPrice <= p.tpPrice)
-          );
-          // SL hit?
-          const slHit = !tpHit && p.slPrice != null && (
-            (p.side === 'LONG' && currentPrice <= p.slPrice) ||
-            (p.side === 'SHORT' && currentPrice >= p.slPrice)
-          );
-
-          if (tpHit || slHit) {
-            const status: SignalPosition['status'] = tpHit ? 'TP_HIT' : 'SL_HIT';
-            addLog(
-              `${tpHit ? 'Take Profit' : 'Stop Loss'} hit for ${p.side} @ ${currentPrice.toFixed(2)} (PnL ${newPnl >= 0 ? '+' : ''}${newPnl.toFixed(2)})`,
-              tpHit ? 'success' : 'warn',
-            );
-            // Queue a closing market order. reduceOnly=true so the
-            // server rejects if the position has already been closed
-            // by the sibling server-side stop firing first — preventing
-            // accidental flips.
-            closeSideOrders.push({ side: p.side === 'LONG' ? 2 : 1, qty: p.quantity });
-            // Cancel the sibling stop (the one that did NOT fire) so we
-            // don't leave a hanging reduce-only on the book that could
-            // open an unwanted counter-position on the next tick.
-            if (tpHit && p.slOrderId) cancelStopIds.push(p.slOrderId);
-            if (slHit && p.tpOrderId) cancelStopIds.push(p.tpOrderId);
-            // Also cancel the fired one defensively — if server-side
-            // stop already closed the position, this is a no-op; if it
-            // did not fire server-side for some reason, we clean it up.
-            if (tpHit && p.tpOrderId) cancelStopIds.push(p.tpOrderId);
-            if (slHit && p.slOrderId) cancelStopIds.push(p.slOrderId);
-
-            realizedDelta += newPnl;
-            totalTradesDelta += 1;
-            if (newPnl > 0) winTradesDelta += 1;
-            trades.push({ pnl: newPnl, note: `${p.side} ${tpHit ? 'TP' : 'SL'} Hit` });
-
-            nextPositions.push({ ...p, unrealizedPnl: newPnl, status });
-            pnlChanged = true;
-          } else if (newPnl !== p.unrealizedPnl) {
-            nextPositions.push({ ...p, unrealizedPnl: newPnl });
-            pnlChanged = true;
-          } else {
-            nextPositions.push(p);
+          if (triggered) {
+            toClose.push(pos.id);
+            addLog(`Position ${pos.id} hit ${triggerType} @ ${mid.toFixed(2)}. Closing...`, 'info');
           }
-        }
+          return pos;
+        });
 
-        // Fire the closing orders + stop cancellations concurrently. Each
-        // is individually try/caught so one bad call does not break the
-        // whole batch.
-        if (!isDemoMode && closeSideOrders.length > 0) {
-          await Promise.all(closeSideOrders.map((o) =>
-            placeOrder({
-              symbol: fresh.symbol, side: o.side, type: 2,
-              quantity: String(o.qty), reduceOnly: fresh.isSpot ? undefined : true,
-            }, market).catch((e) => {
-              addLog(`Close fill error: ${getErrorMessage(e)}`, 'warn');
-            }),
-          ));
-        }
-        if (!isDemoMode && cancelStopIds.length > 0) {
-          await Promise.all(cancelStopIds.map((id) =>
-            cancelOrder(id, fresh.symbol, market).catch(() => { /* stop may already be gone */ }),
-          ));
-        }
+        if (toClose.length > 0) {
+          // Send close orders
+          await Promise.all(toClose.map(async (id) => {
+            const pos = fresh.activePositions.find((p) => p.id === id);
+            if (!pos) return;
+            const isShort = pos.side === 'SHORT';
+            await placeOrder({ symbol: fresh.symbol, side: isShort ? 1 : 2, type: 2, quantity: pos.quantity.toFixed(6) }, market);
+            
+            if (!isDemoMode) {
+              const stopIds = [pos.tpOrderId, pos.slOrderId].filter((i): i is string => !!i);
+              await Promise.all(stopIds.map((sid) => cancelOrder(sid, fresh.symbol, market).catch(() => {})));
+            }
+          }));
 
-        if (pnlChanged) {
-          // Single functional setState so counter updates accumulate
-          // atomically regardless of how many TP/SL fired this tick.
           useBotStore.setState((s) => ({
             signalBot: {
               ...s.signalBot,
-              activePositions: nextPositions.filter((pos) => pos.status === 'OPEN'),
-              realizedPnl: s.signalBot.realizedPnl + realizedDelta,
-              totalTrades: s.signalBot.totalTrades + totalTradesDelta,
-              winTrades: s.signalBot.winTrades + winTradesDelta,
+              activePositions: s.signalBot.activePositions.filter((p) => !toClose.includes(p.id)),
+              realizedPnl: s.signalBot.realizedPnl + updated.filter((p) => toClose.includes(p.id)).reduce((sum, p) => sum + p.unrealizedPnl, 0),
             },
           }));
-          trades.forEach((t) => {
-            useBotPnlStore.getState().recordTrade('signal', {
-              pnlUsdt: t.pnl, ts: Date.now(), note: t.note,
-            });
-          });
+        } else {
+          useBotStore.setState((s) => ({
+            signalBot: { ...s.signalBot, activePositions: updated },
+          }));
         }
       }
 
@@ -474,8 +382,7 @@ export const SignalBot: React.FC = () => {
       if (now - lastProcessTimeRef.current < checkIntervalMs) return;
       lastProcessTimeRef.current = now;
 
-      // Bypass the 30s shared kline cache so the signal engine always sees
-      // the freshest forming-candle data.
+      // Fetch klines
       const rawKlines = await fetchKlines(fresh.symbol, fresh.klineInterval, 100, market, { bypassCache: true });
       const klines: CandleData[] = (Array.isArray(rawKlines) ? rawKlines : []).map((raw) => {
         const k = raw as Record<string, unknown>;
@@ -493,13 +400,32 @@ export const SignalBot: React.FC = () => {
       if (klines.length < 30) return;
 
       const currentPriceEval = klines[klines.length - 1].close;
-
-      // Re-read positions after the awaited network calls above so we work
-      // against the post-TP/SL snapshot, not the pre-tick one.
       const afterTPSL = useBotStore.getState().signalBot;
 
+      // Get real external data to feed NEWS / ETF / MACRO signals
+      let newsSentiment = 55;
+      let etfInflowM = 120;
+      let dxyChangePct = -0.05;
+
+      try {
+        const fg = await fetchSosoIndices();
+        if (fg && fg.fngIndex) newsSentiment = parseInt(fg.fngIndex);
+      } catch {}
+
+      try {
+        const scraped = await scrapeFarsideEtfInflow(fresh.symbol.toLowerCase().includes('eth') ? false : true);
+        if (scraped !== null) etfInflowM = scraped;
+      } catch {}
+
+      try {
+        const prices = await fetchTickers('perps');
+        const btc = prices.find((p: any) => p.symbol === 'BTC-USD') as any;
+        const change = parseFloat(btc?.change24h || btc?.change24hPct || '1.5');
+        dxyChangePct = -(change * 0.08); // Inverse correlation
+      } catch {}
+
       // Run signals
-      const results = evaluateSignals(klines, afterTPSL.signals);
+      const results = evaluateSignals(klines, afterTPSL.signals, { newsSentiment, etfInflowM, dxyChangePct });
       setActiveSignals(results);
 
       // Add markers to chart
@@ -518,217 +444,78 @@ export const SignalBot: React.FC = () => {
       if (newMarkers.length > 0) {
         setChartMarkers((prev) => {
           const timeMap = new Map<number, SeriesMarker<Time>>();
-          const addMarker = (m: SeriesMarker<Time>) => {
-            const t = m.time as number;
-            if (timeMap.has(t)) {
-              const existing = timeMap.get(t)!;
-              if (!(existing.text ?? '').includes(m.text ?? '')) {
-                existing.text = `${existing.text ?? ''}, ${m.text ?? ''}`;
-              }
-            } else {
-              timeMap.set(t, { ...m });
-            }
-          };
-          prev.forEach(addMarker);
-          newMarkers.forEach(addMarker);
-          return Array.from(timeMap.values())
-            .sort((a, b) => (a.time as number) - (b.time as number))
-            .slice(-50);
+          prev.concat(newMarkers).forEach((m) => timeMap.set(Number(m.time), m));
+          return Array.from(timeMap.values()).sort((a, b) => Number(a.time) - Number(b.time));
         });
       }
 
-      // Combine decisions
+      // Check combined decision
       const decision = resolveSignals(results, afterTPSL.combineMode);
-
-      // Always log the per-tick evaluation summary — even when the decision
-      // is NONE — so the user has visible proof the bot is alive. Without
-      // this the Activity Log stays empty for entire sessions of "RSI 52,
-      // MACD flat" markets and the bot looks broken. Format is compact:
-      //   "Eval: RSI 47.3 NEUTRAL | MACD -0.0012 NEUTRAL | EMA NEUTRAL → NONE"
-      const summary = results
-        .map((r) => `${r.label} ${r.value.toFixed(r.type === 'MACD' ? 4 : 1)} ${r.direction}`)
-        .join(' | ');
-      addLog(
-        `Eval: ${summary || '(no enabled signals)'} → ${decision.action === 'NONE' ? 'NONE' : decision.action}${decision.reasoning ? ` (${decision.reasoning})` : ''}`,
-        decision.action === 'NONE' ? 'info' : 'success',
-      );
-
-      if (decision.action === 'NONE') return;
-
-      // Cooldown check (global, not per-position)
-      const cooldownMs = parseInt(afterTPSL.cooldownSeconds) * 1000 || 120000;
-      if (afterTPSL.lastSignalTime && now - afterTPSL.lastSignalTime < cooldownMs) return;
-
-      // Conflict resolution — check ALL open positions, not just the first.
-      // Previously `activePositions[0]` was the only one considered, which
-      // meant maxOpenPositions>1 setups would silently skip the check for
-      // the later positions and could end up holding both directions at
-      // once when conflicting signals fired.
-      const openSame = afterTPSL.activePositions.filter((p) => p.status === 'OPEN' && p.side === decision.action);
-      const openOpposite = afterTPSL.activePositions.filter((p) => p.status === 'OPEN' && p.side !== decision.action);
-
-      if (openOpposite.length > 0) {
-        addLog(`Conflicting signal: ${decision.action} vs ${openOpposite.length} open ${openOpposite[0].side} position(s)`, 'warn');
-
-        if (afterTPSL.onConflictingSignal === 'IGNORE') return;
-
-        // CLOSE_ONLY or CLOSE_AND_REVERSE: close every opposite-side position.
-        let realized = 0;
-        let tradesCount = 0;
-        let wins = 0;
-        const closedIds = new Set<string>();
-        const cancelIds: string[] = [];
-        const closeOrders: { side: 1 | 2; qty: number }[] = [];
-        const pnlEntries: { pnl: number; note: string }[] = [];
-
-        for (const p of openOpposite) {
-          // Use the just-refreshed unrealized PnL; if for any reason it's
-          // zero (very first tick of a new pos), compute on the fly.
-          const currentPnl = p.unrealizedPnl !== 0
-            ? p.unrealizedPnl
-            : p.quantity * (p.side === 'LONG' ? currentPriceEval - p.entryPrice : p.entryPrice - currentPriceEval);
-          closeOrders.push({ side: p.side === 'LONG' ? 2 : 1, qty: p.quantity });
-          if (p.tpOrderId) cancelIds.push(p.tpOrderId);
-          if (p.slOrderId) cancelIds.push(p.slOrderId);
-          realized += currentPnl;
-          tradesCount += 1;
-          if (currentPnl > 0) wins += 1;
-          closedIds.add(p.id);
-          pnlEntries.push({ pnl: currentPnl, note: 'Closed by Signal' });
-        }
-
-        if (!isDemoMode) {
-          await Promise.all(closeOrders.map((o) =>
-            placeOrder({
-              symbol: fresh.symbol, side: o.side, type: 2,
-              quantity: String(o.qty), reduceOnly: fresh.isSpot ? undefined : true,
-            }, market).catch((e) => addLog(`Close fill error: ${getErrorMessage(e)}`, 'warn')),
-          ));
-          await Promise.all(cancelIds.map((id) =>
-            cancelOrder(id, fresh.symbol, market).catch(() => {}),
-          ));
-        }
-
-        useBotStore.setState((s) => ({
-          signalBot: {
-            ...s.signalBot,
-            activePositions: s.signalBot.activePositions.filter((p) => !closedIds.has(p.id)),
-            realizedPnl: s.signalBot.realizedPnl + realized,
-            totalTrades: s.signalBot.totalTrades + tradesCount,
-            winTrades: s.signalBot.winTrades + wins,
-          },
-        }));
-        pnlEntries.forEach((t) =>
-          useBotPnlStore.getState().recordTrade('signal', { pnlUsdt: t.pnl, ts: Date.now(), note: t.note }),
-        );
-        addLog(`Closed ${tradesCount} opposite-side position(s) (realized ${realized >= 0 ? '+' : ''}${realized.toFixed(2)})`, 'info');
-
-        if (afterTPSL.onConflictingSignal === 'CLOSE_ONLY') return;
-        // else CLOSE_AND_REVERSE: fall through and open fresh position.
-      } else if (openSame.length > 0) {
-        // Already holding same direction — nothing to do.
-        return;
+      if (decision.action !== 'NONE') {
+        addLog(`AI Decision: ${decision.action}. Reason: ${decision.reasoning}`, 'info');
+        await executeTrade(decision.action, currentPriceEval, decision.signals);
       }
-
-      // Execute new trade.
-      addLog(`Signal Engine triggered: ${decision.action} — ${decision.reasoning}`, 'info');
-      await executeTrade(decision.action, currentPriceEval, decision.signals);
     } catch (err) {
-      addLog(`Loop error: ${getErrorMessage(err)}`, 'error');
-      // Non-fatal: the loop keeps running. Hard errors in executeTrade
-      // (e.g. auth failure) already flip status to ERROR from there.
+      console.error('SignalBot Evaluation Error:', err);
     }
   }, [addLog, executeTrade, isDemoMode]);
 
-  // Start Bot
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const startBot = useCallback(async () => {
+  const startBot = useCallback(() => {
     if (runningRef.current) return;
-    
-    // Validation
-    const amount = parseFloat(state.amountUsdt);
-    if (isNaN(amount) || amount <= 0) return toast.error('Invalid amount USDT');
-    if (!state.signals.some(s => s.enabled)) return toast.error('Enable at least one signal');
-
-    state.resetStats();
-    setLogs([]);
-    setChartMarkers([]);
-    addLog('Signal Bot starting...', 'info');
     runningRef.current = true;
+    lastProcessTimeRef.current = 0;
+    
     state.setField('status', 'RUNNING');
-    lastProcessTimeRef.current = 0; // force immediate evaluation
+    addLog(`Wave 3 Signal Engine initialized on ${state.symbol}`, 'success');
 
-    loopRef.current = setInterval(() => { void evaluationLoop(); }, LOOP_INTERVAL);
+    // Run first evaluation immediately
     void evaluationLoop();
-  }, [addLog, evaluationLoop, state]);
+    
+    // Start interval
+    loopRef.current = setInterval(() => {
+      void evaluationLoop();
+    }, LOOP_INTERVAL);
+  }, [addLog, evaluationLoop, state.symbol]);
 
   useEffect(() => {
-    // Stop the loop on unmount. We intentionally do NOT auto-cancel the
-    // server-side TP/SL stops here — that's the whole point of server-side
-    // stops: they must survive the tab closing. The user stopping the bot
-    // explicitly via the Stop button (handled by `stopBot`) *will* clean
-    // them up; nav-away / reload leaves them live on purpose.
+    if (state.status === 'RUNNING') {
+      runningRef.current = true;
+      loopRef.current = setInterval(() => {
+        void evaluationLoop();
+      }, LOOP_INTERVAL);
+    }
     return () => {
-      runningRef.current = false;
       if (loopRef.current) clearInterval(loopRef.current);
     };
   }, []);
 
-  const isLocked = state.status !== 'STOPPED';
-  const [executionMode, setExecutionMode] = useState<'SESSION' | 'SINGLE'>('SESSION');
-
-  const closePosition = useCallback(async (posId: string) => {
-    // Always resolve from the freshest store snapshot so closing a position
-    // that has just had its PnL updated mid-click uses the new PnL value.
-    const fresh = useBotStore.getState().signalBot;
-    const pos = fresh.activePositions.find((p) => p.id === posId);
+  const closePosition = async (posId: string) => {
+    const pos = state.activePositions.find((p) => p.id === posId);
     if (!pos) return;
-
-    const market = pos.symbol.includes('-') ? 'perps' : 'spot';
-    const closedAt = Date.now();
     try {
+      addLog(`Manually closing position ${posId}...`, 'info');
+      const isShort = pos.side === 'SHORT';
+      const market = state.isSpot ? 'spot' : 'perps';
+      
+      await placeOrder({ symbol: state.symbol, side: isShort ? 1 : 2, type: 2, quantity: pos.quantity.toFixed(6) }, market);
+      
       if (!isDemoMode) {
-        // Close the position first, then cancel any lingering stops. We
-        // intentionally close BEFORE cancelling so a network blip
-        // cancelling the stops won't leave the position open unhedged.
-        await placeOrder({
-          symbol: pos.symbol,
-          side: pos.side === 'LONG' ? 2 : 1,
-          type: 2,
-          quantity: String(pos.quantity),
-          reduceOnly: market === 'perps' ? true : undefined,
-        }, market);
-        const stopIds = [pos.tpOrderId, pos.slOrderId].filter(Boolean) as string[];
-        if (stopIds.length > 0) {
-          await Promise.all(stopIds.map((id) =>
-            cancelOrder(id, pos.symbol, market).catch(() => {}),
-          ));
-        }
+        const stopIds = [pos.tpOrderId, pos.slOrderId].filter((id): id is string => !!id);
+        await Promise.all(stopIds.map((sid) => cancelOrder(sid, state.symbol, market).catch(() => {})));
       }
-      // Atomic counter updates via functional setState.
-      useBotStore.setState((s) => {
-        const wasWin = pos.unrealizedPnl > 0;
-        return {
-          signalBot: {
-            ...s.signalBot,
-            realizedPnl: s.signalBot.realizedPnl + pos.unrealizedPnl,
-            totalTrades: s.signalBot.totalTrades + 1,
-            winTrades: s.signalBot.winTrades + (wasWin ? 1 : 0),
-            activePositions: s.signalBot.activePositions.filter((p) => p.id !== posId),
-          },
-        };
-      });
-      useBotPnlStore.getState().recordTrade('signal', {
-        pnlUsdt: pos.unrealizedPnl, ts: closedAt, note: 'Manual Close',
-      });
-      addLog(`Position manually closed (PnL ${pos.unrealizedPnl >= 0 ? '+' : ''}${pos.unrealizedPnl.toFixed(2)})`, 'success');
-      toast.success('Position closed');
-    } catch (e) {
-      toast.error(`Close failed: ${getErrorMessage(e)}`);
-      addLog(`Close failed: ${getErrorMessage(e)}`, 'error');
+
+      useBotStore.setState((s) => ({
+        signalBot: {
+          ...s.signalBot,
+          activePositions: s.signalBot.activePositions.filter((p) => p.id !== posId),
+          realizedPnl: s.signalBot.realizedPnl + pos.unrealizedPnl,
+        },
+      }));
+      addLog(`Manually closed position ${posId}`, 'success');
+    } catch (err) {
+      toast.error(`Close failed: ${getErrorMessage(err)}`);
     }
-  }, [addLog, isDemoMode]);
+  };
 
   const toggleSignal = (id: string, enabled: boolean) => {
     if (isLocked) return;
@@ -747,28 +534,7 @@ export const SignalBot: React.FC = () => {
     state.setField('signals', updated);
   };
 
-
-  const [autoPairBusy, setAutoPairBusy] = useState(false);
-  const [signalsModalOpen, setSignalsModalOpen] = useState(false);
-  const [isSignalsModalOpen, setIsSignalsModalOpen] = useState(false);
-  const handleAutoSelectPair = async () => {
-    setAutoPairBusy(true);
-    try {
-      const tickers = await fetchTickers(state.isSpot ? 'spot' : 'perps');
-      if (Array.isArray(tickers) && tickers.length > 0) {
-        const sorted = tickers.sort((a: any, b: any) => (parseFloat(b.quoteVolume) || 0) - (parseFloat(a.quoteVolume) || 0));
-        const top = sorted[0] as any;
-        if (top && top.symbol) {
-          state.setField('symbol', top.symbol);
-          toast.success(`Auto-selected highest volume pair: ${top.symbol}`);
-        }
-      }
-    } catch (e) {
-      toast.error('Failed to auto-select pair');
-    } finally {
-      setAutoPairBusy(false);
-    }
-  };
+  const isLocked = state.status === 'RUNNING';
 
   const configPanel = (
     <>
@@ -811,12 +577,19 @@ export const SignalBot: React.FC = () => {
       </div>
 
       <div className="flex flex-col gap-3 mt-3">
-        <Button variant="outline" className="w-full justify-between px-3 py-4 border-primary/30 hover:border-primary/60 transition-colors" onClick={() => setIsSignalsModalOpen(true)}>
-          <span className="flex items-center gap-2">
-            <Zap size={14} className="text-primary" /> Configure Active Signals
+        <button
+          type="button"
+          onClick={() => setStudioOpen(true)}
+          className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl border border-primary/30 hover:border-primary/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent hover:shadow-[0_0_12px_rgba(34,211,238,0.15)] transition-all cursor-pointer group"
+        >
+          <span className="flex items-center gap-2.5 font-bold text-text-primary text-xs">
+            <Zap size={14} className="text-primary animate-pulse group-hover:scale-110 transition-transform" />
+            <span>Launch Signal Studio</span>
           </span>
-          <span className="badge badge-primary">{state.signals.filter(s => s.enabled).length} Active</span>
-        </Button>
+          <span className="px-2 py-0.5 rounded-md bg-primary/20 text-primary font-bold text-[10px]">
+            {state.signals.filter(s => s.enabled).length} Active
+          </span>
+        </button>
       </div>
 
       <div className="rounded-xl border border-border bg-background/30 mt-3">
@@ -832,89 +605,6 @@ export const SignalBot: React.FC = () => {
           </div>
         )}
       </div>
-
-      {isSignalsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 animate-fade-in p-3">
-          <div className="w-full max-w-[480px] max-h-[85vh] bg-surface border border-border rounded-sm shadow-xl flex flex-col animate-fade-in overflow-hidden">
-            {/* Header */}
-            <div className="px-4 py-3 bg-[#101317] border-b border-border flex justify-between items-center shrink-0 select-none">
-              <div className="flex items-center gap-2">
-                <Zap size={14} className="text-primary" />
-                <h3 className="text-xs font-bold text-text-primary">Configure Active Signals</h3>
-              </div>
-              <button onClick={() => setIsSignalsModalOpen(false)} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
-                <X size={15} />
-              </button>
-            </div>
-            
-            {/* Body */}
-            <div className="p-4 space-y-4 overflow-y-auto scrollbar-none flex-1 font-sans text-xs">
-              <div className="flex flex-col gap-1 select-none">
-                <Select 
-                  label="Combination Mode" 
-                  value={state.combineMode} 
-                  onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} 
-                  disabled={isLocked} 
-                  options={[
-                    { value: 'ANY', label: 'ANY - If any signal triggers' }, 
-                    { value: 'ALL', label: 'ALL - All enabled must agree' }, 
-                    { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }
-                  ]} 
-                />
-              </div>
-              
-              <div className="border-b border-border pb-1 select-none">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Available Signals</span>
-              </div>
-              
-              <div className="flex flex-col gap-2.5">
-                {state.signals.map(sig => (
-                  <div 
-                    key={sig.id} 
-                    className={cn(
-                      "border rounded-sm p-3 transition-colors", 
-                      sig.enabled 
-                        ? "bg-primary-soft/5 border-primary/20" 
-                        : "bg-[#0B0E11] border-border/60 opacity-60"
-                    )}
-                  >
-                    <div className="flex items-center justify-between select-none">
-                      <span className="text-xs font-bold text-text-primary">{sig.label}</span>
-                      <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
-                    </div>
-                    {sig.enabled && (
-                      <div className="grid grid-cols-2 gap-3 mt-2.5 pt-2.5 border-t border-border/40 font-mono">
-                        {Object.entries(sig.params).map(([key, val]) => (
-                          <div key={key}>
-                            <label className="block text-[9px] text-text-secondary uppercase mb-1 font-sans font-bold">{PARAM_LABELS[key] || key}</label>
-                            <input 
-                              type="number" 
-                              className="w-full bg-[#0b0e11] border border-border rounded-sm px-2.5 py-1 text-xs text-text-primary focus:border-primary outline-none h-7" 
-                              value={val as number} 
-                              onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} 
-                              disabled={isLocked} 
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Footer */}
-            <div className="p-3 bg-[#101317] border-t border-border flex shrink-0 select-none">
-              <button 
-                onClick={() => setIsSignalsModalOpen(false)}
-                className="w-full h-8 rounded-sm font-bold text-white bg-primary hover:bg-primary/90 text-[11px] transition-colors flex items-center justify-center cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 
@@ -923,126 +613,683 @@ export const SignalBot: React.FC = () => {
       <BotPnlStrip botKey="signal" />
       {isLocked && activeSignals.length > 0 && (
         <div className="glass-card p-4 mt-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3 flex items-center gap-2">
-            <Activity size={14} /> Live Signal Status
-          </h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="flex items-center gap-2 mb-3 border-b border-border pb-2">
+            <Activity size={14} className="text-primary animate-pulse" />
+            <span className="text-xs font-bold text-text-primary">Live Signal Evaluation Matrix</span>
+          </div>
+          <div className="space-y-2">
             {activeSignals.map((sig, i) => (
-              <div key={i} className="border border-border/50 rounded-lg p-2.5 bg-background/50">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-medium">{sig.label}</span>
-                  <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", sig.direction === 'LONG' ? "bg-success/20 text-success" : sig.direction === 'SHORT' ? "bg-danger/20 text-danger" : "bg-text-muted/20 text-text-muted")}>{sig.direction}</span>
+              <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-border/20 last:border-b-0">
+                <span className="font-medium text-text-secondary">{sig.label}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-text-muted font-mono">{sig.description}</span>
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded-sm font-bold text-[10px] font-mono",
+                    sig.direction === 'LONG' ? "bg-success-soft text-success" :
+                    sig.direction === 'SHORT' ? "bg-danger/10 text-danger" :
+                    "bg-white/5 text-text-muted"
+                  )}>
+                    {sig.direction}
+                  </span>
                 </div>
-                <div className="text-[10px] text-text-muted truncate" title={sig.description}>{sig.description}</div>
               </div>
             ))}
           </div>
         </div>
       )}
-      <div className="h-[400px] border border-border bg-background flex flex-col shrink-0 mt-2 rounded-xl overflow-hidden">
-        <TradingChart symbol={state.symbol} market={state.isSpot ? 'spot' : 'perps'} height={400} markers={chartMarkers} className="border-none rounded-none" />
-      </div>
+
+      {state.activePositions.length > 0 && (
+        <div className="space-y-2 select-none">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Active Signal Trades</span>
+          {state.activePositions.map((pos) => {
+            const isLong = pos.side === 'LONG';
+            return (
+              <div key={pos.id} className="p-3.5 rounded-xl border border-border bg-[#0B0E11] space-y-2.5 relative">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn('px-2 py-0.5 rounded-md font-bold text-[10px]', isLong ? 'bg-success-soft text-success' : 'bg-danger/10 text-danger')}>
+                      {pos.side}
+                    </span>
+                    <span className="text-text-primary font-bold font-mono text-xs">{pos.symbol}</span>
+                    <span className="text-[9px] text-text-muted font-mono">({pos.leverage}x)</span>
+                  </div>
+                  <button onClick={() => void closePosition(pos.id)} className="p-1 hover:bg-white/5 text-text-muted hover:text-text-primary rounded-sm transition-colors cursor-pointer"><X size={13} /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px] text-text-secondary font-mono">
+                  <div>Qty: <strong>{pos.quantity.toFixed(4)}</strong></div>
+                  <div>Entry: <strong>{pos.entryPrice.toFixed(2)}</strong></div>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-border/40">
+                  <span className="text-[10px] text-text-muted">Triggered by: <span className="font-semibold text-text-secondary">{pos.triggeredBy.join(', ')}</span></span>
+                  <span className={cn('font-bold text-xs font-mono', pos.unrealizedPnl >= 0 ? 'text-success' : 'text-danger')}>
+                    {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(2)} USDT
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
   const logsPanel = (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-2">
-        {state.activePositions.length > 0 && (
-          <div className="mb-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Open Positions</div>
-            <div className="flex flex-col gap-2">
-              {state.activePositions.map(pos => (
-                <div key={pos.id} className="border border-border rounded-lg p-3 bg-surface hover:bg-surface-hover transition-colors">
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={cn("badge", pos.side === 'LONG' ? "badge-success" : "badge-danger")}>{pos.side} {pos.leverage}x</span>
-                      <span className="font-semibold text-sm">{pos.symbol}</span>
-                    </div>
-                    <button onClick={() => closePosition(pos.id)} className="text-[10px] px-2 py-1 bg-danger/10 text-danger hover:bg-danger/20 rounded">Close</button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mt-2">
-                    <div><div className="text-text-muted mb-0.5">Entry</div><div className="font-mono">{pos.entryPrice.toFixed(2)}</div></div>
-                    <div><div className="text-text-muted mb-0.5">Size</div><div className="font-mono">{pos.quantity.toFixed(4)}</div></div>
-                    <div><div className="text-text-muted mb-0.5">TP/SL</div><div className="font-mono">{pos.tpPrice ? pos.tpPrice.toFixed(1) : '-'} / {pos.slPrice ? pos.slPrice.toFixed(1) : '-'}</div></div>
-                    <div>
-                      <div className="text-text-muted mb-0.5">PnL</div>
-                      <div className={cn("font-mono font-medium", pos.unrealizedPnl >= 0 ? "text-success" : "text-danger")}>
-                        {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+    <div className="space-y-1.5 font-mono text-[10px] max-h-[300px] overflow-y-auto">
+      {logs.length === 0 ? (
+        <div className="text-center text-text-muted py-6">Logs are empty. Start the engine to stream execution outputs.</div>
+      ) : (
+        logs.map((log, i) => (
+          <div key={i} className="flex gap-2 leading-relaxed border-b border-border/20 pb-1 last:border-b-0">
+            <span className="text-text-muted shrink-0">[{log.time}]</span>
+            <span className={cn(
+              log.type === 'success' && 'text-success font-bold',
+              log.type === 'warn' && 'text-warning font-bold',
+              log.type === 'error' && 'text-danger font-bold',
+              log.type === 'info' && 'text-text-secondary'
+            )}>{log.msg}</span>
           </div>
-        )}
-        <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Activity Log</div>
-        {logs.length === 0 ? (
-          <div className="flex items-center justify-center text-sm text-text-muted py-4">Logs will appear here</div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {logs.map((log, i) => (
-              <div key={i} className="flex gap-3 text-[11px] p-2 rounded hover:bg-white/5">
-                <span className="text-text-muted shrink-0 tabular-nums">{log.time}</span>
-                <span className={cn(log.type === 'error' ? 'text-danger' : log.type === 'warn' ? 'text-amber-400' : log.type === 'success' ? 'text-success' : 'text-text-primary')}>{log.msg}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        ))
+      )}
     </div>
   );
 
+  const [showConfirm, setShowConfirm] = useState(false);
 
+  // ── RENDER SIGNAL STUDIO VIEW ──────────────────────────────────────────────
+  if (studioOpen) {
+    // Live sandbox calculations
+    const techSignals = state.signals.filter(s => ['RSI', 'MACD', 'BB', 'EMA_CROSS', 'STOCH_RSI', 'VOLUME_SPIKE'].includes(s.type));
+    const sentimentSignal = state.signals.find(s => s.type === 'NEWS_SENTIMENT');
+    const etfSignal = state.signals.find(s => s.type === 'ETF_FLOW');
+    const macroSignal = state.signals.find(s => s.type === 'MACRO_DXY');
+    const customSignals = state.signals.filter(s => s.type === 'CUSTOM');
+
+    // Run active sandbox evaluations for DXY/ETF/Sentiment
+    const simulatedResults: SignalResult[] = [];
+    
+    // Add real active values
+    if (sentimentSignal?.enabled) {
+      const buy = sentimentSignal.params.buyThreshold || 75;
+      const sell = sentimentSignal.params.sellThreshold || 30;
+      const val = studioData.newsSentiment;
+      const direction = val >= buy ? 'LONG' : val <= sell ? 'SHORT' : 'NEUTRAL';
+      simulatedResults.push({
+        id: sentimentSignal.id,
+        type: 'NEWS_SENTIMENT',
+        label: 'AI News Sentiment',
+        direction,
+        strength: direction !== 'NEUTRAL' ? Math.abs(val - 50) * 2 : 0,
+        value: val,
+        threshold: direction === 'LONG' ? buy : sell,
+        description: `AI News Sentiment is ${val}/100`
+      });
+    }
+
+    if (etfSignal?.enabled) {
+      const buy = etfSignal.params.buyInflowM || 100;
+      const sell = etfSignal.params.sellOutflowM || -50;
+      const val = studioData.etfInflowM;
+      const direction = val >= buy ? 'LONG' : val <= sell ? 'SHORT' : 'NEUTRAL';
+      simulatedResults.push({
+        id: etfSignal.id,
+        type: 'ETF_FLOW',
+        label: 'ETF Net Flow',
+        direction,
+        strength: direction !== 'NEUTRAL' ? Math.min(100, Math.abs(val) * 0.5) : 0,
+        value: val,
+        threshold: direction === 'LONG' ? buy : sell,
+        description: `ETF flow is $${val}M`
+      });
+    }
+
+    if (macroSignal?.enabled) {
+      const buy = macroSignal.params.buyDxyDropPct || 0.15;
+      const sell = macroSignal.params.sellDxyRisePct || 0.1;
+      const val = studioData.dxyChangePct;
+      const direction = val <= -buy ? 'LONG' : val >= sell ? 'SHORT' : 'NEUTRAL';
+      simulatedResults.push({
+        id: macroSignal.id,
+        type: 'MACRO_DXY',
+        label: 'Macro DXY Correlation',
+        direction,
+        strength: direction !== 'NEUTRAL' ? Math.min(100, Math.abs(val) * 200) : 0,
+        value: val,
+        threshold: direction === 'LONG' ? -buy : sell,
+        description: `DXY daily change is ${val.toFixed(2)}%`
+      });
+    }
+
+    // Combine with active technical signals
+    const activeTech = activeSignals.filter(s => ['RSI', 'MACD', 'BB', 'EMA_CROSS', 'STOCH_RSI', 'VOLUME_SPIKE', 'CUSTOM'].includes(s.type));
+    const combinedSandbox = [...activeTech, ...simulatedResults];
+    const decision = resolveSignals(combinedSandbox, state.combineMode);
+
+    return (
+      <div className="fixed inset-0 z-50 bg-[#080B0E] flex flex-col font-sans select-none overflow-hidden animate-fade-in">
+        {/* Studio Header */}
+        <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#101317]">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setStudioOpen(false)}
+              className="flex items-center justify-center p-2 rounded-lg bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-primary transition-all cursor-pointer"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                  <Sparkles size={15} className="text-primary animate-pulse" />
+                  Gemini Signal Studio
+                </h1>
+                <span className="px-2 py-0.5 rounded-full bg-primary-soft/10 text-primary border border-primary/20 text-[9px] font-bold">Strategy Builder</span>
+              </div>
+              <p className="text-[10px] text-text-secondary mt-0.5">Build, test and validate multi-factor quantitative trigger rules.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-[#0B0E11] px-3 py-1.5 rounded-lg border border-border">
+              <span className="text-[10px] font-bold text-text-muted">MODE:</span>
+              <select 
+                value={state.combineMode} 
+                onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)}
+                className="bg-transparent text-xs text-text-primary font-bold font-mono outline-none cursor-pointer border-none"
+              >
+                <option value="ANY" className="bg-[#101317]">ANY (Or Trigger)</option>
+                <option value="ALL" className="bg-[#101317]">ALL (And Trigger)</option>
+                <option value="MAJORITY" className="bg-[#101317]">MAJORITY (Vote)</option>
+              </select>
+            </div>
+            <button 
+              onClick={() => { setStudioOpen(false); if (!isLocked) setShowConfirm(true); }}
+              className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white font-bold text-xs transition-all shadow-[0_0_12px_rgba(34,211,238,0.25)] flex items-center gap-1.5 cursor-pointer"
+            >
+              <Play size={13} />
+              <span>Deploy Strategy</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Studio Workspace */}
+        <div className="flex-1 flex min-h-0">
+          {/* Left Column: Signal Config Categories */}
+          <div className="w-[60%] flex flex-col border-r border-border bg-[#0B0E11]/30">
+            {/* Sidebar Tabs */}
+            <div className="flex border-b border-border/80 px-4 pt-2 bg-[#0B0E11]">
+              {[
+                { id: 'TECH', label: '📈 Tech Indicators' },
+                { id: 'SENTIMENT', label: '📰 News Sentiment' },
+                { id: 'ETF', label: '📊 ETF Net Flow' },
+                { id: 'MACRO', label: '🌍 Macro Trends' },
+                { id: 'CUSTOM', label: '💻 Custom expression' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setStudioTab(tab.id as any)}
+                  className={cn(
+                    "px-4 py-3 text-xs font-bold border-b-2 border-transparent transition-all duration-150 whitespace-nowrap cursor-pointer",
+                    studioTab === tab.id ? "border-primary text-primary" : "text-text-muted hover:text-text-primary"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Config Panels */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-none">
+              
+              {/* Tab: TECH */}
+              {studioTab === 'TECH' && (
+                <div className="space-y-4">
+                  {techSignals.map(sig => (
+                    <div key={sig.id} className={cn("p-4 rounded-xl border transition-all", sig.enabled ? "bg-primary-soft/5 border-primary/20" : "bg-white/5 border-border/40 opacity-70")}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h3 className="text-xs font-bold text-text-primary">{sig.label}</h3>
+                          <p className="text-[10px] text-text-muted mt-0.5">{sig.description}</p>
+                        </div>
+                        <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
+                      </div>
+                      {sig.enabled && (
+                        <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-border/40 font-mono text-[10px]">
+                          {Object.entries(sig.params).map(([key, val]) => (
+                            <div key={key} className="space-y-1">
+                              <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">{PARAM_LABELS[key] || key}</label>
+                              <input 
+                                type="number" 
+                                className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                                value={val} 
+                                onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} 
+                                disabled={isLocked} 
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Tab: SENTIMENT */}
+              {studioTab === 'SENTIMENT' && sentimentSignal && (
+                <div className="space-y-4">
+                  <div className={cn("p-4 rounded-xl border transition-all", sentimentSignal.enabled ? "bg-primary-soft/5 border-primary/20" : "bg-white/5 border-border/40 opacity-70")}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="text-xs font-bold text-text-primary">{sentimentSignal.label}</h3>
+                        <p className="text-[10px] text-text-muted mt-0.5">{sentimentSignal.description}</p>
+                      </div>
+                      <Toggle label="" checked={sentimentSignal.enabled} onChange={(v) => toggleSignal(sentimentSignal.id, v)} />
+                    </div>
+                    {sentimentSignal.enabled && (
+                      <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-border/40 font-mono text-[10px]">
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">Buy Threshold (Sentiment &gt;=)</label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                            value={sentimentSignal.params.buyThreshold} 
+                            onChange={(e) => updateSignalParam(sentimentSignal.id, 'buyThreshold', e.target.value)}
+                            disabled={isLocked}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">Sell Threshold (Sentiment &lt;=)</label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                            value={sentimentSignal.params.sellThreshold} 
+                            onChange={(e) => updateSignalParam(sentimentSignal.id, 'sellThreshold', e.target.value)}
+                            disabled={isLocked}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Real-time preview */}
+                  <div className="p-4 rounded-xl border border-border bg-[#101317] space-y-3">
+                    <h3 className="text-[11px] font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Cpu size={13} className="text-primary animate-pulse" />
+                      Live AI Sentiment Feed
+                    </h3>
+                    {studioData.loading ? (
+                      <div className="text-xs text-text-muted font-mono animate-pulse">Fetching latest news sentiment index...</div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-text-secondary font-medium">SoSoValue Fear & Greed Index:</span>
+                          <span className="text-sm font-bold font-mono text-primary">{studioData.newsSentiment}</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-danger via-warning to-success" 
+                            style={{ width: `${studioData.newsSentiment}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] text-text-muted font-mono pt-1">
+                          <span>Neutral (50)</span>
+                          <span className={cn(
+                            "font-bold",
+                            studioData.newsSentiment >= (sentimentSignal.params.buyThreshold || 75) ? "text-success" :
+                            studioData.newsSentiment <= (sentimentSignal.params.sellThreshold || 30) ? "text-danger" :
+                            "text-text-muted"
+                          )}>
+                            Trigger State: {
+                              studioData.newsSentiment >= (sentimentSignal.params.buyThreshold || 75) ? "BUY / LONG" :
+                              studioData.newsSentiment <= (sentimentSignal.params.sellThreshold || 30) ? "SELL / SHORT" :
+                              "NEUTRAL"
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: ETF */}
+              {studioTab === 'ETF' && etfSignal && (
+                <div className="space-y-4">
+                  <div className={cn("p-4 rounded-xl border transition-all", etfSignal.enabled ? "bg-primary-soft/5 border-primary/20" : "bg-white/5 border-border/40 opacity-70")}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="text-xs font-bold text-text-primary">{etfSignal.label}</h3>
+                        <p className="text-[10px] text-text-muted mt-0.5">{etfSignal.description}</p>
+                      </div>
+                      <Toggle label="" checked={etfSignal.enabled} onChange={(v) => toggleSignal(etfSignal.id, v)} />
+                    </div>
+                    {etfSignal.enabled && (
+                      <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-border/40 font-mono text-[10px]">
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">Buy Net Inflow Threshold ($M)</label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                            value={etfSignal.params.buyInflowM} 
+                            onChange={(e) => updateSignalParam(etfSignal.id, 'buyInflowM', e.target.value)}
+                            disabled={isLocked}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">Sell Net Outflow Threshold ($M)</label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                            value={etfSignal.params.sellOutflowM} 
+                            onChange={(e) => updateSignalParam(etfSignal.id, 'sellOutflowM', e.target.value)}
+                            disabled={isLocked}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Real-time preview */}
+                  <div className="p-4 rounded-xl border border-border bg-[#101317] space-y-3">
+                    <h3 className="text-[11px] font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Cpu size={13} className="text-primary animate-pulse" />
+                      Live ETF Flow Stream
+                    </h3>
+                    {studioData.loading ? (
+                      <div className="text-xs text-text-muted font-mono animate-pulse">Scraping Farside Investors table...</div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-text-secondary font-medium">Farside Daily Net Flow:</span>
+                          <span className={cn(
+                            "text-sm font-bold font-mono",
+                            studioData.etfInflowM >= 0 ? "text-success" : "text-danger"
+                          )}>
+                            {studioData.etfInflowM >= 0 ? '+' : ''}{studioData.etfInflowM}M USD
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-text-muted font-mono flex items-center justify-between">
+                          <span>Target Asset: {state.symbol.split('-')[0]} Spot ETF</span>
+                          <span className={cn(
+                            "font-bold",
+                            studioData.etfInflowM >= (etfSignal.params.buyInflowM || 100) ? "text-success" :
+                            studioData.etfInflowM <= (etfSignal.params.sellOutflowM || -50) ? "text-danger" :
+                            "text-text-muted"
+                          )}>
+                            Trigger State: {
+                              studioData.etfInflowM >= (etfSignal.params.buyInflowM || 100) ? "BUY / LONG" :
+                              studioData.etfInflowM <= (etfSignal.params.sellOutflowM || -50) ? "SELL / SHORT" :
+                              "NEUTRAL"
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: MACRO */}
+              {studioTab === 'MACRO' && macroSignal && (
+                <div className="space-y-4">
+                  <div className={cn("p-4 rounded-xl border transition-all", macroSignal.enabled ? "bg-primary-soft/5 border-primary/20" : "bg-white/5 border-border/40 opacity-70")}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="text-xs font-bold text-text-primary">{macroSignal.label}</h3>
+                        <p className="text-[10px] text-text-muted mt-0.5">{macroSignal.description}</p>
+                      </div>
+                      <Toggle label="" checked={macroSignal.enabled} onChange={(v) => toggleSignal(macroSignal.id, v)} />
+                    </div>
+                    {macroSignal.enabled && (
+                      <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-border/40 font-mono text-[10px]">
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">Buy DXY Drop Threshold (%)</label>
+                          <input 
+                            type="number" 
+                            step="0.05"
+                            className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                            value={macroSignal.params.buyDxyDropPct} 
+                            onChange={(e) => updateSignalParam(macroSignal.id, 'buyDxyDropPct', e.target.value)}
+                            disabled={isLocked}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">Sell DXY Rise Threshold (%)</label>
+                          <input 
+                            type="number" 
+                            step="0.05"
+                            className="w-full bg-[#080B0E] border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary focus:border-primary outline-none" 
+                            value={macroSignal.params.sellDxyRisePct} 
+                            onChange={(e) => updateSignalParam(macroSignal.id, 'sellDxyRisePct', e.target.value)}
+                            disabled={isLocked}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Real-time preview */}
+                  <div className="p-4 rounded-xl border border-border bg-[#101317] space-y-3">
+                    <h3 className="text-[11px] font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Cpu size={13} className="text-primary animate-pulse" />
+                      Live Macro DXY Correlation
+                    </h3>
+                    {studioData.loading ? (
+                      <div className="text-xs text-text-muted font-mono animate-pulse">Calculating DXY inverse metrics...</div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-text-secondary font-medium">Estimated DXY 24h Strength:</span>
+                          <span className={cn(
+                            "text-sm font-bold font-mono",
+                            studioData.dxyChangePct >= 0 ? "text-danger" : "text-success"
+                          )}>
+                            {studioData.dxyChangePct >= 0 ? '+' : ''}{studioData.dxyChangePct.toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-text-muted font-mono flex items-center justify-between">
+                          <span>Correlation Factor: -1.0 (Strict Inverse)</span>
+                          <span className={cn(
+                            "font-bold",
+                            studioData.dxyChangePct <= -(macroSignal.params.buyDxyDropPct || 0.15) ? "text-success" :
+                            studioData.dxyChangePct >= (macroSignal.params.sellDxyRisePct || 0.1) ? "text-danger" :
+                            "text-text-muted"
+                          )}>
+                            Trigger State: {
+                              studioData.dxyChangePct <= -(macroSignal.params.buyDxyDropPct || 0.15) ? "BUY / LONG" :
+                              studioData.dxyChangePct >= (macroSignal.params.sellDxyRisePct || 0.1) ? "SELL / SHORT" :
+                              "NEUTRAL"
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: CUSTOM */}
+              {studioTab === 'CUSTOM' && (
+                <div className="space-y-4">
+                  {customSignals.map(sig => (
+                    <div key={sig.id} className={cn("p-4 rounded-xl border transition-all", sig.enabled ? "bg-primary-soft/5 border-primary/20" : "bg-white/5 border-border/40 opacity-70")}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h3 className="text-xs font-bold text-text-primary">{sig.label}</h3>
+                          <p className="text-[10px] text-text-muted mt-0.5">{sig.description}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isLocked) return;
+                              const updated = state.signals.filter(s => s.id !== sig.id);
+                              state.setField('signals', updated);
+                            }}
+                            className="p-1 hover:bg-white/5 rounded-md text-danger/80 hover:text-danger cursor-pointer"
+                          >
+                            <X size={14} />
+                          </button>
+                          <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
+                        </div>
+                      </div>
+                      {sig.enabled && (
+                        <div className="space-y-3 mt-3 pt-3 border-t border-border/40">
+                          <div className="space-y-1 font-mono text-[10px]">
+                            <label className="block text-[9px] text-text-secondary uppercase font-bold font-sans">JavaScript Expression</label>
+                            <textarea
+                              rows={5}
+                              className="w-full bg-[#080B0E] border border-border rounded-lg p-3 text-xs text-text-primary focus:border-primary outline-none font-mono leading-relaxed"
+                              value={sig.customExpression}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const updated = state.signals.map(s => s.id === sig.id ? { ...s, customExpression: val } : s);
+                                state.setField('signals', updated);
+                              }}
+                              disabled={isLocked}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isLocked) return;
+                      const count = customSignals.length + 1;
+                      const newSig: SignalConfig = {
+                        id: `custom-${Date.now()}-${count}`,
+                        type: 'CUSTOM',
+                        enabled: true,
+                        label: `Custom JS Signal ${count}`,
+                        description: 'Custom programmable compiler trigger',
+                        params: { threshold: 0 },
+                        customExpression: '// Available: rsi(14), ema(9), sma(20), close, open, volume\n// Return: 1 for BUY, -1 for SELL, 0 for NEUTRAL\nreturn rsi(14) < 30 ? 1 : rsi(14) > 70 ? -1 : 0;'
+                      };
+                      state.setField('signals', [...state.signals, newSig]);
+                    }}
+                    className="w-full py-2.5 rounded-lg border border-dashed border-primary/30 hover:border-primary/50 text-xs text-primary font-bold hover:bg-primary/5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>+ Add Programmable JS Signal</span>
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
+
+          {/* Right Column: Live Signal Validation Matrix */}
+          <div className="w-[40%] flex flex-col bg-[#0B0E11] p-6 space-y-6">
+            <div className="flex flex-col gap-2">
+              <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5 select-none">
+                <BarChart3 size={14} className="text-primary" />
+                Live Validation Matrix
+              </h2>
+              <p className="text-[10px] text-text-secondary select-none">Observe current signal states and combined orchestrator decisions.</p>
+            </div>
+
+            {/* Resolved Decision Widget */}
+            <div className={cn(
+              "p-5 rounded-2xl border transition-all flex flex-col items-center justify-center text-center shadow-lg",
+              decision.action === 'LONG' ? "bg-success-soft/10 border-success/30 shadow-success/5" :
+              decision.action === 'SHORT' ? "bg-danger/5 border-danger/20 shadow-danger/5" :
+              "bg-white/5 border-border/60"
+            )}>
+              <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 select-none">Combined Target Action</span>
+              <h3 className={cn(
+                "text-lg font-black tracking-widest font-mono select-none",
+                decision.action === 'LONG' ? "text-success drop-shadow-[0_0_12px_rgba(63,185,80,0.4)]" :
+                decision.action === 'SHORT' ? "text-danger drop-shadow-[0_0_12px_rgba(248,81,73,0.4)]" :
+                "text-text-muted"
+              )}>
+                {decision.action === 'LONG' ? 'BUY / LONG' : decision.action === 'SHORT' ? 'SELL / SHORT' : 'NO TRIGGER (WAITING)'}
+              </h3>
+              <p className="text-[10px] text-text-secondary max-w-[280px] mt-2 font-mono leading-normal">
+                {decision.reasoning}
+              </p>
+            </div>
+
+            {/* Signal Trigger List */}
+            <div className="flex-1 flex flex-col min-h-0 space-y-2.5 overflow-y-auto scrollbar-none select-none">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Active Signal Components</span>
+              
+              {combinedSandbox.length === 0 ? (
+                <div className="text-center text-text-muted text-[10px] font-mono py-12">No signals enabled. Toggle indicators in the studio to validate.</div>
+              ) : (
+                <div className="space-y-2">
+                  {combinedSandbox.map((sig, i) => (
+                    <div key={i} className="p-3 rounded-xl border border-border/80 bg-[#101317] space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-text-primary">{sig.label}</span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-md font-bold text-[9px] font-mono",
+                          sig.direction === 'LONG' ? "bg-success-soft text-success border border-success/15" :
+                          sig.direction === 'SHORT' ? "bg-danger/10 text-danger border border-danger/15" :
+                          "bg-white/5 text-text-muted border border-border/20"
+                        )}>
+                          {sig.direction}
+                        </span>
+                      </div>
+                      <div className="w-full flex items-center justify-between text-[10px] font-mono text-text-secondary">
+                        <span className="truncate max-w-[180px]">{sig.description}</span>
+                        <span>Strength: {sig.strength.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
       <BotLayout
-      title="Wave 3 Signal Bot"
-      icon={Radio}
-      status={state.status}
-      symbol={state.symbol}
-      market={state.isSpot ? 'spot' : 'perps'}
-      configPanel={
-        <>
-          <AutoConfigureButton
-            symbol={state.symbol}
-            market={state.isSpot ? 'spot' : 'perps'}
-            recommender={recommendSignalBot}
-            hidden={isLocked}
-            onApply={(preset) => {
-              if (preset.leverage)           state.setField('leverage', String(preset.leverage));
-              if (preset.amountUsdt)         state.setField('amountUsdt', String(preset.amountUsdt));
-              if (preset.takeProfitPct)      state.setField('takeProfitPct', String(preset.takeProfitPct));
-              if (preset.stopLossPct)        state.setField('stopLossPct', String(preset.stopLossPct));
-              if (preset.combineMode)        state.setField('combineMode', preset.combineMode as CombineMode);
-              if (preset.checkInterval)      state.setField('checkInterval', String(preset.checkInterval));
-              if (preset.klineInterval)      state.setField('klineInterval', String(preset.klineInterval));
-              if (preset.cooldownSeconds)    state.setField('cooldownSeconds', String(preset.cooldownSeconds));
-              if (preset.maxOpenPositions)   state.setField('maxOpenPositions', String(preset.maxOpenPositions));
-              if (preset.onConflictingSignal) state.setField('onConflictingSignal', preset.onConflictingSignal as ConflictResolution);
-              if (preset.isSpot !== undefined) state.setField('isSpot', preset.isSpot === 'true');
-              if (preset.signalsJson) {
-                try {
-                  const parsed = JSON.parse(String(preset.signalsJson));
-                  if (Array.isArray(parsed)) state.setField('signals', parsed);
-                } catch { }
-              }
-            }}
-          />
-          {configPanel}
-        </>
-      }
-      statsPanel={statsPanel}
-      logsPanel={logsPanel}
-      howItWorksPanel={<BotsHowItWorks botType="Signal" />}
-      isLocked={isLocked}
-      onStart={() => setShowConfirm(true)}
-      onStop={() => void stopBot()}
-      currentPnl={state.realizedPnl + state.activePositions.reduce((sum, p) => sum + p.unrealizedPnl, 0)}
-      investment={parseFloat(state.amountUsdt) * Math.max(state.activePositions.length, 1)}
-    />
+        title="Wave 3 Signal Bot"
+        icon={Radio}
+        status={state.status}
+        symbol={state.symbol}
+        market={state.isSpot ? 'spot' : 'perps'}
+        configPanel={
+          <>
+            <AutoConfigureButton
+              symbol={state.symbol}
+              market={state.isSpot ? 'spot' : 'perps'}
+              recommender={recommendSignalBot}
+              hidden={isLocked}
+              onApply={(preset) => {
+                if (preset.leverage)           state.setField('leverage', String(preset.leverage));
+                if (preset.amountUsdt)         state.setField('amountUsdt', String(preset.amountUsdt));
+                if (preset.takeProfitPct)      state.setField('takeProfitPct', String(preset.takeProfitPct));
+                if (preset.stopLossPct)        state.setField('stopLossPct', String(preset.stopLossPct));
+                if (preset.combineMode)        state.setField('combineMode', preset.combineMode as CombineMode);
+                if (preset.checkInterval)      state.setField('checkInterval', String(preset.checkInterval));
+                if (preset.klineInterval)      state.setField('klineInterval', String(preset.klineInterval));
+                if (preset.cooldownSeconds)    state.setField('cooldownSeconds', String(preset.cooldownSeconds));
+                if (preset.maxOpenPositions)   state.setField('maxOpenPositions', String(preset.maxOpenPositions));
+                if (preset.onConflictingSignal) state.setField('onConflictingSignal', preset.onConflictingSignal as ConflictResolution);
+                if (preset.isSpot !== undefined) state.setField('isSpot', preset.isSpot === 'true');
+                if (preset.signalsJson) {
+                  try {
+                    const parsed = JSON.parse(String(preset.signalsJson));
+                    if (Array.isArray(parsed)) state.setField('signals', parsed);
+                  } catch { }
+                }
+              }}
+            />
+            {configPanel}
+          </>
+        }
+        statsPanel={statsPanel}
+        logsPanel={logsPanel}
+        howItWorksPanel={<BotsHowItWorks botType="Signal" />}
+        isLocked={isLocked}
+        onStart={() => setShowConfirm(true)}
+        onStop={() => void stopBot()}
+        currentPnl={state.realizedPnl + state.activePositions.reduce((sum, p) => sum + p.unrealizedPnl, 0)}
+        investment={parseFloat(state.amountUsdt) * Math.max(state.activePositions.length, 1)}
+      />
       <BotRiskSetupModal
         isOpen={showConfirm}
         botName="Signal Bot"

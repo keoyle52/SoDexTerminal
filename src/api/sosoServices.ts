@@ -213,7 +213,7 @@ export async function fetchEtfHistoricalInflow(type: EtfType): Promise<EtfDayDat
   return [];
 }
 
-async function scrapeFarsideEtfInflow(isBtc: boolean): Promise<number | null> {
+export async function scrapeFarsideEtfInflow(isBtc: boolean): Promise<number | null> {
   try {
     const slug = isBtc ? 'bitcoin-etf-flow-2' : 'ethereum-etf-flow-2';
     const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(`https://farside.co.uk/${slug}/`)}`;

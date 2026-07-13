@@ -351,15 +351,15 @@ const Wave3AgentConsole: React.FC = () => {
   );
 };
 
-type BotTab = 'wave3' | 'grid' | 'dca' | 'twap' | 'marketmaker' | 'signal' | 'howItWorks';
+type BotTab = 'wave3' | 'signal' | 'grid' | 'dca' | 'twap' | 'marketmaker' | 'howItWorks';
 
 const BOTS_CONFIG: Record<BotTab, { label: string; icon: React.ElementType; component: React.ComponentType | null }> = {
   wave3: { label: 'Wave 3 Autonomous', icon: Sparkles, component: null },
+  signal: { label: 'Signal Bot', icon: Activity, component: SignalBot },
   grid: { label: 'Grid Bot', icon: Grid2X2, component: GridBot },
   dca: { label: 'DCA Bot', icon: Clock, component: DcaBot },
   twap: { label: 'TWAP Bot', icon: Repeat, component: TwapBot },
   marketmaker: { label: 'Market Maker', icon: Layers, component: MarketMakerBot },
-  signal: { label: 'Signal Bot', icon: Activity, component: SignalBot },
   howItWorks: { label: 'How it Works', icon: ShieldCheck, component: BotsHowItWorks },
 };
 
