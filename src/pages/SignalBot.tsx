@@ -830,38 +830,66 @@ export const SignalBot: React.FC = () => {
       </div>
 
       {isSignalsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-backdrop p-2 sm:p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
-          <div className="glass-card w-full max-w-lg shadow-2xl animate-fade-in max-h-[calc(100%-2rem)] flex flex-col" style={{ border: '1px solid rgba(27,34,48,0.8)' }}>
-            <div className="flex items-center gap-3 p-3 sm:p-5 border-b border-border bg-background/50 shrink-0">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                <Zap size={18} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 animate-fade-in p-3">
+          <div className="w-full max-w-[480px] max-h-[85vh] bg-surface border border-border rounded-sm shadow-xl flex flex-col animate-fade-in overflow-hidden">
+            {/* Header */}
+            <div className="px-4 py-3 bg-[#101317] border-b border-border flex justify-between items-center shrink-0 select-none">
+              <div className="flex items-center gap-2">
+                <Zap size={14} className="text-primary" />
+                <h3 className="text-xs font-bold text-text-primary">Configure Active Signals</h3>
               </div>
-              <h3 className="text-base font-semibold flex-1">Configure Signals</h3>
-              <button onClick={() => setIsSignalsModalOpen(false)} className="text-text-muted hover:text-text-primary transition-colors rounded-lg p-1 hover:bg-surface-hover">
-                <X size={18} />
+              <button onClick={() => setIsSignalsModalOpen(false)} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
+                <X size={15} />
               </button>
             </div>
             
-            <div className="p-3 sm:p-5 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Select label="Combination Mode" value={state.combineMode} onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} disabled={isLocked} options={[{ value: 'ANY', label: 'ANY - If any signal triggers' }, { value: 'ALL', label: 'ALL - All enabled must agree' }, { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }]} />
+            {/* Body */}
+            <div className="p-4 space-y-4 overflow-y-auto scrollbar-none flex-1 font-sans text-xs">
+              <div className="flex flex-col gap-1 select-none">
+                <Select 
+                  label="Combination Mode" 
+                  value={state.combineMode} 
+                  onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)} 
+                  disabled={isLocked} 
+                  options={[
+                    { value: 'ANY', label: 'ANY - If any signal triggers' }, 
+                    { value: 'ALL', label: 'ALL - All enabled must agree' }, 
+                    { value: 'MAJORITY', label: 'MAJORITY - >50% must agree' }
+                  ]} 
+                />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Available Signals</span>
+              
+              <div className="border-b border-border pb-1 select-none">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Available Signals</span>
               </div>
-              <div className="flex flex-col gap-3">
+              
+              <div className="flex flex-col gap-2.5">
                 {state.signals.map(sig => (
-                  <div key={sig.id} className={cn("border border-border rounded-xl p-3 transition-colors", sig.enabled ? "bg-primary/5 border-primary/30" : "bg-background/40 opacity-70")}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{sig.label}</span>
+                  <div 
+                    key={sig.id} 
+                    className={cn(
+                      "border rounded-sm p-3 transition-colors", 
+                      sig.enabled 
+                        ? "bg-primary-soft/5 border-primary/20" 
+                        : "bg-[#0B0E11] border-border/60 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-center justify-between select-none">
+                      <span className="text-xs font-bold text-text-primary">{sig.label}</span>
                       <Toggle label="" checked={sig.enabled} onChange={(v) => toggleSignal(sig.id, v)} />
                     </div>
                     {sig.enabled && (
-                      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
+                      <div className="grid grid-cols-2 gap-3 mt-2.5 pt-2.5 border-t border-border/40 font-mono">
                         {Object.entries(sig.params).map(([key, val]) => (
                           <div key={key}>
-                            <label className="block text-[9px] text-text-muted uppercase mb-1">{PARAM_LABELS[key] || key}</label>
-                            <input type="number" className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:border-primary outline-none" value={val as number} onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} disabled={isLocked} />
+                            <label className="block text-[9px] text-text-secondary uppercase mb-1 font-sans font-bold">{PARAM_LABELS[key] || key}</label>
+                            <input 
+                              type="number" 
+                              className="w-full bg-[#0b0e11] border border-border rounded-sm px-2.5 py-1 text-xs text-text-primary focus:border-primary outline-none h-7" 
+                              value={val as number} 
+                              onChange={(e) => updateSignalParam(sig.id, key, e.target.value)} 
+                              disabled={isLocked} 
+                            />
                           </div>
                         ))}
                       </div>
@@ -871,10 +899,14 @@ export const SignalBot: React.FC = () => {
               </div>
             </div>
             
-            <div className="flex items-center justify-end gap-3 p-3 sm:p-4 border-t border-border bg-background/30 shrink-0">
-              <Button variant="primary" size="sm" fullWidth onClick={() => setIsSignalsModalOpen(false)}>
+            {/* Footer */}
+            <div className="p-3 bg-[#101317] border-t border-border flex shrink-0 select-none">
+              <button 
+                onClick={() => setIsSignalsModalOpen(false)}
+                className="w-full h-8 rounded-sm font-bold text-white bg-primary hover:bg-primary/90 text-[11px] transition-colors flex items-center justify-center cursor-pointer"
+              >
                 Done
-              </Button>
+              </button>
             </div>
           </div>
         </div>

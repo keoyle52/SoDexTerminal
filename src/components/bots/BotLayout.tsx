@@ -44,37 +44,13 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
     <div className="h-full flex flex-col md:flex-row bg-[#08090C] text-text-primary animate-fade-in select-none">
       {/* LEFT: Content Area */}
       <div className="flex-1 flex flex-col min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[450px] md:min-h-0 bg-[#0C0D10]">
-        
-        {howItWorksPanel && (
-          <div className="flex border-b border-border px-4 bg-[#101317]">
-            <button 
-              onClick={() => setActiveTab('dashboard')}
-              className={cn("px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer rounded-none", activeTab === 'dashboard' ? 'border-primary text-primary bg-primary-soft/10' : 'border-transparent text-text-secondary hover:text-text-primary')}
-            >
-              Dashboard
-            </button>
-            <button 
-              onClick={() => setActiveTab('howItWorks')}
-              className={cn("px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer rounded-none", activeTab === 'howItWorks' ? 'border-primary text-primary bg-primary-soft/10' : 'border-transparent text-text-secondary hover:text-text-primary')}
-            >
-              How It Works
-            </button>
-          </div>
-        )}
-
         <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
-          {activeTab === 'howItWorks' && howItWorksPanel ? (
-            <div className="flex-1 overflow-y-auto scrollbar-none animate-fade-in">
-              {howItWorksPanel}
+          <div className="flex-1 flex flex-col animate-fade-in h-full">
+            {statsPanel}
+            <div className="flex-1 overflow-hidden mt-3 bg-[#0B0E11] p-1.5 rounded-sm border border-border">
+              {logsPanel}
             </div>
-          ) : (
-            <div className="flex-1 flex flex-col animate-fade-in h-full">
-              {statsPanel}
-              <div className="flex-1 overflow-hidden mt-3 bg-[#0B0E11] p-1.5 rounded-sm border border-border">
-                {logsPanel}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
 

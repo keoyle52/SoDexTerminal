@@ -29,81 +29,81 @@ export const BotRiskSetupModal: React.FC<BotRiskSetupModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-[550px] bg-surface border border-info/20 rounded-3xl shadow-[0_10px_40px_-10px_rgba(37,99,235,0.2)] flex flex-col animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 animate-fade-in p-3">
+      <div className="w-full max-w-[480px] max-h-[85vh] bg-surface border border-border rounded-sm shadow-xl flex flex-col animate-fade-in overflow-hidden">
         
         {/* Header */}
-        <div className="p-4 sm:p-6 bg-gradient-to-r from-info/10 to-primary/5 border-b border-border flex justify-between items-start shrink-0 rounded-t-3xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-info/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 text-info mb-2">
-              <ShieldCheck size={28} />
-              <h2 className="text-xl font-black">{title}</h2>
+        <div className="px-4 py-3 bg-[#101317] border-b border-border flex justify-between items-start shrink-0 select-none">
+          <div>
+            <div className="flex items-center gap-2 text-primary mb-1">
+              <ShieldCheck size={16} />
+              <h2 className="text-sm font-bold text-text-primary">{title}</h2>
             </div>
-            <p className="text-sm text-text-secondary font-medium">
-              Configure global guardrails for {botName}. These settings override individual bot parameters to ensure maximum capital protection.
+            <p className="text-[10px] text-text-secondary leading-normal font-sans">
+              Configure global guardrails for {botName}. These settings override individual bot parameters to protect capital.
             </p>
           </div>
-          <button onClick={onCancel} className="text-text-muted hover:text-text-primary p-1 relative z-10">
-            <X size={20} />
+          <button onClick={onCancel} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
+            <X size={15} />
           </button>
         </div>
         
-        <div className="p-4 sm:p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+        {/* Body */}
+        <div className="p-4 space-y-4 overflow-y-auto scrollbar-none flex-1 font-sans text-xs">
           
           {/* AI Risk Threshold */}
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-text-primary flex items-center gap-2">
-                <Zap size={16} className="text-warning" /> AI Risk Override
+              <label className="text-[11px] font-bold text-text-primary flex items-center gap-1.5 select-none">
+                <Zap size={13} className="text-warning animate-pulse-dot" /> AI Risk Override
               </label>
-              <span className={cn("text-xs font-mono font-bold px-2 py-0.5 rounded", aiRiskThreshold > 80 ? "bg-red-500/20 text-red-400" : "bg-warning/20 text-warning")}>
+              <span className={cn("text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-sm border", aiRiskThreshold > 80 ? "bg-danger/10 border-danger/30 text-danger" : "bg-warning/10 border-warning/30 text-warning")}>
                 Score Limit: {aiRiskThreshold}/100
               </span>
             </div>
-            <p className="text-[11px] text-text-muted">Pause operations if SoSoValue's AI real-time risk assessment exceeds this threshold.</p>
+            <p className="text-[10px] text-text-secondary">Pause operations if SoSoValue's AI real-time risk assessment exceeds this threshold.</p>
             <input 
               type="range" min="10" max="100" 
               value={aiRiskThreshold} onChange={e => setAiRiskThreshold(Number(e.target.value))}
-              className="w-full accent-warning h-1.5 bg-surface-2 rounded-lg appearance-none cursor-pointer" 
+              className="w-full accent-primary h-1 bg-[#0B0E11] rounded appearance-none cursor-pointer" 
             />
           </div>
 
-          <hr className="border-border" />
+          <hr className="border-border/60" />
 
           {/* Fee Drag Protection */}
-          <label className="flex items-start gap-3 cursor-pointer group">
+          <label className="flex items-start gap-2.5 cursor-pointer group select-none">
             <div className="mt-0.5">
               <input 
                 type="checkbox" 
                 checked={feeDragProtection} onChange={e => setFeeDragProtection(e.target.checked)}
-                className="w-4 h-4 rounded border-border bg-surface-2 accent-info cursor-pointer" 
+                className="w-3.5 h-3.5 rounded-sm border-border bg-[#0B0E11] accent-primary cursor-pointer" 
               />
             </div>
             <div>
-              <div className="text-sm font-bold text-text-primary group-hover:text-info transition-colors">Fee Drag Protection</div>
-              <div className="text-[11px] text-text-muted mt-1 leading-relaxed">
-                Automatically prevent trades where exchange fees (Maker/Taker) would exceed the projected grid or signal profit. Highly recommended for high-frequency bots.
+              <div className="text-[11px] font-bold text-text-primary group-hover:text-primary transition-colors">Fee Drag Protection</div>
+              <div className="text-[10px] text-text-secondary mt-0.5 leading-normal">
+                Automatically prevent trades where exchange fees would exceed the projected grid or signal profit. Highly recommended for high-frequency bots.
               </div>
             </div>
           </label>
 
-          <hr className="border-border" />
+          <hr className="border-border/60" />
 
           {/* Max Loss Limit */}
-          <div className="space-y-3">
-            <label className="text-sm font-bold text-text-primary">Bot Auto-Kill Switch (Max Loss)</label>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-text-primary select-none">Bot Auto-Kill Switch (Max Loss)</label>
             <div className="flex gap-2">
-              <div className="flex bg-surface-2 p-1 rounded-xl border border-border">
+              <div className="flex bg-[#0B0E11] p-0.5 rounded-sm border border-border h-8 shrink-0 select-none">
                 <button 
                   onClick={() => { setMaxLossMode('usd'); setMaxLossValue(100); }}
-                  className={cn('px-4 py-2 rounded-lg text-xs font-black transition-all', maxLossMode === 'usd' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-text-muted hover:text-text-primary')}
+                  className={cn('px-2.5 text-[10px] font-bold rounded-sm transition-colors cursor-pointer', maxLossMode === 'usd' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary')}
                 >
                   $ (USD)
                 </button>
                 <button 
                   onClick={() => { setMaxLossMode('pct'); setMaxLossValue(5); }}
-                  className={cn('px-4 py-2 rounded-lg text-xs font-black transition-all', maxLossMode === 'pct' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-text-muted hover:text-text-primary')}
+                  className={cn('px-2.5 text-[10px] font-bold rounded-sm transition-colors cursor-pointer', maxLossMode === 'pct' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary')}
                 >
                   % (Equity)
                 </button>
@@ -112,41 +112,42 @@ export const BotRiskSetupModal: React.FC<BotRiskSetupModalProps> = ({
                 type="number" 
                 value={maxLossValue} 
                 onChange={e => setMaxLossValue(Number(e.target.value))}
-                className="flex-1 bg-surface-2 border border-border rounded-xl px-4 py-2 font-mono text-sm text-text-primary outline-none focus:border-red-500/50" 
+                className="flex-1 bg-[#0B0E11] border border-border rounded-sm px-3 h-8 font-mono text-xs text-text-primary outline-none focus:border-primary" 
               />
             </div>
-            <p className="text-[11px] text-text-muted">If the bot's realized PnL drops below this threshold, all active orders are cancelled and the bot shuts down instantly.</p>
+            <p className="text-[10px] text-text-secondary">If the bot's realized PnL drops below this threshold, all active orders are cancelled and the bot shuts down instantly.</p>
           </div>
 
-          <hr className="border-border" />
+          <hr className="border-border/60" />
 
           {/* Flash Crash Protection */}
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-text-primary flex items-center gap-2">
-                <ShieldAlert size={16} className="text-primary" /> Max Flash-Crash Slippage
+              <label className="text-[11px] font-bold text-text-primary flex items-center gap-1.5 select-none">
+                <ShieldAlert size={13} className="text-primary" /> Max Flash-Crash Slippage
               </label>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-primary/20 text-primary">
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-sm bg-primary-soft/10 text-primary border border-primary/20">
                 {flashCrashSlippagePct}% Limit
               </span>
             </div>
-            <p className="text-[11px] text-text-muted">Avoids executing market orders or stop-losses during extreme liquidity dry-ups.</p>
+            <p className="text-[10px] text-text-secondary">Avoids executing market orders or stop-losses during extreme liquidity dry-ups.</p>
             <input 
               type="range" min="0.1" max="10" step="0.1"
               value={flashCrashSlippagePct} onChange={e => setFlashCrashSlippagePct(Number(e.target.value))}
-              className="w-full accent-primary h-1.5 bg-surface-2 rounded-lg appearance-none cursor-pointer" 
+              className="w-full accent-primary h-1 bg-[#0B0E11] rounded appearance-none cursor-pointer" 
             />
           </div>
 
         </div>
 
-        <div className="p-4 sm:p-6 bg-surface-2 border-t border-border flex gap-3 sm:gap-4 shrink-0 rounded-b-3xl">
-          <button onClick={onCancel} className="flex-1 py-3.5 rounded-xl font-bold text-text-muted hover:text-text-primary bg-background border border-border transition-colors">Cancel</button>
+        {/* Footer */}
+        <div className="p-3 bg-[#101317] border-t border-border flex gap-3 shrink-0 select-none">
+          <button onClick={onCancel} className="flex-1 h-8 rounded-sm font-bold text-text-secondary hover:text-text-primary bg-transparent border border-border text-[11px] transition-colors cursor-pointer">Cancel</button>
           <button 
             onClick={onConfirm}
-            className="flex-1 py-3.5 rounded-xl font-black text-background bg-info hover:bg-info/90 shadow-lg shadow-info/20 transition-all flex items-center justify-center gap-2 group"
+            className="flex-1 h-8 rounded-sm font-bold text-white bg-primary hover:bg-primary/90 text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
           >
-            <Play size={18} className="fill-current group-hover:scale-110 transition-transform" /> Deploy Securely
+            <Play size={12} className="fill-current" /> Deploy Securely
           </button>
         </div>
       </div>
