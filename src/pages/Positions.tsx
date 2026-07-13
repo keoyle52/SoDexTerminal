@@ -371,32 +371,27 @@ export const Positions: React.FC = () => {
 
 
   return (
-    <div className="p-3 sm:p-5 md:p-6 flex flex-col gap-5 h-full overflow-y-auto">
+    <div className="p-4 flex flex-col gap-4 h-full overflow-y-auto select-none">
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary-soft flex items-center justify-center shadow-lg">
-            <Activity size={24} className="text-black" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-text-primary">Positions & Risk Centre</h2>
-            <p className="text-[11px] text-text-muted">
-              Live position tracking, EIP-712 collateral analysis, and portfolio stress testing
-            </p>
-          </div>
+      <div className="flex items-center justify-between shrink-0 flex-wrap gap-2">
+        <div>
+          <h2 className="text-sm font-bold text-text-primary">Positions & Risk Centre</h2>
+          <p className="text-[10px] text-text-secondary">
+            Live position tracking, EIP-712 collateral analysis, and portfolio stress testing
+          </p>
         </div>
 
         {/* Tab Selector */}
-        <div className="flex bg-surface-hover/30 border border-border p-1 rounded-xl">
+        <div className="flex bg-[#0B0E11] border border-border p-0.5 rounded-sm">
           {(['open', 'risk', 'history'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                'px-3.5 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all',
+                'px-2.5 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer',
                 activeTab === tab
-                  ? 'bg-primary text-black shadow-md'
-                  : 'text-text-muted hover:text-text-primary'
+                  ? 'bg-primary text-white'
+                  : 'text-text-secondary hover:text-text-primary'
               )}
             >
               {tab === 'open' ? 'Open Positions' : tab === 'risk' ? 'Risk Control' : 'Closed History'}
@@ -406,11 +401,11 @@ export const Positions: React.FC = () => {
       </div>
 
       {/* Metric Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
         <StatCard
           label="Margin Balance"
           value={<NumberDisplay value={marginBalance} prefix="$" />}
-          icon={<Wallet size={16} />}
+          icon={<Wallet size={14} />}
         />
         <StatCard
           label="Unrealized PnL"
@@ -421,41 +416,41 @@ export const Positions: React.FC = () => {
               trend={totalPnl >= 0 ? 'up' : 'down'}
             />
           }
-          icon={<TrendingUp size={16} />}
+          icon={<TrendingUp size={14} />}
           trend={totalPnl >= 0 ? 'up' : 'down'}
         />
         <StatCard
           label="Account Leverage"
           value={`${portfolioLeverage.toFixed(2)}x`}
-          icon={<BarChart3 size={16} />}
+          icon={<BarChart3 size={14} />}
         />
         
         {/* Collateral Health Card */}
         <div className="stat-card">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="text-[11px] font-medium text-text-secondary uppercase tracking-wider mb-2">
                 Collateral Health
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xl font-semibold font-mono tabular-nums">{healthScore}%</span>
+                <span className="text-xl font-bold font-mono tabular-nums text-text-primary">{healthScore}%</span>
                 {healthScore > 75 ? (
-                  <ShieldCheck size={16} className="text-success shrink-0" />
+                  <ShieldCheck size={14} className="text-success shrink-0" />
                 ) : healthScore > 40 ? (
-                  <Info size={16} className="text-warning shrink-0" />
+                  <Info size={14} className="text-warning shrink-0" />
                 ) : (
-                  <AlertTriangle size={16} className="text-danger shrink-0" />
+                  <AlertTriangle size={14} className="text-danger shrink-0" />
                 )}
               </div>
             </div>
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <Shield size={16} />
+            <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <Shield size={14} />
             </div>
           </div>
-          <div className="mt-3 h-1.5 bg-background rounded-full overflow-hidden">
+          <div className="mt-2.5 h-1 bg-[#0B0E11] rounded-sm overflow-hidden border border-border/20">
             <div
               className={cn(
-                'h-full rounded-full transition-all duration-500',
+                'h-full rounded-sm transition-all duration-500',
                 healthScore > 75 ? 'bg-success' : healthScore > 40 ? 'bg-warning' : 'bg-danger'
               )}
               style={{ width: `${healthScore}%` }}
@@ -531,49 +526,49 @@ export const Positions: React.FC = () => {
       {/* Tabs Content */}
       <div className="flex-1 min-h-[350px] flex flex-col">
         {activeTab === 'open' && (
-          <div className="flex-1 glass-card flex flex-col p-0 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          <div className="flex-1 bg-surface border border-border rounded-sm flex flex-col p-0 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-[#101317]">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">
                   Active Positions
                 </span>
                 <span className="badge badge-primary">{positions.length}</span>
               </div>
               {positions.length > 0 && (
-                <Button variant="danger" size="sm" icon={<XIcon size={12} />} onClick={handleCloseAll}>
+                <Button variant="danger" size="sm" icon={<XIcon size={12} />} onClick={handleCloseAll} className="h-7 text-xs rounded-sm">
                   Close All Positions
                 </Button>
               )}
             </div>
             <div className="overflow-auto flex-1">
-              <table className="data-table text-sm text-left whitespace-nowrap">
-                <thead className="text-[11px] text-text-muted uppercase tracking-wider border-b border-border">
+              <table className="data-table text-xs text-left whitespace-nowrap">
+                <thead className="text-[10px] text-text-secondary uppercase tracking-wider border-b border-border bg-[#0B0E11]">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Symbol</th>
-                    <th className="px-5 py-3 font-medium">Side</th>
-                    <th className="px-5 py-3 font-medium text-right">Size</th>
-                    <th className="px-5 py-3 font-medium text-right">Entry Price</th>
-                    <th className="px-5 py-3 font-medium text-right">Mark Price</th>
-                    <th className="px-5 py-3 font-medium text-right">Liquidation</th>
-                    <th className="px-5 py-3 font-medium text-right">Dist. to Liq (%)</th>
-                    <th className="px-5 py-3 font-medium text-right">Unrealized PnL</th>
-                    <th className="px-5 py-3 font-medium text-right">Margin / Leverage</th>
-                    <th className="px-5 py-3 font-medium text-right">Action</th>
+                    <th className="px-4 py-2 font-medium">Symbol</th>
+                    <th className="px-4 py-2 font-medium">Side</th>
+                    <th className="px-4 py-2 font-medium text-right">Size</th>
+                    <th className="px-4 py-2 font-medium text-right">Entry Price</th>
+                    <th className="px-4 py-2 font-medium text-right">Mark Price</th>
+                    <th className="px-4 py-2 font-medium text-right">Liquidation</th>
+                    <th className="px-4 py-2 font-medium text-right">Dist. to Liq (%)</th>
+                    <th className="px-4 py-2 font-medium text-right">Unrealized PnL</th>
+                    <th className="px-4 py-2 font-medium text-right">Margin / Leverage</th>
+                    <th className="px-4 py-2 font-medium text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className="divide-y divide-border/40 font-mono">
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="px-5 py-16 text-center">
-                        <div className="flex flex-col items-center gap-3 text-text-muted">
-                          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                          <span className="text-sm">Loading Positions…</span>
+                      <td colSpan={10} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center gap-2 text-text-muted">
+                          <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs font-sans">Loading Positions…</span>
                         </div>
                       </td>
                     </tr>
                   ) : positions.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-5 py-16 text-center text-text-muted text-sm">
+                      <td colSpan={10} className="px-4 py-12 text-center text-text-muted text-xs font-sans">
                         No active open positions found on SoDEX exchange
                       </td>
                     </tr>
@@ -586,78 +581,72 @@ export const Positions: React.FC = () => {
 
                       return (
                         <tr key={pos.symbol} className="hover:bg-surface-hover/30 transition-colors group">
-                          <td className="px-5 py-3.5 font-medium">{pos.symbol}</td>
-                          <td className="px-5 py-3.5">
-                            <span className={`badge ${pos.side === 'LONG' ? 'badge-success' : 'badge-danger'}`}>
+                          <td className="px-4 py-2.5 font-sans font-semibold text-text-primary">{pos.symbol}</td>
+                          <td className="px-4 py-2.5">
+                            <span className={cn(
+                              'px-1.5 py-0.2 rounded-sm text-[9px] font-bold border',
+                              pos.side === 'LONG' 
+                                ? 'bg-success/5 border-success/35 text-success' 
+                                : 'bg-danger/5 border-danger/35 text-danger'
+                            )}>
                               {pos.side}
                             </span>
                           </td>
-                          <td className="px-5 py-3.5 text-right tabular-nums font-mono text-text-secondary">
+                          <td className="px-4 py-2.5 text-right tabular-nums text-text-secondary">
                             <NumberDisplay value={pos.size} decimals={4} />
                           </td>
-                          <td className="px-5 py-3.5 text-right tabular-nums font-mono">
+                          <td className="px-4 py-2.5 text-right tabular-nums text-text-secondary">
                             <NumberDisplay value={pos.entryPrice} />
                           </td>
-                          <td className={`px-5 py-3.5 text-right tabular-nums font-mono ${markVsEntry}`}>
+                          <td className={`px-4 py-2.5 text-right tabular-nums ${markVsEntry}`}>
                             <NumberDisplay value={pos.markPrice} />
                           </td>
-                          <td className="px-5 py-3.5 text-right tabular-nums font-mono text-text-muted">
+                          <td className="px-4 py-2.5 text-right tabular-nums text-text-muted">
                             <NumberDisplay value={pos.liquidationPrice} />
                           </td>
                           
-                          {/* Distance to Liq Badge */}
-                          <td className="px-5 py-3.5 text-right tabular-nums font-mono">
+                          {/* Distance to Liq */}
+                          <td className="px-4 py-2.5 text-right tabular-nums">
                             <span className={cn(
-                              'px-2 py-0.5 rounded-full text-[10px] font-bold',
+                              'font-bold',
                               pos.distanceToLiq > 20 
-                                ? 'bg-success/20 text-success' 
+                                ? 'text-success' 
                                 : pos.distanceToLiq > 10 
-                                  ? 'bg-warning/20 text-warning' 
-                                  : 'bg-danger/20 text-danger animate-pulse'
+                                  ? 'text-warning' 
+                                  : 'text-danger animate-pulse'
                             )}>
                               {pos.distanceToLiq.toFixed(1)}%
                             </span>
                           </td>
 
-                          {/* PnL and Progress Bar */}
-                          <td className="px-5 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                          {/* PnL */}
+                          <td className="px-4 py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1 font-bold">
                               <NumberDisplay
                                 value={Math.abs(pos.pnl)}
                                 prefix={pos.pnl >= 0 ? '+' : '-'}
                                 trend={pnlTrend}
                               />
                               <span className={cn(
-                                'text-[10px] font-semibold',
+                                'text-[10px]',
                                 pnlTrend === 'up' ? 'text-success' : 'text-danger'
                               )}>
                                 ({pos.pnlPercent.toFixed(1)}%)
                               </span>
                             </div>
-                            <div className="mt-1.5 h-1 w-full bg-background rounded-full overflow-hidden">
-                              <div
-                                className={cn(
-                                  'h-full rounded-full',
-                                  pnlTrend === 'up' ? 'bg-success/50' : 'bg-danger/50'
-                                )}
-                                style={{ width: `${Math.min(Math.abs(pos.pnlPercent), 100)}%` }}
-                              />
-                            </div>
                           </td>
 
-                          <td className="px-5 py-3.5 text-right tabular-nums font-mono text-text-secondary">
+                          <td className="px-4 py-2.5 text-right tabular-nums text-text-secondary">
                             <NumberDisplay value={pos.margin} />
-                            <span className="text-text-muted text-[10px] ml-1.5">({pos.leverage}x)</span>
+                            <span className="text-text-muted text-[10px] ml-1.5 font-sans">({pos.leverage}x)</span>
                           </td>
-                          <td className="px-5 py-3.5 text-right">
-                            <Button
-                              variant="danger"
-                              size="sm"
+                          <td className="px-4 py-2.5 text-right">
+                            <button
                               onClick={() => handleClose(pos)}
-                              className="opacity-60 group-hover:opacity-100 transition-opacity"
+                              className="px-2 py-1 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded-sm text-[10px] font-bold cursor-pointer transition-colors"
                             >
                               Close
-                            </Button>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -670,272 +659,269 @@ export const Positions: React.FC = () => {
         )}
 
         {activeTab === 'risk' && (
-          <div className="flex flex-col gap-5 flex-1">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Risk Control Overview */}
-            <Card className="p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-2.5 pb-3 border-b border-border/50">
-                <Shield className="text-primary" size={18} />
-                <span className="text-sm font-semibold text-text-primary">Portfolio Risk Matrix</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-background/40 border border-border/60 rounded-xl">
-                  <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">Value at Risk (95% VaR)</div>
-                  <div className="text-xl font-bold font-mono text-text-primary">${var95_1Day.toFixed(2)}</div>
-                  <p className="text-[9px] text-text-muted mt-1 leading-relaxed">
-                    Estimated max loss over 1 day at 95% confidence under normal volatility.
-                  </p>
+          <div className="flex flex-col gap-4 flex-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Risk Control Overview */}
+              <div className="p-4 bg-surface border border-border rounded-sm flex flex-col gap-3.5">
+                <div className="flex items-center gap-2 pb-2.5 border-b border-border">
+                  <Shield className="text-primary" size={15} />
+                  <span className="text-xs font-bold text-text-primary">Portfolio Risk Matrix</span>
                 </div>
 
-                <div className="p-4 bg-background/40 border border-border/60 rounded-xl">
-                  <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">Margin Call Buffer</div>
-                  <div className="text-xl font-bold font-mono text-text-primary">
-                    {positions.length > 0 ? `${(100 - marginUsage).toFixed(1)}%` : '100%'}
+                <div className="grid grid-cols-2 gap-4 font-mono">
+                  <div className="p-3 bg-[#0B0E11] border border-border rounded-sm">
+                    <div className="text-[9px] text-text-secondary uppercase tracking-wider mb-1">Value at Risk (95% VaR)</div>
+                    <div className="text-lg font-bold text-text-primary">${var95_1Day.toFixed(2)}</div>
+                    <p className="text-[9px] text-text-muted mt-1 leading-normal font-sans">
+                      Estimated max loss over 1 day at 95% confidence under normal volatility.
+                    </p>
                   </div>
-                  <p className="text-[9px] text-text-muted mt-1 leading-relaxed">
-                    Margin left before a partial liquidation/forced position closing occurs.
-                  </p>
-                </div>
-              </div>
 
-              <div className="space-y-4 pt-2">
-                <div>
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="text-text-secondary">Collateral Safety Limit</span>
-                    <span className="font-semibold text-text-primary">{healthScore}/100</span>
-                  </div>
-                  <div className="h-2 bg-background rounded-full overflow-hidden">
-                    <div 
-                      className={cn(
-                        'h-full rounded-full transition-all',
-                        healthScore > 75 ? 'bg-success' : healthScore > 40 ? 'bg-warning' : 'bg-danger'
-                      )}
-                      style={{ width: `${healthScore}%` }}
-                    />
+                  <div className="p-3 bg-[#0B0E11] border border-border rounded-sm">
+                    <div className="text-[9px] text-text-secondary uppercase tracking-wider mb-1">Margin Call Buffer</div>
+                    <div className="text-lg font-bold text-text-primary">
+                      {positions.length > 0 ? `${(100 - marginUsage).toFixed(1)}%` : '100%'}
+                    </div>
+                    <p className="text-[9px] text-text-muted mt-1 leading-normal font-sans">
+                      Margin left before a partial liquidation/forced closing occurs.
+                    </p>
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-2.5">
-                  <Info size={15} className="text-primary shrink-0 mt-0.5" />
-                  <div className="text-[10px] text-text-secondary leading-relaxed">
-                    <strong>EIP-712 Signature Security:</strong> Every position is verified by cryptographically signed session tokens derived directly from your setup keys. Leverage is managed exchange-side for optimal collateral stability.
+                <div className="space-y-3 pt-1">
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-text-secondary">Collateral Safety Limit</span>
+                      <span className="font-semibold text-text-primary font-mono">{healthScore}/100</span>
+                    </div>
+                    <div className="h-1.5 bg-[#0B0E11] border border-border/40 rounded-sm overflow-hidden">
+                      <div 
+                        className={cn(
+                          'h-full rounded-sm transition-all',
+                          healthScore > 75 ? 'bg-success' : healthScore > 40 ? 'bg-warning' : 'bg-danger'
+                        )}
+                        style={{ width: `${healthScore}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-primary-soft/5 border border-primary/20 rounded-sm flex items-start gap-2">
+                    <Info size={14} className="text-primary shrink-0 mt-0.5" />
+                    <div className="text-[10px] text-text-secondary leading-normal font-sans">
+                      <strong>EIP-712 Signature Security:</strong> Every position is verified by cryptographically signed session tokens. Leverage is managed exchange-side for optimal collateral stability.
+                    </div>
                   </div>
                 </div>
               </div>
-            </Card>
 
-            {/* Stress Test Simulator */}
-            <Card className="p-5 flex flex-col">
-              <div className="flex items-center gap-2.5 pb-3 border-b border-border/50 mb-4">
-                <Activity className="text-amber-400" size={18} />
-                <span className="text-sm font-semibold text-text-primary">Portfolio Stress Testing</span>
+              {/* Stress Test Simulator */}
+              <div className="p-4 bg-surface border border-border rounded-sm flex flex-col">
+                <div className="flex items-center gap-2 pb-2.5 border-b border-border mb-3 select-none">
+                  <Activity className="text-warning" size={15} />
+                  <span className="text-xs font-bold text-text-primary">Portfolio Stress Testing</span>
+                </div>
+
+                <div className="overflow-auto flex-1">
+                  <table className="data-table text-xs text-left whitespace-nowrap">
+                    <thead className="text-[9px] text-text-secondary uppercase tracking-wider border-b border-border bg-[#0B0E11]">
+                      <tr>
+                        <th className="px-3 py-1.5 font-medium">Scenario</th>
+                        <th className="px-3 py-1.5 font-medium">Market Shift</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Simulated PnL</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Impact Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-mono">
+                      {[
+                        { name: 'Extreme Bull Move', shift: 15, class: 'text-success' },
+                        { name: 'Moderate Bull Move', shift: 5, class: 'text-success' },
+                        { name: 'Moderate Bear Move', shift: -5, class: 'text-danger' },
+                        { name: 'Extreme Bear Move', shift: -15, class: 'text-danger' },
+                        { name: 'Systemic Flash Crash', shift: -30, class: 'text-danger font-bold' },
+                      ].map((scenario) => {
+                        const impact = getStressImpact(scenario.shift);
+                        const isProfit = impact >= 0;
+                        const status = isProfit 
+                          ? (impact === 0 ? 'NEUTRAL' : 'PROFIT') 
+                          : (Math.abs(impact) > marginBalance * 0.5 ? 'MARGIN CALL' : 'LOSS');
+
+                        return (
+                          <tr key={scenario.name} className="hover:bg-surface-hover/20">
+                            <td className="px-3 py-2 font-semibold font-sans text-text-primary">{scenario.name}</td>
+                            <td className={cn('px-3 py-2 font-bold', scenario.class)}>
+                              {scenario.shift > 0 ? `+${scenario.shift}%` : `${scenario.shift}%`}
+                            </td>
+                            <td className={cn('px-3 py-2 text-right font-bold', isProfit ? 'text-success' : 'text-danger')}>
+                              {isProfit ? '+' : '-'}${Math.abs(impact).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={cn(
+                                'px-1.5 py-0.2 rounded-sm text-[8px] font-bold border',
+                                status === 'PROFIT' ? 'bg-success/5 border-success/35 text-success' :
+                                status === 'NEUTRAL' ? 'bg-white/5 border-white/10 text-text-secondary' :
+                                status === 'LOSS' ? 'bg-danger/5 border-danger/35 text-danger' :
+                                'bg-danger text-white border-danger animate-pulse'
+                              )}>
+                                {status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+            </div>
 
-              <div className="overflow-auto flex-1">
-                <table className="data-table text-xs text-left whitespace-nowrap">
-                  <thead className="text-[10px] text-text-muted uppercase tracking-wider border-b border-border">
-                    <tr>
-                      <th className="px-4 py-2 font-medium">Scenario</th>
-                      <th className="px-4 py-2 font-medium">Market Shift</th>
-                      <th className="px-4 py-2 font-medium text-right">Simulated PnL</th>
-                      <th className="px-4 py-2 font-medium text-right">Impact Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {[
-                      { name: 'Extreme Bull Move', shift: 15, class: 'text-success' },
-                      { name: 'Moderate Bull Move', shift: 5, class: 'text-success' },
-                      { name: 'Moderate Bear Move', shift: -5, class: 'text-danger' },
-                      { name: 'Extreme Bear Move', shift: -15, class: 'text-danger' },
-                      { name: 'Systemic Flash Crash', shift: -30, class: 'text-danger font-bold' },
-                    ].map((scenario) => {
-                      const impact = getStressImpact(scenario.shift);
-                      const isProfit = impact >= 0;
-                      const status = isProfit 
-                        ? (impact === 0 ? 'NEUTRAL' : 'PROFIT') 
-                        : (Math.abs(impact) > marginBalance * 0.5 ? 'MARGIN CALL' : 'LOSS');
-
-                      return (
-                        <tr key={scenario.name} className="hover:bg-surface-hover/20">
-                          <td className="px-4 py-3 font-semibold text-text-primary">{scenario.name}</td>
-                          <td className={cn('px-4 py-3 font-mono font-bold', scenario.class)}>
-                            {scenario.shift > 0 ? `+${scenario.shift}%` : `${scenario.shift}%`}
-                          </td>
-                          <td className={cn('px-4 py-3 text-right font-mono font-bold', isProfit ? 'text-success' : 'text-danger')}>
-                            {isProfit ? '+' : '-'}${Math.abs(impact).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={cn(
-                              'px-2 py-0.5 rounded text-[9px] font-bold',
-                              status === 'PROFIT' 
-                                ? 'bg-success/20 text-success' 
-                                : status === 'NEUTRAL' 
-                                  ? 'bg-text-muted/20 text-text-muted'
-                                  : status === 'LOSS' 
-                                    ? 'bg-danger/20 text-danger' 
-                                    : 'bg-red-600 text-white animate-pulse'
-                            )}>
-                              {status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            {/* Failure-Case Analysis & Mitigation Panel */}
+            <div className="p-4 bg-surface border border-border rounded-sm flex flex-col gap-3">
+              <div className="flex items-center gap-2 pb-2 border-b border-border">
+                <AlertTriangle className="text-danger" size={15} />
+                <span className="text-xs font-bold text-text-primary">Failure-Case Analysis & Mitigation Protocols</span>
               </div>
-            </Card>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                {/* Sideways Regimes */}
+                <div className="p-3 bg-[#0B0E11] border border-border/60 rounded-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-text-primary">Sideways Whipsaw</span>
+                      <span className="px-1.5 py-0.2 rounded-sm bg-warning/10 text-warning text-[9px] font-bold uppercase border border-warning/20">Moderate Risk</span>
+                    </div>
+                    <p className="text-[10px] text-text-secondary leading-normal mb-3 font-sans">
+                      <strong>Failure Mode:</strong> Trend-following algorithms execute entries on false breakouts, causing rapid whipsaws and consecutive SL triggers.
+                    </p>
+                  </div>
+                  <div className="p-2 bg-success/5 border border-success/20 rounded-sm text-[10px] text-success leading-normal font-sans">
+                    <strong>Mitigation:</strong> Score-margin threshold checks filter signals. Dynamic rotation to Grid Bot sweeps market-maker spreads.
+                  </div>
+                </div>
+
+                {/* Trending Crashes */}
+                <div className="p-3 bg-[#0B0E11] border border-border/60 rounded-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-text-primary">Flash Crashes</span>
+                      <span className="px-1.5 py-0.2 rounded-sm bg-danger/10 text-danger text-[9px] font-bold uppercase border border-danger/20">High Risk</span>
+                    </div>
+                    <p className="text-[10px] text-text-secondary leading-normal mb-3 font-sans">
+                      <strong>Failure Mode:</strong> Grid Bot accumulates long positions down to lower boundary, depleting margin and triggering liquidation.
+                    </p>
+                  </div>
+                  <div className="p-2 bg-success/5 border border-success/20 rounded-sm text-[10px] text-success leading-normal font-sans">
+                    <strong>Mitigation:</strong> Hard Stop-Loss exits close positions. Dynamic grid density expands lower boundary pricing, reducing risk.
+                  </div>
+                </div>
+
+                {/* News Volatility */}
+                <div className="p-3 bg-[#0B0E11] border border-border/60 rounded-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-text-primary">Toxic Flow & Slippage</span>
+                      <span className="px-1.5 py-0.2 rounded-sm bg-primary/10 text-primary text-[9px] font-bold uppercase border border-primary/20">Low Risk</span>
+                    </div>
+                    <p className="text-[10px] text-text-secondary leading-normal mb-3 font-sans">
+                      <strong>Failure Mode:</strong> High news volatility widens bid-ask spreads. MM bots fill toxic flows, and orders suffer severe slippage.
+                    </p>
+                  </div>
+                  <div className="p-2 bg-success/5 border border-success/20 rounded-sm text-[10px] text-success leading-normal font-sans">
+                    <strong>Mitigation:</strong> Latency checks halt order flow. Re-quote buffer offset widens bids to capture higher spreads.
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-
-          {/* Failure-Case Analysis & Mitigation Panel (Full Width) */}
-          <Card className="p-5 flex flex-col gap-4">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-border/50">
-              <AlertTriangle className="text-danger" size={18} />
-              <span className="text-sm font-semibold text-text-primary">Failure-Case Analysis & Mitigation Protocols</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Sideways Regimes */}
-              <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-text-primary">Sideways Whipsaw</span>
-                    <span className="px-2 py-0.5 rounded bg-warning/10 text-warning text-[9px] font-bold uppercase">Moderate Risk</span>
-                  </div>
-                  <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
-                    <strong>Failure Mode:</strong> Trend-following algorithms (BTC Predictor, Signal Bot) execute entries on false breakouts, causing rapid whipsaws and consecutive SL triggers.
-                  </p>
-                </div>
-                <div className="p-2.5 bg-success/5 border border-success/20 rounded-lg text-[10px] text-success leading-relaxed">
-                  <strong>Mitigation:</strong> Score-margin threshold checks filter low-conviction signals. Dynamic rotation to Grid Bot sweeps market-maker spreads.
-                </div>
-              </div>
-
-              {/* Trending Crashes */}
-              <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-text-primary">Flash Crashes</span>
-                    <span className="px-2 py-0.5 rounded bg-danger/20 text-danger text-[9px] font-bold uppercase">High Risk</span>
-                  </div>
-                  <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
-                    <strong>Failure Mode:</strong> Grid Bot accumulates long positions down to the lower boundary during price drops, depleting margin and triggering liquidation.
-                  </p>
-                </div>
-                <div className="p-2.5 bg-success/5 border border-success/20 rounded-lg text-[10px] text-success leading-relaxed">
-                  <strong>Mitigation:</strong> Hard Stop-Loss exits close positions. Dynamic grid density expands lower boundary pricing, reducing liquidation exposure.
-                </div>
-              </div>
-
-              {/* News Volatility */}
-              <div className="p-4 bg-background/30 border border-border/50 rounded-xl flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-text-primary">Toxic Flow & Slippage</span>
-                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-bold uppercase">Low Risk</span>
-                  </div>
-                  <p className="text-[11px] text-text-secondary leading-relaxed mb-3">
-                    <strong>Failure Mode:</strong> High-impact macroeconomic news widens bid-ask spreads. MM bots fill toxic flows, and orders suffer severe slippage.
-                  </p>
-                </div>
-                <div className="p-2.5 bg-success/5 border border-success/20 rounded-lg text-[10px] text-success leading-relaxed">
-                  <strong>Mitigation:</strong> WebSocket latency checks halt order flow during anomalies. Re-quote buffer offset widens bids to capture higher spreads.
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
+        )}
 
         {activeTab === 'history' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1">
             {/* History Statistics */}
-            <Card className="p-5 flex flex-col gap-4 lg:col-span-1">
-              <div className="flex items-center gap-2.5 pb-3 border-b border-border/50">
-                <BarChart3 className="text-primary" size={18} />
-                <span className="text-sm font-semibold text-text-primary">Historical Analytics</span>
+            <div className="p-4 bg-surface border border-border rounded-sm flex flex-col gap-3.5 lg:col-span-1">
+              <div className="flex items-center gap-2 pb-2.5 border-b border-border">
+                <BarChart3 className="text-primary" size={15} />
+                <span className="text-xs font-bold text-text-primary">Historical Analytics</span>
               </div>
 
-              <div className="space-y-3.5">
-                <div className="flex items-center justify-between text-xs pb-2.5 border-b border-border/30">
-                  <span className="text-text-secondary">Historical Trades Evaluated</span>
-                  <span className="font-mono font-semibold text-text-primary">{historyFills.length}</span>
+              <div className="space-y-2.5 text-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-border/30">
+                  <span className="text-text-secondary">Trades Evaluated</span>
+                  <span className="font-mono font-bold text-text-primary">{historyFills.length}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pb-2.5 border-b border-border/30">
+                <div className="flex items-center justify-between pb-2 border-b border-border/30">
                   <span className="text-text-secondary">Win Rate Estimate</span>
-                  <span className="font-mono font-semibold text-success">{winRate.toFixed(1)}%</span>
+                  <span className="font-mono font-bold text-success">{winRate.toFixed(1)}%</span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pb-2.5 border-b border-border/30">
+                <div className="flex items-center justify-between pb-2 border-b border-border/30">
                   <span className="text-text-secondary">Profit Factor</span>
-                  <span className="font-mono font-semibold text-primary">{profitFactor.toFixed(2)}</span>
+                  <span className="font-mono font-bold text-primary">{profitFactor.toFixed(2)}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pb-2.5 border-b border-border/30">
+                <div className="flex items-center justify-between pb-2 border-b border-border/30">
                   <span className="text-text-secondary">Total Commission Paid</span>
-                  <span className="font-mono font-semibold text-danger">${totalFees.toFixed(2)}</span>
+                  <span className="font-mono font-bold text-danger">${totalFees.toFixed(2)}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pb-2.5">
-                  <span className="text-text-secondary">Avg Win / Avg Loss Ratio</span>
-                  <span className="font-mono font-semibold text-text-primary">
+                <div className="flex items-center justify-between pb-1">
+                  <span className="text-text-secondary">Avg Win / Avg Loss</span>
+                  <span className="font-mono font-bold text-text-primary">
                     ${avgWinAmount.toFixed(0)} / ${avgLossAmount.toFixed(0)}
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-background/50 border border-border rounded-xl mt-auto">
-                <p className="text-[10px] text-text-muted leading-relaxed">
+              <div className="p-3 bg-[#0B0E11] border border-border rounded-sm mt-auto">
+                <p className="text-[9px] text-text-secondary leading-normal font-sans">
                   Analytics computed over recent EIP-712 settlement fills. Values are optimized based on active trading algorithms.
                 </p>
               </div>
-            </Card>
+            </div>
 
             {/* Fills / Trades List */}
-            <div className="glass-card flex flex-col p-0 overflow-hidden lg:col-span-2">
-              <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Recent execution fills log
+            <div className="bg-surface border border-border rounded-sm flex flex-col p-0 overflow-hidden lg:col-span-2">
+              <div className="px-4 py-2 border-b border-border flex items-center justify-between bg-[#101317]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">
+                  Recent Fills Log
                 </span>
-                <span className="badge badge-primary">{historyFills.length} Fills</span>
+                <span className="badge badge-primary font-mono">{historyFills.length} Fills</span>
               </div>
               <div className="overflow-auto flex-1">
                 <table className="data-table text-xs text-left whitespace-nowrap">
-                  <thead className="text-[10px] text-text-muted uppercase tracking-wider border-b border-border">
+                  <thead className="text-[9px] text-text-secondary uppercase tracking-wider border-b border-border bg-[#0B0E11]">
                     <tr>
-                      <th className="px-4 py-2.5 font-medium">Time</th>
-                      <th className="px-4 py-2.5 font-medium">Symbol</th>
-                      <th className="px-4 py-2.5 font-medium">Action</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Price</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Qty</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Total Fee</th>
+                      <th className="px-3 py-1.5 font-medium">Time</th>
+                      <th className="px-3 py-1.5 font-medium">Symbol</th>
+                      <th className="px-3 py-1.5 font-medium">Action</th>
+                      <th className="px-3 py-1.5 font-medium text-right">Price</th>
+                      <th className="px-3 py-1.5 font-medium text-right">Qty</th>
+                      <th className="px-3 py-1.5 font-medium text-right">Total Fee</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/50">
+                  <tbody className="divide-y divide-border/40 font-mono">
                     {historyFills.map((fill, index) => {
                       const dateStr = new Date(fill.time).toLocaleTimeString();
                       const isBuy = fill.side === 1;
 
                       return (
                         <tr key={fill.tradeID ?? index} className="hover:bg-surface-hover/20">
-                          <td className="px-4 py-2.5 font-mono text-text-muted">{dateStr}</td>
-                          <td className="px-4 py-2.5 font-semibold text-text-primary">{fill.symbol}</td>
-                          <td className="px-4 py-2.5">
+                          <td className="px-3 py-2 text-text-secondary">{dateStr}</td>
+                          <td className="px-3 py-2 font-semibold text-text-primary font-sans">{fill.symbol}</td>
+                          <td className="px-3 py-2">
                             <span className={cn(
-                              'px-1.5 py-0.5 rounded text-[9px] font-bold',
-                              isBuy ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'
+                              'px-1.5 py-0.2 rounded-sm text-[8px] font-bold border',
+                              isBuy ? 'bg-success/5 border-success/35 text-success' : 'bg-danger/5 border-danger/35 text-danger'
                             )}>
                               {isBuy ? 'BUY' : 'SELL'}
                             </span>
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-text-secondary">
+                          <td className="px-3 py-2 text-right text-text-secondary">
                             ${fill.price.toLocaleString()}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-text-secondary">
+                          <td className="px-3 py-2 text-right text-text-secondary">
                             {fill.quantity.toFixed(3)}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-danger">
+                          <td className="px-3 py-2 text-right text-danger">
                             ${fill.feeAmt.toFixed(2)}
                           </td>
                         </tr>

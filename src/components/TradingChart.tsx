@@ -34,52 +34,69 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height,
+      height: containerRef.current.clientHeight || height,
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#7d8590',
-        fontFamily: "'Inter', system-ui, sans-serif",
-        fontSize: 11,
+        textColor: '#8E99A8',
+        fontFamily: "var(--font-sans)",
+        fontSize: 10,
       },
       grid: {
-        vertLines: { color: 'rgba(27,34,48,0.4)' },
-        horzLines: { color: 'rgba(27,34,48,0.4)' },
+        vertLines: { color: 'rgba(30, 35, 42, 0.5)' },
+        horzLines: { color: 'rgba(30, 35, 42, 0.5)' },
       },
       crosshair: {
-        vertLine: { color: 'rgba(255,107,0,0.3)', labelBackgroundColor: '#FF6B00' },
-        horzLine: { color: 'rgba(255,107,0,0.3)', labelBackgroundColor: '#FF6B00' },
+        vertLine: { color: 'rgba(48, 115, 236, 0.25)', labelBackgroundColor: '#3073EC' },
+        horzLine: { color: 'rgba(48, 115, 236, 0.25)', labelBackgroundColor: '#3073EC' },
       },
       rightPriceScale: {
-        borderColor: 'rgba(27,34,48,0.6)',
+        borderColor: '#1E232A',
       },
       timeScale: {
-        borderColor: 'rgba(27,34,48,0.6)',
+        borderColor: '#1E232A',
         timeVisible: true,
         secondsVisible: false,
       },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#3fb950',
-      downColor: '#f85149',
-      borderUpColor: '#3fb950',
-      borderDownColor: '#f85149',
-      wickUpColor: '#3fb950',
-      wickDownColor: '#f85149',
+      upColor: '#00B574',
+      downColor: '#EF454A',
+      borderUpColor: '#00B574',
+      borderDownColor: '#EF454A',
+      wickUpColor: '#00B574',
+      wickDownColor: '#EF454A',
     });
 
     chartRef.current = chart;
     seriesRef.current = series;
 
     const handleResize = () => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
+      if (containerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({ 
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight || height
+        });
       }
     };
+    
+    // Add resize listener
     window.addEventListener('resize', handleResize);
+    
+    // Dynamic size observer to guarantee height calculation is correct
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    if (containerRef.current.parentElement) {
+      resizeObserver.observe(containerRef.current.parentElement);
+    }
+
+    // Trigger initial layout
+    setTimeout(handleResize, 50);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       if (markersPrimitiveRef.current) {
         markersPrimitiveRef.current.detach();
         markersPrimitiveRef.current = null;
@@ -126,7 +143,6 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         const toUnixSeconds = (v: unknown): number => {
           const n = typeof v === 'number' ? v : parseFloat(String(v ?? '0'));
           if (!isFinite(n) || n <= 0) return 0;
-          // If > 1e12 it is in milliseconds, otherwise already in seconds
           return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
         };
 
@@ -175,23 +191,23 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   }, [symbol, selectedInterval, market]);
 
   return (
-    <div className={cn('glass-card p-0 overflow-hidden', className)}>
+    <div className={cn('flex flex-col bg-surface overflow-hidden', className)}>
       {/* Interval Selector */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+      <div className="h-9 shrink-0 flex items-center justify-between px-4 border-b border-border bg-[#0B0E11] select-none">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-text-primary">{symbol}</span>
-          <span className="text-[10px] text-text-muted uppercase">{market}</span>
+          <span className="text-xs font-bold text-text-primary">{symbol}</span>
+          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-sm bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider">{market}</span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-0.5">
           {INTERVALS.map((iv) => (
             <button
               key={iv}
               onClick={() => setSelectedInterval(iv)}
               className={cn(
-                'px-2 py-1 text-[10px] rounded-md transition-all duration-200',
+                'px-2.5 py-1 text-[10px] font-bold transition-all duration-150 rounded-sm cursor-pointer',
                 selectedInterval === iv
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover',
+                  ? 'bg-primary-soft/10 text-primary border border-primary/20'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.02]',
               )}
             >
               {iv}
@@ -201,21 +217,20 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       </div>
 
       {/* Chart Container */}
-      <div className="relative" style={{ height }}>
+      <div className="flex-1 min-h-0 relative">
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/50 backdrop-blur-sm">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#08090C]/50">
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
         {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/30">
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#08090C]/30">
             <div className="text-center">
               <p className="text-xs text-text-muted">{error}</p>
               <button
                 onClick={() => {
                   setError(null);
                   setLoading(true);
-                  // Trigger re-fetch by toggling a hidden state
                   setSelectedInterval((prev) => prev);
                 }}
                 className="mt-2 text-[10px] text-primary hover:underline"
@@ -225,7 +240,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
             </div>
           </div>
         )}
-        <div ref={containerRef} className="w-full" style={{ height }} />
+        <div ref={containerRef} className="w-full h-full" />
       </div>
     </div>
   );

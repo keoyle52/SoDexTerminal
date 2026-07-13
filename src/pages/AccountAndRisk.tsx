@@ -11,62 +11,59 @@ export const AccountAndRisk: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
       {/* Top Navigation Bar for Account & Risk Hub */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-surface flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
-            <Shield size={18} />
-          </div>
+      <div className="shrink-0 px-4 pt-4 border-b border-border bg-surface select-none">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-bold text-text-primary">Account & Risk Centre</h2>
-            <p className="text-[10px] text-text-muted">Unified portfolio manager, liquidation safety, and non-custodial Web3 credentials</p>
+            <p className="text-[10px] text-text-secondary">Unified portfolio manager, liquidation safety, and non-custodial Web3 credentials</p>
           </div>
         </div>
 
         {/* Sub Tabs */}
-        <div className="flex items-center gap-1 p-1 bg-background border border-border rounded-xl">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
           <button
             onClick={() => setActiveTab('positions')}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+              'flex items-center gap-1.5 px-4 py-2 border-b-2 border-transparent text-xs font-semibold transition-all duration-150 rounded-none cursor-pointer',
               activeTab === 'positions'
-                ? 'bg-primary/15 text-primary border border-primary/30 shadow-sm'
-                : 'text-text-muted hover:text-text-secondary'
+                ? 'border-primary text-primary bg-primary-soft/10 font-bold'
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.01]'
             )}
           >
-            <Briefcase size={14} />
-            Positions & Orders
+            <Briefcase size={13} />
+            <span>Positions & Orders</span>
           </button>
 
           <button
             onClick={() => setActiveTab('risk')}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+              'flex items-center gap-1.5 px-4 py-2 border-b-2 border-transparent text-xs font-semibold transition-all duration-150 rounded-none cursor-pointer',
               activeTab === 'risk'
-                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm'
-                : 'text-text-muted hover:text-text-secondary'
+                ? 'border-success text-success bg-success-soft/10 font-bold'
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.01]'
             )}
           >
-            <Shield size={14} />
-            Risk & VaR Analytics
+            <Shield size={13} />
+            <span>Risk & VaR Analytics</span>
           </button>
 
           <button
             onClick={() => setActiveTab('wallet')}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+              'flex items-center gap-1.5 px-4 py-2 border-b-2 border-transparent text-xs font-semibold transition-all duration-150 rounded-none cursor-pointer',
               activeTab === 'wallet'
-                ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-sm'
-                : 'text-text-muted hover:text-text-secondary'
+                ? 'border-primary text-primary bg-primary-soft/10 font-bold'
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.01]'
             )}
           >
-            <Wallet size={14} />
-            Wallet & Security
+            <Wallet size={13} />
+            <span>Wallet & Security</span>
           </button>
         </div>
       </div>
 
       {/* Main Tab Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-background">
         {activeTab === 'positions' && <Positions />}
         {activeTab === 'risk' && <RiskCentre />}
         {activeTab === 'wallet' && <Settings />}

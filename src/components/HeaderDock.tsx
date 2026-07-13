@@ -115,21 +115,21 @@ export const HeaderDock: React.FC = () => {
   const soso = tickerPrices['WSOSO_vUSDC'] || tickerPrices['WSOSO_USDC'] || tickerPrices['SOSO-USD'] || { price: 0, change: 0 };
 
   return (
-    <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border shadow-lg">
+    <header className="flex flex-col shrink-0 z-40 bg-surface border-b border-border">
       {/* 1. TOP LIVE TICKER TAPE (Real-Time Live Updates) */}
-      <div className="h-7 bg-black/60 border-b border-border/60 flex items-center px-4 overflow-x-auto text-[11px] font-mono select-none space-x-6 text-text-muted shrink-0 scrollbar-none">
+      <div className="h-7 bg-[#0B0E11] border-b border-border flex items-center px-4 overflow-x-auto text-[10px] font-mono select-none space-x-6 text-text-secondary shrink-0 scrollbar-none">
         {(() => {
           const isUp = soso.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
-          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const colorClass = isUp ? 'text-success' : 'text-danger';
 
           return (
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isUp ? "bg-emerald-400" : "bg-red-400")} />
+              <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse-dot", isUp ? "bg-success" : "bg-danger")} />
               <span className="font-bold text-text-primary">SOSO/USD</span>
-              <span className={cn("font-bold", colorClass)}>{fmtPrice(soso.price)}</span>
+              <span className={cn("font-bold font-mono tabular-nums", colorClass)}>{fmtPrice(soso.price)}</span>
               {soso.price > 0 && (
-                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <span className={cn("flex items-center font-mono tabular-nums", colorClass)}>
                   <TrendIcon size={10} className="mr-0.5" />{fmtChange(soso.change, soso.price)}
                 </span>
               )}
@@ -137,19 +137,19 @@ export const HeaderDock: React.FC = () => {
           );
         })()}
 
-        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
+        <div className="h-3 w-[1px] bg-border shrink-0" />
 
         {(() => {
           const isUp = btc.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
-          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const colorClass = isUp ? 'text-success' : 'text-danger';
 
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">BTC/USD</span>
-              <span className={cn("font-semibold", colorClass)}>{fmtPrice(btc.price)}</span>
+              <span className={cn("font-semibold font-mono tabular-nums", colorClass)}>{fmtPrice(btc.price)}</span>
               {btc.price > 0 && (
-                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <span className={cn("flex items-center font-mono tabular-nums", colorClass)}>
                   <TrendIcon size={10} className="mr-0.5" />{fmtChange(btc.change, btc.price)}
                 </span>
               )}
@@ -157,19 +157,19 @@ export const HeaderDock: React.FC = () => {
           );
         })()}
 
-        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
+        <div className="h-3 w-[1px] bg-border shrink-0" />
 
         {(() => {
           const isUp = eth.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
-          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const colorClass = isUp ? 'text-success' : 'text-danger';
 
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">ETH/USD</span>
-              <span className={cn("font-semibold", colorClass)}>{fmtPrice(eth.price)}</span>
+              <span className={cn("font-semibold font-mono tabular-nums", colorClass)}>{fmtPrice(eth.price)}</span>
               {eth.price > 0 && (
-                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <span className={cn("flex items-center font-mono tabular-nums", colorClass)}>
                   <TrendIcon size={10} className="mr-0.5" />{fmtChange(eth.change, eth.price)}
                 </span>
               )}
@@ -177,18 +177,18 @@ export const HeaderDock: React.FC = () => {
           );
         })()}
 
-        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
+        <div className="h-3 w-[1px] bg-border shrink-0" />
 
         {(() => {
           const isUp = sol.change >= 0;
           const TrendIcon = isUp ? TrendingUp : TrendingDown;
-          const colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+          const colorClass = isUp ? 'text-success' : 'text-danger';
           return (
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-bold text-text-primary">SOL/USD</span>
-              <span className={cn("font-semibold", colorClass)}>{fmtPrice(sol.price)}</span>
+              <span className={cn("font-semibold font-mono tabular-nums", colorClass)}>{fmtPrice(sol.price)}</span>
               {sol.price > 0 && (
-                <span className={cn("text-[10px] flex items-center", colorClass)}>
+                <span className={cn("flex items-center font-mono tabular-nums", colorClass)}>
                   <TrendIcon size={10} className="mr-0.5" />{fmtChange(sol.change, sol.price)}
                 </span>
               )}
@@ -196,86 +196,85 @@ export const HeaderDock: React.FC = () => {
           );
         })()}
 
-        <div className="h-3 w-[1px] bg-border/60 shrink-0" />
+        <div className="h-3 w-[1px] bg-border shrink-0" />
 
-        <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-auto md:ml-0">
-          <span className="text-text-muted uppercase tracking-wider text-[10px]">SSI Sentiment:</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-text-muted uppercase tracking-wider text-[9px]">SSI Sentiment:</span>
           <span className={cn(
-            "px-1.5 py-0.5 rounded font-bold text-[10px]",
-            ssiSentiment.value >= 75 ? "bg-emerald-500/20 text-emerald-400" :
-            ssiSentiment.value >= 55 ? "bg-emerald-500/10 text-emerald-300" :
-            ssiSentiment.value >= 45 ? "bg-amber-500/10 text-amber-300" :
-            ssiSentiment.value >= 25 ? "bg-red-500/10 text-red-300" : "bg-red-500/20 text-red-400"
+            "px-1 py-0.2 rounded-sm font-bold text-[9px]",
+            ssiSentiment.value >= 75 ? "bg-success/10 text-success border border-success/25" :
+            ssiSentiment.value >= 55 ? "bg-success/5 text-success/80 border border-success/15" :
+            ssiSentiment.value >= 45 ? "bg-warning/5 text-warning/80 border border-warning/15" :
+            ssiSentiment.value >= 25 ? "bg-danger/5 text-danger/80 border border-danger/15" : "bg-danger/10 text-danger border border-danger/25"
           )}>
             {ssiSentiment.value} ({ssiSentiment.label})
           </span>
         </div>
 
-
-
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
-          <span className="text-text-muted uppercase tracking-wider text-[10px]">Portfolio 95% VaR:</span>
-          <span className="text-primary font-bold">—</span>
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          <span className="text-text-muted uppercase tracking-wider text-[9px]">Portfolio 95% VaR:</span>
+          <span className="text-primary font-bold font-mono">—</span>
         </div>
       </div>
 
       {/* 2. MAIN HEADER NAVIGATION DOCK */}
-      <div className="min-h-14 py-2 px-2 md:px-4 flex flex-wrap md:flex-nowrap items-center justify-between gap-2 md:gap-4">
-        {/* Brand Logo */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="relative w-8 h-8 rounded-xl bg-surface-2 border border-primary/30 p-1 flex items-center justify-center shadow-md shadow-primary/10 group cursor-pointer">
-            <img src="/favicon.svg" alt="SoDEX Logo" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110" />
-            <span className="absolute inset-0 rounded-xl bg-primary/15 blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+      <div className="h-14 px-4 flex items-center justify-between gap-4">
+        {/* Brand Logo & Nav Tabs */}
+        <div className="flex items-center h-full">
+          <div className="flex items-center gap-2 mr-6 shrink-0">
+            <div className="w-6 h-6 flex items-center justify-center">
+              <img src="/favicon.svg" alt="SoDEX Logo" className="w-full h-full object-contain" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-bold tracking-tight text-text-primary">SoDEX</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.2 rounded-sm bg-primary/10 text-primary border border-primary/25">
+                PRO
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-base font-extrabold tracking-tight text-text-primary">SoDEX</span>
-            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-primary text-background shadow-sm shadow-primary/30">
-              TERMINAL 3.0
-            </span>
-          </div>
+
+          {/* Navigation Tabs (Top Dock Navigation) */}
+          <nav className="flex items-center h-full gap-1 shrink-0 overflow-x-auto scrollbar-none">
+            {NAV_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = location.pathname === tab.to || (tab.to === '/terminal' && location.pathname === '/dashboard');
+              return (
+                <NavLink
+                  key={tab.to}
+                  to={tab.to}
+                  className={({ isActive: isLinkActive }) => {
+                    const active = isLinkActive || isActive;
+                    return cn(
+                      'flex items-center gap-1.5 px-4 h-14 border-b-2 border-transparent text-xs font-semibold transition-all duration-150 whitespace-nowrap rounded-none',
+                      active
+                        ? 'border-primary text-text-primary bg-primary-soft/10'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.01]'
+                    );
+                  }}
+                >
+                  <Icon size={13} />
+                  <span>{tab.label}</span>
+                  {tab.badge && (
+                    <span className="text-[8px] font-extrabold px-1 rounded-sm bg-white/5 text-text-muted uppercase tracking-widest scale-90">
+                      {tab.badge}
+                    </span>
+                  )}
+                </NavLink>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* Navigation Tabs (Top Dock Navigation) */}
-        <nav className="flex items-center gap-1.5 p-1 bg-background/60 border border-border/80 rounded-xl shrink-0 overflow-x-auto w-full md:w-auto order-last md:order-none mt-2 md:mt-0 no-scrollbar">
-          {NAV_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = location.pathname === tab.to || (tab.to === '/terminal' && location.pathname === '/dashboard');
-            return (
-              <NavLink
-                key={tab.to}
-                to={tab.to}
-                className={({ isActive: isLinkActive }) => {
-                  const active = isLinkActive || isActive;
-                  return cn(
-                    'flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 whitespace-nowrap',
-                    active
-                      ? 'bg-primary/15 text-primary border border-primary/30 shadow-sm shadow-primary/10'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
-                  );
-                }}
-              >
-                <Icon size={14} />
-                <span>{tab.label}</span>
-                {tab.badge && (
-                  <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-white/10 text-text-muted uppercase tracking-widest scale-90">
-                    {tab.badge}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
-
         {/* Right Action Controls */}
-        <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-auto md:ml-0">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Quick Tour */}
           <button
             onClick={() => setShowTour(true)}
             title="Platform Tour"
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-all shadow-sm"
+            className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-sm border border-border text-text-secondary hover:text-text-primary hover:bg-white/[0.02] transition-all"
           >
-            <Sparkles size={13} className="animate-pulse" />
-            <span className="hidden md:inline">Quick Tour</span>
+            <Sparkles size={12} />
+            <span className="hidden md:inline">Tour</span>
           </button>
 
           {/* Wallet Setup */}
@@ -283,17 +282,17 @@ export const HeaderDock: React.FC = () => {
             to="/settings"
             title="Wallet Setup & EIP-712 Delegation"
             className={cn(
-              'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all duration-150',
+              'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-sm border transition-all duration-150',
               isConnected
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20'
-                : 'bg-white/[0.04] border-border text-text-muted hover:text-text-primary hover:bg-white/[0.07]'
+                ? 'bg-success/5 border-success/35 text-success hover:bg-success/10'
+                : 'bg-white/[0.02] border-border text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
             )}
           >
-            <Wallet size={13} />
-            <span>
+            <Wallet size={12} />
+            <span className="font-mono">
               {isConnected && activeAddress
                 ? `${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}`
-                : 'Connect Wallet'}
+                : 'Connect'}
             </span>
           </NavLink>
 
@@ -302,14 +301,14 @@ export const HeaderDock: React.FC = () => {
             onClick={() => store.setIsDemoMode(!store.isDemoMode)}
             title={store.isDemoMode ? 'Exit Demo' : 'Try Demo Engine'}
             className={cn(
-              'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all duration-150',
+              'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-sm border transition-all duration-150',
               store.isDemoMode
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/20'
-                : 'bg-white/[0.04] border-border text-text-muted hover:text-text-primary hover:bg-white/[0.07]'
+                ? 'bg-warning/5 border-warning/35 text-warning hover:bg-warning/10'
+                : 'bg-white/[0.02] border-border text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
             )}
           >
-            <FlaskConical size={13} />
-            <span className="hidden sm:inline">{store.isDemoMode ? 'Demo On' : 'Try Demo'}</span>
+            <FlaskConical size={12} />
+            <span className="hidden sm:inline">{store.isDemoMode ? 'Demo On' : 'Demo'}</span>
           </button>
 
           {/* Settings NavLink */}
@@ -318,12 +317,12 @@ export const HeaderDock: React.FC = () => {
             title="Settings"
             className={({ isActive }) =>
               cn(
-                'p-2 rounded-lg border border-border bg-white/[0.03] text-text-muted hover:text-text-primary hover:bg-white/[0.07] transition-colors',
-                isActive && 'bg-primary/10 text-primary border-primary/30'
+                'p-2 rounded-sm border border-border bg-white/[0.01] text-text-secondary hover:text-text-primary hover:bg-white/[0.03] transition-colors',
+                isActive && 'bg-primary-soft/10 text-primary border-primary/20'
               )
             }
           >
-            <Settings size={14} />
+            <Settings size={13} />
           </NavLink>
         </div>
       </div>

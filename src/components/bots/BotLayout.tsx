@@ -41,21 +41,21 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
   });
 
   return (
-    <div className="h-full flex flex-col md:flex-row bg-[#0b0b0f] text-text-primary animate-in fade-in duration-500">
+    <div className="h-full flex flex-col md:flex-row bg-[#08090C] text-text-primary animate-fade-in select-none">
       {/* LEFT: Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 border-b md:border-b-0 md:border-r border-border/40 min-h-[500px] md:min-h-0 bg-background/50">
+      <div className="flex-1 flex flex-col min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[450px] md:min-h-0 bg-[#0C0D10]">
         
         {howItWorksPanel && (
-          <div className="flex border-b border-border/40 px-4 pt-2 gap-2 bg-surface/20">
+          <div className="flex border-b border-border px-4 bg-[#101317]">
             <button 
               onClick={() => setActiveTab('dashboard')}
-              className={cn("px-4 py-2 text-sm font-bold border-b-2 transition-colors", activeTab === 'dashboard' ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary')}
+              className={cn("px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer rounded-none", activeTab === 'dashboard' ? 'border-primary text-primary bg-primary-soft/10' : 'border-transparent text-text-secondary hover:text-text-primary')}
             >
               Dashboard
             </button>
             <button 
               onClick={() => setActiveTab('howItWorks')}
-              className={cn("px-4 py-2 text-sm font-bold border-b-2 transition-colors", activeTab === 'howItWorks' ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-primary')}
+              className={cn("px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer rounded-none", activeTab === 'howItWorks' ? 'border-primary text-primary bg-primary-soft/10' : 'border-transparent text-text-secondary hover:text-text-primary')}
             >
               How It Works
             </button>
@@ -64,13 +64,13 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
 
         <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
           {activeTab === 'howItWorks' && howItWorksPanel ? (
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 animate-in fade-in duration-300">
+            <div className="flex-1 overflow-y-auto scrollbar-none animate-fade-in">
               {howItWorksPanel}
             </div>
           ) : (
-            <div className="flex-1 flex flex-col animate-in fade-in duration-300 h-full">
+            <div className="flex-1 flex flex-col animate-fade-in h-full">
               {statsPanel}
-              <div className="flex-1 overflow-hidden mt-4 bg-surface/30 p-1 rounded-xl border border-border/50">
+              <div className="flex-1 overflow-hidden mt-3 bg-[#0B0E11] p-1.5 rounded-sm border border-border">
                 {logsPanel}
               </div>
             </div>
@@ -78,40 +78,50 @@ export const BotLayout: React.FC<BotLayoutProps> = ({
         </div>
       </div>
 
-      {/* RIGHT: Config Sidebar */}
-      <div className="w-full md:w-[360px] shrink-0 bg-surface/20 flex flex-col overflow-y-auto custom-scrollbar">
-        <div className="p-5 border-b border-border/40 flex items-center justify-between bg-surface/40 backdrop-blur-md sticky top-0 z-10">
-          <h2 className="text-lg font-black flex items-center gap-2"><Icon className="text-primary" size={20}/> {title}</h2>
-          <div className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", 
-            status === 'RUNNING' ? 'bg-emerald-500/20 text-emerald-400' :
-            status === 'ERROR' ? 'bg-red-500/20 text-red-400' : 'bg-surface-2 text-text-muted'
+      {/* RIGHT: Config Sidebar (Order Entry column feel) */}
+      <div className="w-full md:w-[320px] shrink-0 bg-[#101317] flex flex-col overflow-y-auto border-t md:border-t-0 md:border-l border-border scrollbar-none">
+        <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-[#161A20] sticky top-0 z-10 select-none">
+          <h2 className="text-xs font-bold flex items-center gap-1.5"><Icon className="text-text-secondary" size={14}/> {title}</h2>
+          <div className={cn("px-1.5 py-0.2 rounded-sm text-[9px] font-bold uppercase border", 
+            status === 'RUNNING' ? 'bg-success/5 border-success/35 text-success animate-pulse' :
+            status === 'ERROR' ? 'bg-danger/10 border-danger/35 text-danger' : 'bg-white/5 border-white/10 text-text-secondary'
           )}>
             {status}
           </div>
         </div>
         
-        <div className="p-5 flex-1 flex flex-col gap-6">
+        <div className="p-4 flex-1 flex flex-col gap-4">
           {onAutoConfig && !isLocked && (
-             <button onClick={onAutoConfig} disabled={autoConfigBusy} className="w-full py-3 border border-purple-500/30 text-purple-400 font-bold rounded-xl hover:bg-purple-500/10 transition-colors flex items-center justify-center gap-2 text-xs">
-               {autoConfigBusy ? <Activity size={14} className="animate-spin" /> : <Zap size={14} />} 
-               {autoConfigBusy ? "Analyzing..." : "AI Auto-Configure"}
+             <button 
+               onClick={onAutoConfig} 
+               disabled={autoConfigBusy} 
+               className="w-full h-8 border border-purple-500/20 bg-purple-500/5 text-purple-400 font-semibold rounded-sm hover:bg-purple-500/10 transition-colors flex items-center justify-center gap-1.5 text-xs cursor-pointer"
+             >
+               {autoConfigBusy ? <Activity size={12} className="animate-spin" /> : <Zap size={12} />} 
+               <span>{autoConfigBusy ? "Analyzing..." : "AI Auto-Configure"}</span>
              </button>
           )}
-          <div className="space-y-4">
+          
+          <div className="space-y-3">
             {configPanel}
           </div>
 
-          <div className="mt-auto space-y-4 pt-6">
+          <div className="mt-auto pt-4">
             {!isLocked ? (
-               <button onClick={onStart} className="w-full py-4 bg-primary text-background font-black rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 uppercase tracking-widest text-sm">
-                 <Play size={18} /> Start Bot
+               <button 
+                 onClick={onStart} 
+                 className="w-full h-10 bg-primary text-white font-bold rounded-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-1.5 uppercase text-xs cursor-pointer select-none"
+               >
+                 <Play size={14} /> <span>Start Bot</span>
                </button>
             ) : (
-               <button onClick={onStop} className="w-full py-4 bg-red-500 text-background font-black rounded-xl hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 uppercase tracking-widest text-sm">
-                 <StopCircle size={18} /> Stop Bot
+               <button 
+                 onClick={onStop} 
+                 className="w-full h-10 bg-danger text-white font-bold rounded-sm hover:bg-danger/90 transition-colors flex items-center justify-center gap-1.5 uppercase text-xs cursor-pointer select-none"
+               >
+                 <StopCircle size={14} /> <span>Stop Bot</span>
                </button>
             )}
-            
           </div>
         </div>
       </div>
