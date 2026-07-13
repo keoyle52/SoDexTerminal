@@ -86,26 +86,23 @@ export const Positions: React.FC = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const queryTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'open' | 'bots' | 'risk' | 'history'>('open');
+  const [activeTab, setActiveTab] = useState<'open' | 'bots' | 'risk'>('open');
 
   useEffect(() => {
     if (queryTab === 'bots') {
       setActiveTab('bots');
     } else if (queryTab === 'risk') {
       setActiveTab('risk');
-    } else if (queryTab === 'history') {
-      setActiveTab('history');
     } else {
       setActiveTab('open');
     }
   }, [queryTab]);
 
-  const handleTabChange = (tab: 'open' | 'bots' | 'risk' | 'history') => {
+  const handleTabChange = (tab: 'open' | 'bots' | 'risk') => {
     setActiveTab(tab);
     setSearchParams({ tab });
   };
   const [positions, setPositions] = useState<PositionRow[]>([]);
-  const [historyFills, setHistoryFills] = useState<HistoricalFill[]>([]);
   const [marginBalance, setMarginBalance] = useState(0);
   const [collateralBreakdown, setCollateralBreakdown] = useState<CollateralEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,28 +177,6 @@ export const Positions: React.FC = () => {
       setMarginBalance(totalWeightedCollateral);
 
       // Parse history/fills
-      let fills = Array.isArray(rawFills) ? (rawFills as any[]) : [];
-      // If demo mode, pre-populate history with realistic items to make the dashboard shine
-      if (store.isDemoMode && fills.length === 0) {
-        fills = [
-          { time: Date.now() - 4 * 3600000, symbol: 'BTC-USD', side: 1, price: 83200, quantity: 0.12, feeAmt: 3.99, tradeID: 991 },
-          { time: Date.now() - 12 * 3600000, symbol: 'ETH-USD', side: 2, price: 3290, quantity: 1.5, feeAmt: 1.97, tradeID: 992 },
-          { time: Date.now() - 25 * 3600000, symbol: 'SOL-USD', side: 1, price: 172.5, quantity: 10, feeAmt: 0.69, tradeID: 993 },
-          { time: Date.now() - 36 * 3600000, symbol: 'BTC-USD', side: 2, price: 84150, quantity: 0.08, feeAmt: 2.69, tradeID: 994 },
-          { time: Date.now() - 48 * 3600000, symbol: 'BNB-USD', side: 1, price: 605, quantity: 4.0, feeAmt: 0.97, tradeID: 995 },
-        ];
-      }
-      const parsedFills: HistoricalFill[] = fills.map((f: any) => ({
-        time: Number(f.time ?? f.timestamp ?? 0),
-        symbol: String(f.symbol ?? ''),
-        side: Number(f.side ?? 1),
-        price: parseFloat(String(f.price ?? 0)),
-        quantity: parseFloat(String(f.quantity ?? f.qty ?? 0)),
-        feeAmt: parseFloat(String(f.feeAmt ?? f.fee ?? 0)),
-        tradeID: Number(f.tradeID ?? f.tradeId ?? 0),
-      }));
-      setHistoryFills(parsedFills);
-
       // Parse positions
       const positionsArr = Array.isArray(rawPositions) ? rawPositions : [];
       const mapped: PositionRow[] = positionsArr.map((pos: Record<string, unknown>) => {
@@ -348,48 +323,7 @@ export const Positions: React.FC = () => {
     }, 0);
   };
 
-  // Compute real trade analytics from fill history
-  const totalFees = historyFills.reduce((s, f) => s + f.feeAmt, 0);
-  
-  // Group fills by symbol to compute realized PnL per round-trip
-  const tradeResults: number[] = [];
-  const fillsBySymbol = new Map<string, HistoricalFill[]>();
-  for (const f of historyFills) {
-    const arr = fillsBySymbol.get(f.symbol) || [];
-    arr.push(f);
-    fillsBySymbol.set(f.symbol, arr);
-  }
-  for (const [, fills] of fillsBySymbol) {
-    const sorted = [...fills].sort((a, b) => a.time - b.time);
-    // Match buys with subsequent sells (FIFO)
-    const buyQueue: { price: number; qty: number }[] = [];
-    for (const fill of sorted) {
-      if (fill.side === 1) { // BUY
-        buyQueue.push({ price: fill.price, qty: fill.quantity });
-      } else if (fill.side === 2 && buyQueue.length > 0) { // SELL
-        let remainQty = fill.quantity;
-        while (remainQty > 0 && buyQueue.length > 0) {
-          const buy = buyQueue[0];
-          const matchQty = Math.min(remainQty, buy.qty);
-          const pnl = matchQty * (fill.price - buy.price);
-          tradeResults.push(pnl);
-          buy.qty -= matchQty;
-          remainQty -= matchQty;
-          if (buy.qty <= 0) buyQueue.shift();
-        }
-      }
-    }
-  }
-  
-  const wins = tradeResults.filter(r => r > 0);
-  const losses = tradeResults.filter(r => r < 0);
-  const winsCount = wins.length;
-  const winRate = tradeResults.length > 0 ? (winsCount / tradeResults.length) * 100 : 0;
-  const avgWinAmount = wins.length > 0 ? wins.reduce((s, w) => s + w, 0) / wins.length : 0;
-  const avgLossAmount = losses.length > 0 ? Math.abs(losses.reduce((s, l) => s + l, 0) / losses.length) : 0;
-  const totalWins = wins.reduce((s, w) => s + w, 0);
-  const totalLosses = Math.abs(losses.reduce((s, l) => s + l, 0));
-  const profitFactor = totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? Infinity : 0);
+
 
 
   return (
@@ -405,7 +339,7 @@ export const Positions: React.FC = () => {
 
         {/* Tab Selector */}
         <div className="flex bg-[#0B0E11] border border-border p-0.5 rounded-sm">
-          {(['open', 'bots', 'risk', 'history'] as const).map((tab) => (
+          {(['open', 'bots', 'risk'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
@@ -416,7 +350,7 @@ export const Positions: React.FC = () => {
                   : 'text-text-secondary hover:text-text-primary'
               )}
             >
-              {tab === 'open' ? 'Open Positions' : tab === 'bots' ? 'Active Bots' : tab === 'risk' ? 'Risk Control' : 'Closed History'}
+              {tab === 'open' ? 'Open Positions' : tab === 'bots' ? 'Active Bots' : 'Risk Control'}
             </button>
           ))}
         </div>
@@ -788,8 +722,8 @@ export const Positions: React.FC = () => {
                     running: wave3Store.isAgentRunning,
                     symbol: wave3Store.targetCoin,
                     market: wave3Store.market,
-                    budget: wave3Store.investment,
-                    pnl: wave3Store.activePosition?.pnl || 0,
+                    budget: Number(wave3Store.investment || 0),
+                    pnl: Number(wave3Store.activePosition?.pnl || 0),
                     pnlLabel: 'PnL',
                     stopAction: () => {
                       wave3Store.setAgentRunning(false);
@@ -804,8 +738,8 @@ export const Positions: React.FC = () => {
                     running: botStore.gridBot.status === 'RUNNING',
                     symbol: botStore.gridBot.symbol,
                     market: botStore.gridBot.isSpot ? 'spot' : 'perps',
-                    budget: parseFloat(botStore.gridBot.amountUsdt) || 0,
-                    pnl: botStore.gridBot.realizedPnl,
+                    budget: Number(parseFloat(botStore.gridBot.amountUsdt) || 0),
+                    pnl: Number(botStore.gridBot.realizedPnl || 0),
                     pnlLabel: 'Realized PnL',
                     stopAction: () => {
                       botStore.gridBot.setField('status', 'STOPPED');
@@ -818,8 +752,8 @@ export const Positions: React.FC = () => {
                     running: botStore.signalBot.status === 'RUNNING',
                     symbol: botStore.signalBot.symbol,
                     market: botStore.signalBot.isSpot ? 'spot' : 'perps',
-                    budget: parseFloat(botStore.signalBot.amountUsdt) || 0,
-                    pnl: botStore.signalBot.realizedPnl,
+                    budget: Number(parseFloat(botStore.signalBot.amountUsdt) || 0),
+                    pnl: Number(botStore.signalBot.realizedPnl || 0),
                     pnlLabel: 'Realized PnL',
                     stopAction: () => {
                       botStore.signalBot.setField('status', 'STOPPED');
@@ -832,8 +766,8 @@ export const Positions: React.FC = () => {
                     running: botStore.marketMakerBot.status === 'RUNNING',
                     symbol: botStore.marketMakerBot.symbol,
                     market: 'spot',
-                    budget: parseFloat(botStore.marketMakerBot.budgetUsdt) || 0,
-                    pnl: botStore.marketMakerBot.volumeUsdt,
+                    budget: Number(parseFloat(botStore.marketMakerBot.budgetUsdt) || 0),
+                    pnl: Number(botStore.marketMakerBot.volumeUsdt || 0),
                     pnlLabel: 'Session Volume',
                     stopAction: () => {
                       botStore.marketMakerBot.setField('status', 'STOPPED');
@@ -1080,106 +1014,7 @@ export const Positions: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'history' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1">
-            {/* History Statistics */}
-            <div className="p-4 bg-surface border border-border rounded-sm flex flex-col gap-3.5 lg:col-span-1">
-              <div className="flex items-center gap-2 pb-2.5 border-b border-border">
-                <BarChart3 className="text-primary" size={15} />
-                <span className="text-xs font-bold text-text-primary">Historical Analytics</span>
-              </div>
 
-              <div className="space-y-2.5 text-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-border/30">
-                  <span className="text-text-secondary">Trades Evaluated</span>
-                  <span className="font-mono font-bold text-text-primary">{historyFills.length}</span>
-                </div>
-
-                <div className="flex items-center justify-between pb-2 border-b border-border/30">
-                  <span className="text-text-secondary">Win Rate Estimate</span>
-                  <span className="font-mono font-bold text-success">{winRate.toFixed(1)}%</span>
-                </div>
-
-                <div className="flex items-center justify-between pb-2 border-b border-border/30">
-                  <span className="text-text-secondary">Profit Factor</span>
-                  <span className="font-mono font-bold text-primary">{profitFactor.toFixed(2)}</span>
-                </div>
-
-                <div className="flex items-center justify-between pb-2 border-b border-border/30">
-                  <span className="text-text-secondary">Total Commission Paid</span>
-                  <span className="font-mono font-bold text-danger">${totalFees.toFixed(2)}</span>
-                </div>
-
-                <div className="flex items-center justify-between pb-1">
-                  <span className="text-text-secondary">Avg Win / Avg Loss</span>
-                  <span className="font-mono font-bold text-text-primary">
-                    ${avgWinAmount.toFixed(0)} / ${avgLossAmount.toFixed(0)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-[#0B0E11] border border-border rounded-sm mt-auto">
-                <p className="text-[9px] text-text-secondary leading-normal font-sans">
-                  Analytics computed over recent EIP-712 settlement fills. Values are optimized based on active trading algorithms.
-                </p>
-              </div>
-            </div>
-
-            {/* Fills / Trades List */}
-            <div className="bg-surface border border-border rounded-sm flex flex-col p-0 overflow-hidden lg:col-span-2">
-              <div className="px-4 py-2 border-b border-border flex items-center justify-between bg-[#101317]">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">
-                  Recent Fills Log
-                </span>
-                <span className="badge badge-primary font-mono">{historyFills.length} Fills</span>
-              </div>
-              <div className="overflow-auto flex-1">
-                <table className="data-table text-xs text-left whitespace-nowrap">
-                  <thead className="text-[9px] text-text-secondary uppercase tracking-wider border-b border-border bg-[#0B0E11]">
-                    <tr>
-                      <th className="px-3 py-1.5 font-medium">Time</th>
-                      <th className="px-3 py-1.5 font-medium">Symbol</th>
-                      <th className="px-3 py-1.5 font-medium">Action</th>
-                      <th className="px-3 py-1.5 font-medium text-right">Price</th>
-                      <th className="px-3 py-1.5 font-medium text-right">Qty</th>
-                      <th className="px-3 py-1.5 font-medium text-right">Total Fee</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40 font-mono">
-                    {historyFills.map((fill, index) => {
-                      const dateStr = new Date(fill.time).toLocaleTimeString();
-                      const isBuy = fill.side === 1;
-
-                      return (
-                        <tr key={fill.tradeID ?? index} className="hover:bg-surface-hover/20">
-                          <td className="px-3 py-2 text-text-secondary">{dateStr}</td>
-                          <td className="px-3 py-2 font-semibold text-text-primary font-sans">{fill.symbol}</td>
-                          <td className="px-3 py-2">
-                            <span className={cn(
-                              'px-1.5 py-0.2 rounded-sm text-[8px] font-bold border',
-                              isBuy ? 'bg-success/5 border-success/35 text-success' : 'bg-danger/5 border-danger/35 text-danger'
-                            )}>
-                              {isBuy ? 'BUY' : 'SELL'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right text-text-secondary">
-                            ${fill.price.toLocaleString()}
-                          </td>
-                          <td className="px-3 py-2 text-right text-text-secondary">
-                            {fill.quantity.toFixed(3)}
-                          </td>
-                          <td className="px-3 py-2 text-right text-danger">
-                            ${fill.feeAmt.toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       <ConfirmModal

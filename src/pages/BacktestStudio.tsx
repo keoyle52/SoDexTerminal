@@ -8,6 +8,10 @@ import { runBacktest, type BacktestResult, type BacktestTrade } from '../api/bac
 import { cn } from '../lib/utils';
 import { createDefaultSignals } from '../api/signalEngine';
 import { NumberDisplay } from '../components/common/NumberDisplay';
+import { 
+  buildContext, recommendGridBot, recommendDcaBot, 
+  recommendTwapBot, recommendMarketMakerBot, recommendSignalBot 
+} from '../api/aiAutoConfig';
 
 const COINS = [
   { value: 'BTC-USD', label: 'BTC-USD (Bitcoin)' },
@@ -44,8 +48,53 @@ export const BacktestStudio: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
 
+  const [configuring, setConfiguring] = useState(false);
+
   const handleParamChange = (key: string, val: string) => {
     setParams(prev => ({ ...prev, [key]: val }));
+  };
+
+  const runAutoConfigure = async () => {
+    setConfiguring(true);
+    try {
+      const budgetNum = parseFloat(budget) || 1000;
+      const ctx = await buildContext(symbol, market);
+      let presetResult;
+      if (botType === 'GRID') {
+        presetResult = recommendGridBot(ctx, budgetNum);
+      } else if (botType === 'DCA') {
+        presetResult = recommendDcaBot(ctx, budgetNum);
+      } else if (botType === 'TWAP') {
+        presetResult = recommendTwapBot(ctx, budgetNum);
+      } else if (botType === 'MM') {
+        presetResult = recommendMarketMakerBot(ctx, budgetNum);
+      } else {
+        presetResult = recommendSignalBot(ctx);
+      }
+      
+      const preset = presetResult.preset;
+      setParams(prev => ({
+        ...prev,
+        lowerPrice: String(preset.lowerPrice ?? prev.lowerPrice),
+        upperPrice: String(preset.upperPrice ?? prev.upperPrice),
+        gridCount: String(preset.gridCount ?? prev.gridCount),
+        dipPct: String(preset.dipPct ?? prev.dipPct),
+        maxOrders: String(preset.maxOrders ?? prev.maxOrders),
+        takeProfitPct: String(preset.takeProfitPct ?? prev.takeProfitPct),
+        stopLossPct: String(preset.stopLossPct ?? prev.stopLossPct),
+        slices: String(preset.slices ?? prev.slices),
+        spreadBps: String(preset.spreadBps ?? prev.spreadBps),
+        layers: String(preset.layers ?? prev.layers),
+        orderSizeUsdt: String(preset.orderSizeUsdt ?? prev.orderSizeUsdt),
+        combineMode: String(preset.combineMode ?? prev.combineMode),
+      }));
+      
+      toast.success(presetResult.rationale, { duration: 7000 });
+    } catch (e) {
+      toast.error('AI Auto-configure failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setConfiguring(false);
+    }
   };
 
   const executeBacktest = async () => {
@@ -311,6 +360,37 @@ export const BacktestStudio: React.FC = () => {
               )}
             </div>
           </div>
+
+          <button
+            onClick={runAutoConfigure}
+            disabled={configuring}
+            className={cn(
+              "group relative flex items-center justify-between gap-3 px-4 py-3 rounded-xl w-full",
+              "bg-gradient-to-r from-fuchsia-500/15 via-violet-500/12 to-cyan-500/15",
+              "border border-fuchsia-400/30 hover:border-fuchsia-400/50",
+              "shadow-[0_0_12px_rgba(217,70,239,0.15)] hover:shadow-[0_0_18px_rgba(217,70,239,0.3)]",
+              "transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-fuchsia-500/30 to-cyan-400/30 border border-fuchsia-400/40 flex items-center justify-center">
+                <Sparkles size={13} className="text-fuchsia-200" />
+              </div>
+              <div className="text-left">
+                <div className="text-[11px] font-bold uppercase tracking-wider bg-gradient-to-r from-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
+                  AI Auto-Configure Params
+                </div>
+                <div className="text-[10px] text-text-muted mt-0.5">
+                  Optimize backtest settings via AI
+                </div>
+              </div>
+            </div>
+            {configuring ? (
+              <div className="w-3 h-3 border-2 border-fuchsia-400/60 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <span className="text-[10px] text-fuchsia-300 font-mono group-hover:translate-x-0.5 transition-transform">→</span>
+            )}
+          </button>
 
           <button
             onClick={executeBacktest}
