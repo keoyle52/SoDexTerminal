@@ -18,6 +18,7 @@ import { TwapBot } from './TwapBot';
 import { MarketMakerBot } from './MarketMakerBot';
 import { SignalBot } from './SignalBot';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
+import { AiOrchestratorPanel } from '../components/AiOrchestratorPanel';
 
 const SosoLogo: React.FC<{ className?: string }> = ({ className }) => (
   <img src="/soso.png" className={className} alt="SOSO" />
@@ -321,35 +322,8 @@ const Wave3AgentConsole: React.FC = () => {
           )}
         </div>
 
-        <div className="flex-1 flex flex-col min-h-[400px] p-4 rounded-sm bg-[#0B0E11] border border-border relative overflow-hidden">
-          <h3 className="text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3 flex items-center gap-1.5">
-            <Cpu size={12} /> Gemini Orchestrator Log
-          </h3>
-          
-          <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-none font-mono text-[11px]">
-            {w3.logs.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-text-muted/40 gap-2">
-                <Brain size={32} className="opacity-20" />
-                <p className="text-xs font-semibold">Agent offline. Waiting for initialization.</p>
-              </div>
-            ) : (
-              w3.logs.map((log) => (
-                <div key={log.id} className="flex gap-2.5 animate-fade-in">
-                  <span className="text-text-muted font-mono text-[10px] shrink-0 mt-0.5">
-                    {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, fractionalSecondDigits: 2 })}
-                  </span>
-                  <span className={cn(
-                    "font-medium",
-                    log.type === 'ACTION' ? "text-purple-400" :
-                    log.type === 'SUCCESS' ? "text-success" :
-                    log.type === 'WARNING' ? "text-warning" : "text-text-secondary"
-                  )}>
-                    {log.message}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
+        <div className="flex-1 flex flex-col min-h-[450px] border border-border rounded-sm bg-surface overflow-hidden">
+          <AiOrchestratorPanel />
         </div>
       </div>
       
@@ -368,17 +342,17 @@ const Wave3AgentConsole: React.FC = () => {
               <h3 className="text-sm font-bold flex items-center gap-1.5"><Sparkles className="text-primary" size={16} /> How Wave 3 Works</h3>
               <button onClick={() => setShowInfo(false)} className="p-1 hover:bg-white/5 rounded-sm cursor-pointer"><X size={16} /></button>
             </div>
-            <div className="p-4 space-y-3 text-xs text-text-secondary leading-relaxed font-sans">
-              <p>Wave 3 is a fully autonomous quantitative orchestrator that connects directly to the exchange's data stream. It analyzes real-time <strong className="text-text-primary font-mono">1-minute k-lines</strong> every 10 seconds.</p>
+            <div className="p-4 space-y-3 text-xs text-text-secondary leading-relaxed font-sans font-normal">
+              <p>Wave 3 is a fully autonomous multi-agent consensus trading platform that connects directly to the exchange's data stream, making collaborative investment decisions every 10 seconds.</p>
               
-              <div className="space-y-2 bg-[#0B0E11] p-3 rounded-sm border border-border font-mono text-[11px]">
-                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-primary mt-1.5 shrink-0" /><div><strong>High Volatility:</strong> Max/min spread &gt; 1.5% in 14m. Deploys <strong className="text-purple-400">Grid Bot</strong> to capture wide price swings.</div></div>
-                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-success mt-1.5 shrink-0" /><div><strong>Trending Up (RSI &lt; 40):</strong> Oversold. Deploys <strong className="text-purple-400">DCA Bot</strong> to accumulate Long positions on dip.</div></div>
-                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-danger mt-1.5 shrink-0" /><div><strong>Trending Down (RSI &gt; 60):</strong> Overbought. Deploys <strong className="text-purple-400">Signal Bot</strong> to execute Short positions.</div></div>
-                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-warning mt-1.5 shrink-0" /><div><strong>Consolidation (RSI 40-60):</strong> Sideways chop. Orchestrator <strong className="text-purple-400">halts active trading</strong> and waits for trend/volatility breakout to preserve capital.</div></div>
+              <div className="space-y-2 bg-[#0B0E11] p-3 rounded-sm border border-border font-mono text-[10px]">
+                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-sky-400 mt-1.5 shrink-0" /><div className="text-text-primary"><strong className="text-sky-400">Macro Agent:</strong> Evaluates SoSoValue ETF flows, SSI Sentiment index, and Dollar Index (DXY) stability.</div></div>
+                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-indigo-400 mt-1.5 shrink-0" /><div className="text-text-primary"><strong className="text-indigo-400">Technical Agent:</strong> Computes technical oscillators (RSI, EMA, MACD, Bollinger Bands, volatility spreads).</div></div>
+                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 shrink-0" /><div className="text-text-primary"><strong className="text-amber-400">Sentiment Agent:</strong> Uses Gemini 2.0 to analyze live headlines and social sentiment metrics.</div></div>
+                <div className="flex gap-2"><div className="w-1 h-1 rounded-full bg-emerald-400 mt-1.5 shrink-0" /><div className="text-text-primary"><strong className="text-emerald-400">Risk Officer:</strong> Evaluates margin, drawdown thresholds, and enforces safety overrides.</div></div>
               </div>
 
-              <p>Positions are automatically monitored and closed out when target profits are reached. <strong className="text-text-primary">Flash Crash Protection</strong> instantly liquidates everything if the price drops &gt;3% in a single tick.</p>
+              <p>When consensus is reached, the engine auto-rotates active sub-bots (Grid Bot during Volatility, DCA Bot during Uptrends, Signal Bot during Downtrends, or holds stable assets). <strong className="text-text-primary">Flash Crash Protection</strong> liquidates all positions if a &gt;3% drop is detected in a 10s tick.</p>
             </div>
             <div className="p-3 border-t border-border bg-[#101317] flex justify-end">
               <button onClick={() => setShowInfo(false)} className="px-4 py-2 bg-primary text-white font-bold rounded-sm text-xs hover:bg-primary/90 transition-colors cursor-pointer">Understood</button>
