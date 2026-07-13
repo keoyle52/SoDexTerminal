@@ -242,10 +242,32 @@ function parseOrderIdNumeric(orderId: string): number {
 
 // ---------- Market Data (Public) ----------
 
+const DEMO_SYMBOLS_LIST = [
+  { symbol: 'BTC-USD', symbolID: 1, name: 'BTC-USD', ticker: 'BTC-USD', pricePrecision: 2, tickSize: 0.01, quantityPrecision: 6, stepSize: 0.000001 },
+  { symbol: 'ETH-USD', symbolID: 2, name: 'ETH-USD', ticker: 'ETH-USD', pricePrecision: 2, tickSize: 0.01, quantityPrecision: 4, stepSize: 0.0001 },
+  { symbol: 'SOL-USD', symbolID: 3, name: 'SOL-USD', ticker: 'SOL-USD', pricePrecision: 3, tickSize: 0.001, quantityPrecision: 2, stepSize: 0.01 },
+  { symbol: 'SOSO-USD', symbolID: 4, name: 'SOSO-USD', ticker: 'SOSO-USD', pricePrecision: 4, tickSize: 0.0001, quantityPrecision: 2, stepSize: 0.01 },
+  { symbol: 'BTC_USDC', symbolID: 11, name: 'BTC_USDC', ticker: 'BTC_USDC', pricePrecision: 2, tickSize: 0.01, quantityPrecision: 6, stepSize: 0.000001 },
+  { symbol: 'ETH_USDC', symbolID: 12, name: 'ETH_USDC', ticker: 'ETH_USDC', pricePrecision: 2, tickSize: 0.01, quantityPrecision: 4, stepSize: 0.0001 },
+  { symbol: 'SOL_USDC', symbolID: 13, name: 'SOL_USDC', ticker: 'SOL_USDC', pricePrecision: 3, tickSize: 0.001, quantityPrecision: 2, stepSize: 0.01 },
+  { symbol: 'SOSO_USDC', symbolID: 14, name: 'SOSO_USDC', ticker: 'SOSO_USDC', pricePrecision: 4, tickSize: 0.0001, quantityPrecision: 2, stepSize: 0.01 }
+];
+
 export async function fetchSymbols(market: 'spot' | 'perps' = 'perps') {
-  const client = getClient(market);
-  const res = await withRetry(() => client.get('/markets/symbols'));
-  return res?.data ?? res ?? [];
+  if (isDemo()) {
+    return DEMO_SYMBOLS_LIST.filter(s => market === 'spot' ? s.symbol.includes('_') : s.symbol.includes('-'));
+  }
+  try {
+    const client = getClient(market);
+    const res = await withRetry(() => client.get('/markets/symbols'));
+    const data = res?.data ?? res;
+    if (data && (Array.isArray(data) ? data.length > 0 : (data.symbols?.length > 0 || data.data?.length > 0))) {
+      return data;
+    }
+  } catch (err) {
+    console.warn(`fetchSymbols failed, falling back to static symbols list for ${market}:`, err);
+  }
+  return DEMO_SYMBOLS_LIST.filter(s => market === 'spot' ? s.symbol.includes('_') : s.symbol.includes('-'));
 }
 
 

@@ -192,13 +192,6 @@ export function startWave3Engine() {
           w3State.setActivePosition(null);
           w3State.setActiveAction('WAITING');
         }
-        else if (pos.botType === 'Market Maker Bot' && newRegime !== 'CONSOLIDATION') {
-          w3State.addLog(`Volatility expanded. Halting Market Maker to prevent toxic flow.`, 'WARNING');
-          await cancelAllOrders(w3State.targetCoin, w3State.market);
-          await placeOrder({ symbol: w3State.targetCoin, side: 2, type: 2, quantity: (Number(qty)*0.2).toFixed(6) }, w3State.market); // Dump partial inventory
-          w3State.setActivePosition(null);
-          w3State.setActiveAction('WAITING');
-        }
         else if (pos.botType === 'Grid Bot' && newRegime !== 'HIGH_VOLATILITY') {
           w3State.addLog(`Volatility normalized. Closing Grid Bot.`, 'SUCCESS');
           await cancelAllOrders(w3State.targetCoin, w3State.market);
@@ -228,12 +221,10 @@ export function startWave3Engine() {
           w3State.setActivePosition({ botType: 'Signal Bot', side: 'SHORT', entryPrice: currentPrice, currentPrice, pnl: 0, size: parseFloat(qty), status: 'ACTIVE' });
         }
         else if (newRegime === 'CONSOLIDATION') {
-          w3State.setActiveAction('DEPLOY_MM');
-          w3State.addLog(`Tight range. Deploying Market Maker Bot around $${currentPrice.toFixed(2)}.`, 'ACTION');
-          const qty = ((w3State.investment * 0.25) / currentPrice).toFixed(6);
-          await placeOrder({ symbol: w3State.targetCoin, side: 1, type: 1, price: (currentPrice * 0.999).toFixed(2), quantity: qty }, w3State.market);
-          await placeOrder({ symbol: w3State.targetCoin, side: 2, type: 1, price: (currentPrice * 1.001).toFixed(2), quantity: qty }, w3State.market);
-          w3State.setActivePosition({ botType: 'Market Maker Bot', side: 'LONG', entryPrice: currentPrice, currentPrice, pnl: 0, size: parseFloat(qty), status: 'ACTIVE' });
+          if (w3State.activeAction !== 'WAITING') {
+            w3State.setActiveAction('WAITING');
+            w3State.addLog(`Market in consolidation range. Holding capital until next trend/volatility breakout.`, 'INFO');
+          }
         }
         else if (newRegime === 'HIGH_VOLATILITY') {
           w3State.setActiveAction('DEPLOY_GRID');
