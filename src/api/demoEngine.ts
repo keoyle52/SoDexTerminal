@@ -176,6 +176,75 @@ function jitter(base: number, pct: number): number {
   return base + delta;
 }
 
+let isSyncingInit = false;
+async function fetchAndInitRealTickers() {
+  if (isSyncingInit) return;
+  isSyncingInit = true;
+  try {
+    const res = await perpsClient.get('/markets/tickers');
+    const tickers = res?.data ?? res ?? [];
+    if (Array.isArray(tickers)) {
+      for (const t of tickers) {
+        const sym = normaliseSymbolForKey(t.symbol);
+        const last = parseFloat(String(t.lastPx ?? t.lastPrice));
+        if (last && Number.isFinite(last)) {
+          let row = _state.tickers.get(sym);
+          if (!row) {
+            row = {
+              symbol: sym,
+              lastPrice: last,
+              openPrice: last,
+              high: last,
+              low: last,
+              volume: 1000,
+              quoteVolume: 1000 * last,
+              fundingRate: 0.0001,
+              openInterest: 10000,
+              nextFundingTime: Date.now() + FUNDING_INTERVAL_MS,
+              markPrice: last,
+              indexPrice: last,
+              bidPrice: last * 0.9995,
+              askPrice: last * 1.0005,
+              bidSize: 10,
+              askSize: 10
+            };
+            _state.tickers.set(sym, row);
+          } else {
+            row.lastPrice = last;
+            row.markPrice = parseFloat(String(t.markPrice)) || last;
+            row.indexPrice = parseFloat(String(t.indexPrice)) || last;
+            row.bidPrice = parseFloat(String(t.bidPx ?? t.bidPrice)) || last * 0.9995;
+            row.askPrice = parseFloat(String(t.askPx ?? t.askPrice)) || last * 1.0005;
+          }
+        }
+      }
+      
+      const btcPrice = _state.tickers.get('BTC-USD')?.lastPrice || 98000;
+      const sosoPrice = _state.tickers.get('SOSO-USD')?.lastPrice || 0.2952;
+      const btcBalance = _state.balances.find(b => b.coin === 'vBTC');
+      if (btcBalance) btcBalance.price = btcPrice;
+      const sosoBalance = _state.balances.find(b => b.coin === 'vSOSO');
+      if (sosoBalance) sosoBalance.price = sosoPrice;
+
+      // Update positions mark prices and PnL to align with real prices
+      for (const pos of _state.positions) {
+        const sym = normaliseSymbolForKey(pos.symbol);
+        const ticker = _state.tickers.get(sym);
+        if (ticker) {
+          pos.markPrice = ticker.lastPrice;
+          const priceDiff = pos.markPrice - pos.avgEntryPrice;
+          const sideMultiplier = pos.side === 'LONG' ? 1 : -1;
+          pos.unrealizedPnl = parseFloat((priceDiff * pos.size * sideMultiplier).toFixed(2));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[fetchAndInitRealTickers] failed to fetch real tickers:', err);
+  } finally {
+    isSyncingInit = false;
+  }
+}
+
 function ensureInit(): void {
   if (_state.initialised) return;
 
@@ -231,12 +300,13 @@ function ensureInit(): void {
 
   _state.balances = [
     { id: 1, coin: 'vUSDC', total: seedBalance, locked: 0, price: 1, marginRatio: 1 },
-    { id: 2, coin: 'vBTC', total: btcQty, locked: 0, price: _state.tickers.get('BTC-USD')?.lastPrice ?? 84000, marginRatio: 0.9 },
-    { id: 3, coin: 'vSOSO', total: sosoQty, locked: 0, price: 0.28, marginRatio: 0.5 },
+    { id: 2, coin: 'vBTC', total: btcQty, locked: 0, price: _state.tickers.get('BTC-USD')?.lastPrice ?? 98000, marginRatio: 0.9 },
+    { id: 3, coin: 'vSOSO', total: sosoQty, locked: 0, price: 0.2952, marginRatio: 0.5 },
   ];
 
   _state.initialised = true;
   startTicker();
+  void fetchAndInitRealTickers();
 }
 
 function startTicker(): void {
