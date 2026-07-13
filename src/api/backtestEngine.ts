@@ -24,6 +24,43 @@ export interface BacktestResult {
   volumeUsdt: number;
 }
 
+async function fetchBinanceKlines(symbol: string, interval: string, limit: number): Promise<CandleData[]> {
+  const mappings: Record<string, string> = {
+    'BTC-USD': 'BTCUSDT',
+    'ETH-USD': 'ETHUSDT',
+    'SOL-USD': 'SOLUSDT',
+  };
+  
+  const binanceSymbol = mappings[symbol.toUpperCase().replace(/_/g, '-')];
+  if (!binanceSymbol) {
+    throw new Error(`Symbol ${symbol} not supported on Binance API`);
+  }
+
+  const binanceInterval = interval === '15m' ? '15m' : '1h';
+  const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&limit=${limit}`;
+  
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Binance API returned status ${res.status}`);
+  }
+  
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    throw new Error('Invalid response from Binance API');
+  }
+
+  return data.map((d: any) => {
+    return {
+      time: Number(d[0]),
+      open: parseFloat(d[1]),
+      high: parseFloat(d[2]),
+      low: parseFloat(d[3]),
+      close: parseFloat(d[4]),
+      volume: parseFloat(d[5]),
+    };
+  });
+}
+
 export async function runBacktest(
   symbol: string,
   market: 'spot' | 'perps',
@@ -31,53 +68,62 @@ export async function runBacktest(
   params: Record<string, any>,
   budgetUsdt: number
 ): Promise<BacktestResult> {
-  // 1. Generate realistic, volatile historical kline data based on mainnet prices
   const interval = botType === 'TWAP' || botType === 'DCA' ? '1h' : '15m';
   const limit = 500;
   
-  let startPrice = 98450;
+  let klines: CandleData[] = [];
+  
   try {
-    const mainnetPrices = await fetchRealMainnetPrices();
-    const mainnetPrice = getMainnetPriceForSymbol(symbol, mainnetPrices);
-    if (mainnetPrice > 0) {
-      startPrice = mainnetPrice;
-    }
+    klines = await fetchBinanceKlines(symbol, interval, limit);
   } catch (err) {
-    console.warn('[runBacktest] failed to fetch mainnet price for backtest generation, using default:', err);
+    console.warn(`[runBacktest] Binance mainnet fetch failed for ${symbol}, generating simulated volatile data:`, err);
   }
 
-  // Determine volatility (jitter range) based on symbol
-  const cleanSym = symbol.toUpperCase();
-  let volCoeff = 0.0018; // approx 1.8% daily range for BTC
-  if (cleanSym.includes('SOL') || cleanSym.includes('ETH')) volCoeff = 0.0032;
-  if (cleanSym.includes('SOSO')) volCoeff = 0.0055;
+  // Fallback if Binance fails or symbol is not supported (e.g. SOSO-USD)
+  if (klines.length === 0) {
+    let startPrice = 98450;
+    try {
+      const mainnetPrices = await fetchRealMainnetPrices();
+      const mainnetPrice = getMainnetPriceForSymbol(symbol, mainnetPrices);
+      if (mainnetPrice > 0) {
+        startPrice = mainnetPrice;
+      }
+    } catch (err) {
+      console.warn('[runBacktest] failed to fetch mainnet price for backtest generation, using default:', err);
+    }
 
-  const klines: CandleData[] = [];
-  let price = startPrice * (0.97 + Math.random() * 0.06); // start slightly offset so it walks towards/around the centre
-  const now = Date.now();
-  const intervalMs = interval === '1h' ? 3600000 : 900000;
+    // Determine volatility (jitter range) based on symbol
+    const cleanSym = symbol.toUpperCase();
+    let volCoeff = 0.0018; // approx 1.8% daily range for BTC
+    if (cleanSym.includes('SOL') || cleanSym.includes('ETH')) volCoeff = 0.0032;
+    if (cleanSym.includes('SOSO')) volCoeff = 0.0055;
 
-  for (let i = limit - 1; i >= 0; i--) {
-    const time = now - i * intervalMs;
-    const open = price;
-    // Walk with a slight mean-reverting force back to startPrice so it oscillates beautifully inside the grid range
-    const deviation = (startPrice - price) / startPrice; // e.g. if price is below startPrice, deviation is positive
-    const drift = deviation * 0.05; // pull back slightly
-    const change = (Math.random() - 0.5 + drift) * volCoeff; 
-    
-    const close = Math.max(0.0001, open * (1 + change));
-    const high = Math.max(open, close) * (1 + Math.random() * volCoeff * 0.4);
-    const low = Math.min(open, close) * (1 - Math.random() * volCoeff * 0.4);
-    
-    klines.push({
-      time,
-      open,
-      high,
-      low,
-      close,
-      volume: Math.random() * 1000 + 100
-    });
-    price = close;
+    let price = startPrice * (0.97 + Math.random() * 0.06); // start slightly offset so it walks towards/around the centre
+    const now = Date.now();
+    const intervalMs = interval === '1h' ? 3600000 : 900000;
+
+    for (let i = limit - 1; i >= 0; i--) {
+      const time = now - i * intervalMs;
+      const open = price;
+      // Walk with a slight mean-reverting force back to startPrice so it oscillates beautifully inside the grid range
+      const deviation = (startPrice - price) / startPrice; // e.g. if price is below startPrice, deviation is positive
+      const drift = deviation * 0.05; // pull back slightly
+      const change = (Math.random() - 0.5 + drift) * volCoeff; 
+      
+      const close = Math.max(0.0001, open * (1 + change));
+      const high = Math.max(open, close) * (1 + Math.random() * volCoeff * 0.4);
+      const low = Math.min(open, close) * (1 - Math.random() * volCoeff * 0.4);
+      
+      klines.push({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume: Math.random() * 1000 + 100
+      });
+      price = close;
+    }
   }
 
   // Initialize simulation variables
