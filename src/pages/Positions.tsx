@@ -460,17 +460,18 @@ export const Positions: React.FC = () => {
       </div>
 
       {/* Collateral Breakdown */}
+      {/* Collateral Breakdown */}
       {collateralBreakdown.length > 0 && (
-        <div className="glass-card p-4 shrink-0">
-          <div className="flex items-center gap-2 mb-3">
-            <Info size={14} className="text-primary" />
-            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Collateral Breakdown</span>
-          </div>
-          <div className="overflow-x-auto">
+        <div className="p-4 bg-surface border border-border rounded-sm shrink-0 flex flex-col md:flex-row gap-6">
+          <div className="flex-1 overflow-x-auto min-w-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Info size={14} className="text-primary" />
+              <span className="text-xs font-bold text-text-primary uppercase tracking-wider">Collateral Breakdown</span>
+            </div>
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="text-text-muted border-b border-border">
-                  <th className="text-left py-1.5 font-medium">Asset</th>
+                <tr className="text-text-muted border-b border-border text-left">
+                  <th className="py-1.5 font-medium">Asset</th>
                   <th className="text-right py-1.5 font-medium">Amount</th>
                   <th className="text-right py-1.5 font-medium">Price</th>
                   <th className="text-right py-1.5 font-medium">Weight</th>
@@ -519,6 +520,89 @@ export const Positions: React.FC = () => {
                 </tr>
               </tfoot>
             </table>
+          </div>
+
+          {/* Asset Allocation Donut Chart Side Card */}
+          <div className="w-full md:w-[260px] shrink-0 border border-border/80 rounded-sm bg-[#0B0E11] p-4 flex flex-col justify-between select-none">
+            <div>
+              <h4 className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-3">Asset Allocation</h4>
+              <div className="flex items-center justify-between gap-4">
+                {/* SVG Donut */}
+                <div className="relative w-20 h-20 shrink-0">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
+                    <circle cx="40" cy="40" r="30" fill="transparent" stroke="#161A20" strokeWidth="8" />
+                    {(() => {
+                      const totalValue = collateralBreakdown.reduce((sum, entry) => sum + entry.rawValue, 0);
+                      let cumulativeAngle = 0;
+                      const colors = ['#F7931A', '#627EEA', '#14F195', '#F0B90B', '#58A6FF', '#D29922', '#F85149'];
+                      
+                      return collateralBreakdown.map((entry, idx) => {
+                        const percentage = totalValue > 0 ? (entry.rawValue / totalValue) * 100 : 0;
+                        const dashLength = (percentage / 100) * 188.5;
+                        const rotateAngle = cumulativeAngle;
+                        cumulativeAngle += (percentage / 100) * 360;
+                        
+                        const color = entry.coin === 'BTC' ? '#F7931A' :
+                                      entry.coin === 'ETH' ? '#627EEA' :
+                                      entry.coin === 'SOL' ? '#14F195' :
+                                      entry.coin === 'SOSO' ? '#F0B90B' :
+                                      colors[idx % colors.length];
+                                      
+                        return (
+                          <circle
+                            key={entry.coin}
+                            cx="40"
+                            cy="40"
+                            r="30"
+                            fill="transparent"
+                            stroke={color}
+                            strokeWidth="8"
+                            strokeDasharray={`${dashLength} 188.5`}
+                            strokeDashoffset="0"
+                            transform={`rotate(${rotateAngle} 40 40)`}
+                          />
+                        );
+                      });
+                    })()}
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center font-mono">
+                    <span className="text-[7px] text-text-muted uppercase">Net Val</span>
+                    <span className="text-[10px] font-black text-text-primary">
+                      ${collateralBreakdown.reduce((s, e) => s + e.rawValue, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Legend list */}
+                <div className="flex-1 flex flex-col gap-1.5 font-mono text-[9px] max-h-[90px] overflow-y-auto pr-1 scrollbar-none">
+                  {(() => {
+                    const totalValue = collateralBreakdown.reduce((sum, entry) => sum + entry.rawValue, 0);
+                    const colors = ['#F7931A', '#627EEA', '#14F195', '#F0B90B', '#58A6FF', '#D29922', '#F85149'];
+                    
+                    return collateralBreakdown.map((entry, idx) => {
+                      const percentage = totalValue > 0 ? (entry.rawValue / totalValue) * 100 : 0;
+                      const color = entry.coin === 'BTC' ? '#F7931A' :
+                                    entry.coin === 'ETH' ? '#627EEA' :
+                                    entry.coin === 'SOL' ? '#14F195' :
+                                    entry.coin === 'SOSO' ? '#F0B90B' :
+                                    colors[idx % colors.length];
+                      return (
+                        <div key={entry.coin} className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                            <span className="text-text-secondary truncate">{entry.coin}</span>
+                          </div>
+                          <span className="text-text-primary font-bold">{percentage.toFixed(0)}%</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </div>
+            <div className="text-[8px] text-text-muted leading-tight border-t border-border/30 pt-2 mt-2">
+              Collateral allocation of active spot balances.
+            </div>
           </div>
         </div>
       )}
