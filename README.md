@@ -24,15 +24,15 @@ Addressing critical feedback from the Wave 2 jury regarding client-side private 
 *   **Non-Custodial Connection:** Users connect their EVM wallets via MetaMask or WalletConnect. All manual trading orders are signed using standard browser-level `eth_signTypedData_v4` typed data signature relays. Raw private keys are never stored in the browser.
 *   **Session Key Delegation:** For 24/7 background automation, users authorize a restricted **Session Key** on SoDEX with a user-specified expiry duration. The bots execute signed orders using this delegated session key, which is locked to trading functions only, ensuring the user's primary wallet remains completely secure.
 
-### 2. 🤖 Wave 3 Autonomous Agent Mode (`wave3Engine.ts`)
-A fully autonomous (self-operating) background quant daemon that continuously monitors the markets without requiring any user interaction:
-*   **Regime Classification:** Fuses RSI, EMA crossovers, MACD momentum, Bollinger Bands, and volatility spreads to identify market conditions in real-time.
-*   **Automatic Bot Rotation:** Automatically rotates trading bots based on the detected regime:
-    *   **Grid Bot** is deployed during **High Volatility** regimes.
-    *   **DCA Bot** is deployed to accumulate spot assets in **Trending Up** conditions.
-    *   **Signal Bot** is deployed for leveraged shorting in **Trending Down** markets.
-    *   **Preserve Mode** halts orders and holds capital safely in stable assets during **Consolidation** to protect capital.
-*   **Centralized Risk Shield (Flash Crash Protection):** If the engine detects a sudden price crash exceeding 3% in a 10s window, it automatically closes all active positions, cancels outstanding orders, elevates the risk level to `CRITICAL`, and halts operations. It restarts only when price movements stabilize.
+### 2. 🤖 Wave 3 Multi-Agent Consensus Platform (`wave3Engine.ts`)
+A fully autonomous 24/7 self-operating trading platform run by an automated consensus of 4 specialized AI agents working in collaboration:
+*   **Macro Agent:** Evaluates SoSoValue ETF net flows, Dollar Index (DXY) stability, and SSI Sentiment indicators to vote on macro liquidity direction.
+*   **Technical Agent:** Computes live indicators (RSI, EMA cross, MACD, Bollinger Bands, and ATR volatility spreads) to vote on mathematical trends.
+*   **Sentiment Agent:** Leverages Google Gemini 2.0 to scan and score real-time news sentiment and headlines to vote on emotional market consensus.
+*   **Risk Officer Agent:** Evaluates margin health, current drawdown limits, and flash-crash triggers to approve, scale, or veto execution sizing.
+*   **Consensus Voting & Auto-Rotation:** The engine aggregates votes on every tick. If consensus is reached, it automatically deploys, closes, or rotates sub-bots (Grid Bot for High Volatility, DCA Bot for Trending Up, Signal Bot for Trending Down, or holds capital safely in stable assets during Consolidation).
+*   **Live Discussion Feed:** Displays a real-time conversational chat stream in the UI, showing the step-by-step rationales, scores, and votes of each agent.
+*   **Centralized Risk Shield (Flash Crash Protection):** If the Risk Officer detects a sudden price drop exceeding 3% in a 10s window, it overrides the consensus, liquidates all active positions, cancels outstanding orders, elevates the risk level to `CRITICAL`, and halts operations until conditions stabilize.
 
 ### 3. 🧠 Rebuilt Gemini Signal Studio & Multi-Signal Bot (`SignalBot.tsx`)
 The Signal Bot has been completely refactored from scratch into a full-screen **Visual Quant Studio**, introducing highly detailed technical, macro, and sentiment parameters:
