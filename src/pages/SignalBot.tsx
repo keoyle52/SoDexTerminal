@@ -787,10 +787,12 @@ export const SignalBot: React.FC = () => {
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setStudioOpen(false)}
-              className="flex items-center justify-center p-2 rounded-lg bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-primary transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary hover:text-text-primary text-xs font-bold transition-all cursor-pointer"
             >
               <ChevronLeft size={16} />
+              <span>Back to Dashboard</span>
             </button>
+            <div className="h-6 w-px bg-border hidden sm:block" />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
@@ -802,18 +804,25 @@ export const SignalBot: React.FC = () => {
               <p className="text-[10px] text-text-secondary mt-0.5">Build, test and validate multi-factor quantitative trigger rules.</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-[#0B0E11] px-3 py-1.5 rounded-lg border border-border">
-              <span className="text-[10px] font-bold text-text-muted">MODE:</span>
-              <select 
-                value={state.combineMode} 
-                onChange={(e) => state.setField('combineMode', e.target.value as CombineMode)}
-                className="bg-transparent text-xs text-text-primary font-bold font-mono outline-none cursor-pointer border-none"
-              >
-                <option value="ANY" className="bg-[#101317]">ANY (Or Trigger)</option>
-                <option value="ALL" className="bg-[#101317]">ALL (And Trigger)</option>
-                <option value="MAJORITY" className="bg-[#101317]">MAJORITY (Vote)</option>
-              </select>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 bg-[#0B0E11] p-1 rounded-lg border border-border select-none">
+              <span className="text-[9px] font-bold text-text-muted px-1.5">CONSENSUS:</span>
+              <div className="flex gap-1">
+                {(['ANY', 'ALL', 'MAJORITY'] as CombineMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => state.setField('combineMode', mode)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[9px] font-bold transition-all cursor-pointer",
+                      state.combineMode === mode 
+                        ? "bg-primary text-white shadow-[0_0_8px_rgba(34,211,238,0.3)]" 
+                        : "text-text-muted hover:text-text-primary"
+                    )}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
             </div>
             <button 
               onClick={() => { setStudioOpen(false); if (!isLocked) setShowConfirm(true); }}
@@ -1224,12 +1233,33 @@ export const SignalBot: React.FC = () => {
             </div>
 
             {/* Consensus Strategy Explanation */}
-            <div className="p-4 rounded-xl border border-border bg-[#101317]/50 space-y-2 text-[10px] text-text-secondary select-none">
-              <span className="font-bold text-text-primary uppercase tracking-wider block flex items-center gap-1">
-                <HelpCircle size={12} className="text-primary" />
-                Consensus Rules Engine
-              </span>
-              <div className="space-y-1 leading-normal font-sans">
+            <div className="p-4 rounded-xl border border-border bg-[#101317]/50 space-y-3 text-[10px] text-text-secondary select-none">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-text-primary uppercase tracking-wider block flex items-center gap-1">
+                  <HelpCircle size={12} className="text-primary" />
+                  Consensus Engine
+                </span>
+                
+                {/* Pill selector for Consensus in Card */}
+                <div className="flex p-0.5 rounded-lg bg-[#080B0E] border border-border">
+                  {(['ANY', 'ALL', 'MAJORITY'] as CombineMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => state.setField('combineMode', mode)}
+                      className={cn(
+                        "px-2 py-0.5 rounded-md text-[9px] font-bold transition-all cursor-pointer",
+                        state.combineMode === mode 
+                          ? "bg-primary text-white shadow-[0_0_8px_rgba(34,211,238,0.3)]" 
+                          : "text-text-muted hover:text-text-primary"
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="space-y-1 leading-normal font-sans pt-2 border-t border-border/20">
                 {state.combineMode === 'ANY' && (
                   <p>
                     <span className="text-primary font-bold">ANY Mode:</span> The orchestrator triggers an entry order if <strong className="text-text-primary">at least one</strong> enabled signal fires. If multiple opposing signals fire, the direction with the higher aggregate strength is selected.
