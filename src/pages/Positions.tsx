@@ -49,26 +49,17 @@ interface HistoricalFill {
 
 /** Collateral weight per coin — matches SoDEX cross-margin rules */
 const COLLATERAL_WEIGHTS: Record<string, number> = {
-  USD: 1.0,
-  USDT: 1.0,
-  USDC: 1.0,
-  BTC: 0.95,
+  USDC: 1.00,
+  BTC: 0.90,
+  XAUT: 0.90,
   ETH: 0.90,
-  SOL: 0.85,
   SOSO: 0.50,
   WSOSO: 0.50,
-  BNB: 0.85,
-  ARB: 0.75,
-  AVAX: 0.80,
-  DOGE: 0.70,
-  LINK: 0.80,
-  MATIC: 0.75,
-  OP: 0.75,
 };
 
 function getCollateralWeight(coin: string): number {
   const upper = coin.toUpperCase().replace(/^V/, '');
-  return COLLATERAL_WEIGHTS[upper] ?? 0.70;
+  return COLLATERAL_WEIGHTS[upper] ?? 0.00;
 }
 
 interface CollateralEntry {
