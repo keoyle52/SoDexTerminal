@@ -17,6 +17,8 @@ import { BotLayout } from '../components/bots/BotLayout';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { cn, getErrorMessage } from '../lib/utils';
 import { useBotPnlStore } from '../store/botPnlStore';
+import { useRiskStore } from '../store/riskStore';
+import { localAiComputeTrailingStop } from '../api/localAiEngine';
 
 interface DcaLog {
   time: string;
@@ -62,6 +64,8 @@ export const DcaBot: React.FC = () => {
   // into ERROR state and DO NOT call scheduleNext, so the schedule
   // does not keep firing against a persistent failure.
   const consecutiveErrorsRef = useRef(0);
+  const highestPriceRef = useRef<number>(0);
+  const lowestPriceRef = useRef<number>(999999999);
 
   // ── Core ────────────────────────────────────────────────────────
   const [symbol, setSymbol] = useState('BTC-USD');
@@ -152,14 +156,36 @@ export const DcaBot: React.FC = () => {
       const tp = parseFloat(takeProfitPrice);
       const sl = parseFloat(stopLossPrice);
       const tpPct = parseFloat(takeProfitPct);
+
+      if (prices.mid > highestPriceRef.current) highestPriceRef.current = prices.mid;
+      if (prices.mid < lowestPriceRef.current) lowestPriceRef.current = prices.mid;
+
+      const { useAiTrailingStop } = useRiskStore.getState();
+      let activeSl = sl;
+      if (useAiTrailingStop && avgPrice > 0) {
+        activeSl = localAiComputeTrailingStop(
+          side,
+          avgPrice,
+          prices.mid,
+          highestPriceRef.current,
+          lowestPriceRef.current
+        );
+      }
+
       if (Number.isFinite(tp) && tp > 0 && side === 'BUY' && prices.mid >= tp) {
         addLog({ time: new Date().toLocaleTimeString(), message: `Take-profit hit (${prices.mid.toFixed(2)} ≥ ${tp}). Stopping.` });
         stopBot(`TP @ ${tp}`);
         return;
       }
-      if (Number.isFinite(sl) && sl > 0 && side === 'BUY' && prices.mid <= sl) {
-        addLog({ time: new Date().toLocaleTimeString(), message: `Stop-loss hit (${prices.mid.toFixed(2)} ≤ ${sl}). Stopping.` });
-        stopBot(`SL @ ${sl}`);
+      const hitStopLoss = side === 'BUY' ? (prices.mid <= activeSl) : (prices.mid >= activeSl);
+      if (Number.isFinite(activeSl) && activeSl > 0 && hitStopLoss) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: useAiTrailingStop
+            ? `AI Trailing Stop-loss hit (${prices.mid.toFixed(2)} ${side === 'BUY' ? '≤' : '≥'} ${activeSl.toFixed(2)}). Stopping.`
+            : `Stop-loss hit (${prices.mid.toFixed(2)} ${side === 'BUY' ? '≤' : '≥'} ${activeSl.toFixed(2)}). Stopping.`
+        });
+        stopBot(useAiTrailingStop ? `AI SL @ ${activeSl.toFixed(2)}` : `SL @ ${activeSl}`);
         return;
       }
       if (Number.isFinite(tpPct) && tpPct > 0 && avgPrice > 0) {
@@ -341,6 +367,8 @@ export const DcaBot: React.FC = () => {
 
     runningRef.current = true;
     setStatus('RUNNING');
+    highestPriceRef.current = 0;
+    lowestPriceRef.current = 999999999;
     setExecutedOrders(0);
     setSkippedOrders(0);
     setTotalInvested(0);

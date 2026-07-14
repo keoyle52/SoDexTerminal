@@ -30,6 +30,8 @@ import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
 import { BotLayout } from '../components/bots/BotLayout';
 import { fetchSosoIndices, scrapeFarsideEtfInflow } from '../api/sosoServices';
+import { useRiskStore } from '../store/riskStore';
+import { localAiComputeTrailingStop } from '../api/localAiEngine';
 import { type SeriesMarker, type Time } from 'lightweight-charts';
 
 // Polling intervals
@@ -388,6 +390,13 @@ export const SignalBot: React.FC = () => {
           const pnl = priceDiff * pos.quantity * (isLong ? 1 : -1);
           pos.unrealizedPnl = parseFloat(pnl.toFixed(4));
 
+          // Initialize tracking variables if they don't exist
+          if (pos.highestPrice == null) pos.highestPrice = mid;
+          if (pos.lowestPrice == null) pos.lowestPrice = mid;
+
+          if (mid > pos.highestPrice) pos.highestPrice = mid;
+          if (mid < pos.lowestPrice) pos.lowestPrice = mid;
+
           // Client-side TP/SL triggers
           let triggered = false;
           let triggerType = '';
@@ -396,9 +405,27 @@ export const SignalBot: React.FC = () => {
             const hitTp = isLong ? mid >= pos.tpPrice : mid <= pos.tpPrice;
             if (hitTp) { triggered = true; triggerType = 'Take Profit'; }
           }
-          if (pos.slPrice && pos.slPrice > 0) {
-            const hitSl = isLong ? mid <= pos.slPrice : mid >= pos.slPrice;
-            if (hitSl) { triggered = true; triggerType = 'Stop Loss'; }
+
+          const { useAiTrailingStop } = useRiskStore.getState();
+          let activeSlPrice = pos.slPrice;
+
+          if (useAiTrailingStop) {
+            const dynamicSl = localAiComputeTrailingStop(
+              pos.side === 'LONG' ? 'BUY' : 'SELL',
+              pos.entryPrice,
+              mid,
+              pos.highestPrice,
+              pos.lowestPrice
+            );
+            activeSlPrice = dynamicSl;
+          }
+
+          if (activeSlPrice && activeSlPrice > 0) {
+            const hitSl = isLong ? mid <= activeSlPrice : mid >= activeSlPrice;
+            if (hitSl) { 
+              triggered = true; 
+              triggerType = useAiTrailingStop ? 'AI Trailing Stop Loss' : 'Stop Loss'; 
+            }
           }
 
           if (triggered) {

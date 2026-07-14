@@ -166,6 +166,8 @@ export interface SignalPosition {
   slOrderId?: string;
   unrealizedPnl: number;
   status: 'OPEN' | 'TP_HIT' | 'SL_HIT' | 'CLOSED_BY_SIGNAL' | 'MANUAL_CLOSE';
+  highestPrice?: number;
+  lowestPrice?: number;
 }
 
 export type ConflictResolution = 'CLOSE_AND_REVERSE' | 'CLOSE_ONLY' | 'IGNORE';

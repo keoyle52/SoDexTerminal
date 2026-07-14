@@ -35,6 +35,8 @@ interface RiskStore {
   setMaxLossValue: (val: number) => void;
   flashCrashSlippagePct: number;
   setFlashCrashSlippagePct: (val: number) => void;
+  useAiTrailingStop: boolean;
+  setUseAiTrailingStop: (val: boolean) => void;
 }
 
 export const useRiskStore = create<RiskStore>((set) => ({
@@ -69,5 +71,7 @@ export const useRiskStore = create<RiskStore>((set) => ({
   maxLossValue: 100,
   setMaxLossValue: (val) => set({ maxLossValue: val }),
   flashCrashSlippagePct: 1,
-  setFlashCrashSlippagePct: (val) => set({ flashCrashSlippagePct: val })
+  setFlashCrashSlippagePct: (val) => set({ flashCrashSlippagePct: val }),
+  useAiTrailingStop: false,
+  setUseAiTrailingStop: (val) => set({ useAiTrailingStop: val })
 }));

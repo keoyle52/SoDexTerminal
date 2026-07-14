@@ -26,6 +26,8 @@ import { StatCard } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { useBotPnlStore } from '../store/botPnlStore';
 import { BotsHowItWorks } from '../components/bots/BotsHowItWorks';
+import { useRiskStore } from '../store/riskStore';
+import { localAiComputeTrailingStop } from '../api/localAiEngine';
 
 interface GridLevel {
   price: number;
@@ -85,6 +87,9 @@ export const GridBot: React.FC = () => {
   const armedRef = useRef(false);
   const pollBusyRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
+  const highestPriceRef = useRef<number>(0);
+  const lowestPriceRef = useRef<number>(999999999);
+  const initialPriceRef = useRef<number>(0);
   const [gridLevels, setGridLevels] = useState<GridLevel[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -200,8 +205,23 @@ export const GridBot: React.FC = () => {
       const trail = parseFloat(s.trailingProfitUsd);
       const fresh = useBotStore.getState().gridBot;
       if (mid !== null) {
-        if (Number.isFinite(sl) && sl > 0 && mid <= sl) {
-          await stopBotRef.current?.(`SL @ ${sl}`);
+        if (mid > highestPriceRef.current) highestPriceRef.current = mid;
+        if (mid < lowestPriceRef.current) lowestPriceRef.current = mid;
+
+        const { useAiTrailingStop } = useRiskStore.getState();
+        let activeSl = sl;
+        if (useAiTrailingStop && initialPriceRef.current > 0) {
+          activeSl = localAiComputeTrailingStop(
+            'BUY',
+            initialPriceRef.current,
+            mid,
+            highestPriceRef.current,
+            lowestPriceRef.current
+          );
+        }
+
+        if (Number.isFinite(activeSl) && activeSl > 0 && mid <= activeSl) {
+          await stopBotRef.current?.(useAiTrailingStop ? `AI SL @ ${activeSl.toFixed(2)}` : `SL @ ${activeSl}`);
           return;
         }
         if (Number.isFinite(tp) && tp > 0 && mid >= tp) {
@@ -344,6 +364,10 @@ export const GridBot: React.FC = () => {
       s.setField('status', 'ERROR');
       return;
     }
+
+    highestPriceRef.current = currentPrice;
+    lowestPriceRef.current = currentPrice;
+    initialPriceRef.current = currentPrice;
 
     if (!s.isSpot) {
       let lev = parseInt(s.leverage);

@@ -25,6 +25,7 @@ export const HeaderDock: React.FC = () => {
   const activeAddress = store.walletAddress || store.evmAddress || (store.privateKey ? deriveAddressFromPrivateKey(store.privateKey) : '');
   
   const [showTour, setShowTour] = useState(false);
+  const [latency, setLatency] = useState<number | null>(null);
   const [tickerPrices, setTickerPrices] = useState<Record<string, { price: number; change: number }>>({
     'BTC-USD': { price: 0, change: 0 },
     'ETH-USD': { price: 0, change: 0 },
@@ -144,6 +145,29 @@ export const HeaderDock: React.FC = () => {
       clearInterval(interval);
     };
   }, [sosoApiKey]);
+
+  useEffect(() => {
+    let mounted = true;
+    const measureLatency = async () => {
+      const start = performance.now();
+      try {
+        await fetch('/api/health').catch(() => {});
+        const end = performance.now();
+        if (mounted) {
+          setLatency(Math.round(end - start));
+        }
+      } catch {
+        if (mounted) setLatency(null);
+      }
+    };
+
+    void measureLatency();
+    const interval = setInterval(measureLatency, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const fmtPrice = (p: number, minDecimals = 1) => 
     p > 0 ? `$${p < 1 ? p.toFixed(4) : p.toLocaleString(undefined, { minimumFractionDigits: minDecimals, maximumFractionDigits: minDecimals })}` : '—';
@@ -307,6 +331,17 @@ export const HeaderDock: React.FC = () => {
 
         {/* Right Action Controls */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Latency Indicator */}
+          {latency !== null && (
+            <div 
+              title="API Latency" 
+              className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 rounded-sm border border-border text-text-secondary select-none"
+            >
+              <span className={cn("w-1.5 h-1.5 rounded-full", latency < 150 ? "bg-success" : latency < 350 ? "bg-warning" : "bg-danger")} />
+              <span>{latency}ms</span>
+            </div>
+          )}
+
           {/* Quick Tour */}
           <button
             onClick={() => setShowTour(true)}

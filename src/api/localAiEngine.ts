@@ -300,3 +300,26 @@ export async function localAiDiagnoseWallet(
     }
   };
 }
+
+/**
+ * Compute the dynamic AI Trailing Stop Loss price based on market volatility.
+ */
+export function localAiComputeTrailingStop(
+  side: 'BUY' | 'SELL' | 'LONG' | 'SHORT',
+  entryPrice: number,
+  currentPrice: number,
+  highestPriceSinceEntry: number,
+  lowestPriceSinceEntry: number,
+  atrPct = 2.5
+): number {
+  const isLong = side === 'BUY' || side === 'LONG';
+  const trailingDistance = entryPrice * (atrPct / 100);
+  
+  if (isLong) {
+    const referencePrice = Math.max(entryPrice, highestPriceSinceEntry, currentPrice);
+    return Math.max(entryPrice * 0.90, referencePrice - trailingDistance);
+  } else {
+    const referencePrice = Math.min(entryPrice, lowestPriceSinceEntry, currentPrice);
+    return Math.min(entryPrice * 1.10, referencePrice + trailingDistance);
+  }
+}

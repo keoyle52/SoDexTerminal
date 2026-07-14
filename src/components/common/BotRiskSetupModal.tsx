@@ -23,7 +23,8 @@ export const BotRiskSetupModal: React.FC<BotRiskSetupModalProps> = ({
     feeDragProtection, setFeeDragProtection,
     maxLossMode, setMaxLossMode,
     maxLossValue, setMaxLossValue,
-    flashCrashSlippagePct, setFlashCrashSlippagePct
+    flashCrashSlippagePct, setFlashCrashSlippagePct,
+    useAiTrailingStop, setUseAiTrailingStop
   } = useRiskStore();
 
   if (!isOpen) return null;
@@ -84,6 +85,27 @@ export const BotRiskSetupModal: React.FC<BotRiskSetupModalProps> = ({
               <div className="text-[11px] font-bold text-text-primary group-hover:text-primary transition-colors">Fee Drag Protection</div>
               <div className="text-[10px] text-text-secondary mt-0.5 leading-normal">
                 Automatically prevent trades where exchange fees would exceed the projected grid or signal profit. Highly recommended for high-frequency bots.
+              </div>
+            </div>
+          </label>
+          <hr className="border-border/60" />
+
+          {/* AI Trailing Stop Loss */}
+          <label className="flex items-start gap-2.5 cursor-pointer group select-none">
+            <div className="mt-0.5">
+              <input 
+                type="checkbox" 
+                checked={useAiTrailingStop} onChange={e => setUseAiTrailingStop(e.target.checked)}
+                className="w-3.5 h-3.5 rounded-sm border-border bg-[#0B0E11] accent-primary cursor-pointer" 
+              />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-text-primary group-hover:text-primary transition-colors flex items-center gap-1.5">
+                <span>Use AI Trailing Stop Loss</span>
+                <span className="text-[8px] bg-primary/20 text-primary px-1.5 py-0.2 rounded font-extrabold uppercase">Local AI</span>
+              </div>
+              <div className="text-[10px] text-text-secondary mt-0.5 leading-normal">
+                Let our offline Gemini AI monitor the market trend and adjust your stop-loss level dynamically to lock in profits as prices move in your favor.
               </div>
             </div>
           </label>
