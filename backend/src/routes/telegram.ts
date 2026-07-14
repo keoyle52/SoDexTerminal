@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getBot, isRegistered, registerChat, linkAccount, getBotStates, updateBotState, getBotConfigs, updateBotConfig } from '../bot';
+import { getBot, isRegistered, registerChat, linkAccount, getBotStates, updateBotState, getBotConfigs, updateBotConfig, unregisterChat } from '../bot';
 
 const router = Router();
 
@@ -66,7 +66,6 @@ router.post('/risk', async (req: Request, res: Response) => {
 
   try {
     // Save to userBotConfigs in bot.ts
-    const { updateBotConfig } = require('../bot');
     updateBotConfig(numericId, botKey, {
       riskSummarySent: true,
       lastRiskSummary: riskSummaryText
@@ -265,7 +264,6 @@ router.post('/disconnect', async (req: Request, res: Response) => {
   }
 
   try {
-    const { unregisterChat } = require('../bot');
     unregisterChat(numericId);
     
     const bot = getBot();

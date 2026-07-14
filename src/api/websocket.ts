@@ -34,6 +34,9 @@ class WebSocketService {
         this.reconnectAttempts = 0;
         
         // Start ping interval (30s)
+        if (this.pingTimer) {
+          clearInterval(this.pingTimer);
+        }
         this.pingTimer = setInterval(() => {
           this.send({ op: 'ping' });
         }, 30000);
@@ -142,9 +145,12 @@ class WebSocketService {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
-    const delay = this.baseDelay * Math.pow(2, this.reconnectAttempts);
+    // Cap backoff delay at 30 seconds and keep trying indefinitely
+    const delay = Math.min(30000, this.baseDelay * Math.pow(2, this.reconnectAttempts));
     this.reconnectAttempts++;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
     this.reconnectTimer = setTimeout(() => {
       this.connect();
     }, delay);
