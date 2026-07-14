@@ -189,6 +189,9 @@ export const WalletConnect: React.FC<{ className?: string }> = ({ className }) =
           <p className="text-xs text-text-secondary leading-relaxed">
             Select days to authorize your wallet. This generates a secure local key so bots can trade automatically without asking for MetaMask signatures every time.
           </p>
+          <p className="text-[11px] text-text-muted leading-relaxed bg-white/5 border border-border p-3 rounded-lg">
+            💡 <strong>Note:</strong> You do not have to authorize your wallet. You can still approve transactions individually. This is only for those who do not want to approve transactions one by one.
+          </p>
           
           <div className="flex items-center gap-2">
             {[1, 7, 30].map(d => (

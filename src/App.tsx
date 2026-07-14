@@ -7,6 +7,7 @@ import { useSettingsStore } from './store/settingsStore';
 import { Settings } from './pages/Settings';
 import { startDemoEngine, stopDemoEngine } from './api/demoEngine';
 import { startWave3Engine } from './api/wave3Engine';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 /**
  * Lazy-loaded route modules. Each page is a separate chunk so the first
@@ -114,34 +115,36 @@ function App() {
       <HeaderDock />
       
       <main id="app-main" className="flex-1 min-w-0 overflow-hidden flex flex-col">
-        <PageTransition>
-          <Routes>
-            <Route path="/settings" element={<Settings />} />
-            <Route
-              path="*"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Routes>
-                    <Route path="/terminal"        element={<TerminalWorkspace />} />
-                    <Route path="/dashboard"       element={<Navigate to="/terminal" replace />} />
-                    <Route path="/account"          element={<AccountAndRisk />} />
-                    <Route path="/positions"       element={<Navigate to="/account" replace />} />
-                    <Route path="/risk"            element={<Navigate to="/account" replace />} />
-                    <Route path="/trading-bots"    element={<TradingBots />} />
-                    <Route path="/backtest"        element={<BacktestStudio />} />
-                    <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
-                    <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
-                    <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
-                    <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
-                    <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
-                    <Route path="/mirror/*"        element={<MirrorTool />} />
-                    <Route path="*"                element={<Navigate to="/terminal" replace />} />
-                  </Routes>
-                </Suspense>
-              }
-            />
-          </Routes>
-        </PageTransition>
+        <ErrorBoundary>
+          <PageTransition>
+            <Routes>
+              <Route path="/settings" element={<Settings />} />
+              <Route
+                path="*"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Routes>
+                      <Route path="/terminal"        element={<TerminalWorkspace />} />
+                      <Route path="/dashboard"       element={<Navigate to="/terminal" replace />} />
+                      <Route path="/account"          element={<AccountAndRisk />} />
+                      <Route path="/positions"       element={<Navigate to="/account" replace />} />
+                      <Route path="/risk"            element={<Navigate to="/account" replace />} />
+                      <Route path="/trading-bots"    element={<TradingBots />} />
+                      <Route path="/backtest"        element={<BacktestStudio />} />
+                      <Route path="/grid-bot"        element={<Navigate to="/trading-bots?bot=grid" replace />} />
+                      <Route path="/twap-bot"        element={<Navigate to="/trading-bots?bot=twap" replace />} />
+                      <Route path="/dca-bot"         element={<Navigate to="/trading-bots?bot=dca" replace />} />
+                      <Route path="/market-maker"    element={<Navigate to="/trading-bots?bot=marketmaker" replace />} />
+                      <Route path="/signal-bot"      element={<Navigate to="/trading-bots?bot=signal" replace />} />
+                      <Route path="/mirror/*"        element={<MirrorTool />} />
+                      <Route path="*"                element={<Navigate to="/terminal" replace />} />
+                    </Routes>
+                  </Suspense>
+                }
+              />
+            </Routes>
+          </PageTransition>
+        </ErrorBoundary>
       </main>
 
       <Toaster
