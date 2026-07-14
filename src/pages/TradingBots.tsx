@@ -10,6 +10,7 @@ import { useRiskStore } from '../store/riskStore';
 import { NumberDisplay } from '../components/common/NumberDisplay';
 import { cn } from '../lib/utils';
 import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
+import { validateBalance } from '../api/services';
 
 // Components
 import { GridBot } from './GridBot';
@@ -49,8 +50,22 @@ const Wave3AgentConsole: React.FC = () => {
     }
   };
 
-  const handleConfirmStart = () => {
+  const handleConfirmStart = async () => {
     setShowPreFlight(false);
+    
+    const investment = Number(w3.investment);
+    if (isNaN(investment) || investment <= 0) {
+      toast.error('Invalid investment amount');
+      return;
+    }
+
+    const isSpot = w3.market === 'spot';
+    const hasBalance = await validateBalance(investment, w3.targetCoin, isSpot);
+    if (!hasBalance) {
+      toast.error(`Insufficient balance in account to cover investment of $${investment.toFixed(2)}`);
+      return;
+    }
+
     w3.setAgentRunning(true);
   };
 

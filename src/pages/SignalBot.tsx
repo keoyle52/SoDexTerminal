@@ -10,7 +10,7 @@ import { useBotPnlStore } from '../store/botPnlStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { 
   fetchKlines, placeOrder, updatePerpsLeverage, fetchBookTickers, 
-  normalizeSymbol, fetchOrderStatus, cancelOrder, fetchTickers, fetchMarkPrices 
+  normalizeSymbol, fetchOrderStatus, cancelOrder, fetchTickers, fetchMarkPrices, validateBalance 
 } from '../api/services';
 import { 
   evaluateSignals, resolveSignals, PARAM_LABELS, type CandleData, 
@@ -520,8 +520,21 @@ export const SignalBot: React.FC = () => {
     }
   }, [addLog, executeTrade, isDemoMode]);
 
-  const startBot = useCallback(() => {
+  const startBot = useCallback(async () => {
     if (runningRef.current) return;
+
+    const investment = parseFloat(state.amountUsdt);
+    if (isNaN(investment) || investment <= 0) {
+      toast.error('Invalid investment amount');
+      return;
+    }
+
+    const hasBalance = await validateBalance(investment, state.symbol, state.isSpot);
+    if (!hasBalance) {
+      toast.error(`Insufficient balance in account to cover investment of $${investment.toFixed(2)}`);
+      return;
+    }
+
     runningRef.current = true;
     lastProcessTimeRef.current = 0;
     
@@ -535,7 +548,7 @@ export const SignalBot: React.FC = () => {
     loopRef.current = setInterval(() => {
       void evaluationLoop();
     }, LOOP_INTERVAL);
-  }, [addLog, evaluationLoop, state.symbol]);
+  }, [addLog, evaluationLoop, state.symbol, state.amountUsdt, state.isSpot]);
 
   useEffect(() => {
     if (state.status === 'RUNNING') {

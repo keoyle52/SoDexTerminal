@@ -2070,3 +2070,61 @@ export async function fetchPositionHistory(
   const data = res?.data ?? res ?? {};
   return Array.isArray(data) ? data : (data.positions ?? []);
 }
+
+/**
+ * Validate if the user has sufficient available balance in their account
+ * for the requested investment amount.
+ */
+export async function validateBalance(
+  investmentAmount: number,
+  symbol: string,
+  isSpot: boolean,
+): Promise<boolean> {
+  try {
+    const balances = await fetchBalances(isSpot ? 'spot' : 'perps');
+    if (!balances || !Array.isArray(balances) || balances.length === 0) {
+      return false;
+    }
+    
+    const upperSym = symbol.toUpperCase().replace('_', '-');
+    let quoteCoin = 'USDC';
+    if (upperSym.includes('-')) {
+      const parts = upperSym.split('-');
+      quoteCoin = parts[parts.length - 1];
+    } else if (upperSym.endsWith('USDT')) {
+      quoteCoin = 'USDT';
+    } else if (upperSym.endsWith('USDC')) {
+      quoteCoin = 'USDC';
+    } else if (upperSym.endsWith('USD')) {
+      quoteCoin = 'USD';
+    }
+    
+    const baseQuoteCoin = quoteCoin.replace(/^V/, '');
+    
+    let availableBalance = 0;
+    for (const b of balances) {
+      const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? '').toUpperCase().replace(/^V/, '');
+      if (coin === baseQuoteCoin) {
+        availableBalance = parseFloat(b.available ?? b.balance ?? b.total ?? 0);
+        break;
+      }
+    }
+    
+    if (availableBalance <= 0) {
+      for (const b of balances) {
+        const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? '').toUpperCase().replace(/^V/, '');
+        if (['USD', 'USDT', 'USDC'].includes(coin)) {
+          const amt = parseFloat(b.available ?? b.balance ?? b.total ?? 0);
+          if (amt > availableBalance) {
+            availableBalance = amt;
+          }
+        }
+      }
+    }
+    
+    return availableBalance >= investmentAmount;
+  } catch (err) {
+    console.warn('Balance validation failed:', err);
+    return false;
+  }
+}

@@ -9,7 +9,7 @@ import { BotRiskSetupModal } from '../components/common/BotRiskSetupModal';
 import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { useSettingsStore } from '../store/settingsStore';
-import { placeOrder, fetchBookTickers, fetchOrderStatus, normalizeSymbol } from '../api/services';
+import { placeOrder, fetchBookTickers, fetchOrderStatus, normalizeSymbol, validateBalance } from '../api/services';
 import { recommendDcaBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
 import { SymbolSelector } from '../components/common/SymbolSelector';
@@ -312,8 +312,33 @@ export const DcaBot: React.FC = () => {
     };
   }, [executeDcaOrder, intervalSec]);
 
-  const doStart = useCallback(() => {
+  const doStart = useCallback(async () => {
     if (runningRef.current) return;
+
+    const orderAmt = parseFloat(amountPerOrder) || 0;
+    const maxOrd = parseInt(maxOrders) || 0;
+    const totalAmount = maxOrd > 0 ? orderAmt * maxOrd : orderAmt;
+
+    let currentPx = 0;
+    try {
+      const prices = await fetchPrices();
+      currentPx = prices ? prices.fill : 0;
+    } catch {
+      // ignore
+    }
+    const totalCapitalNotional = totalAmount * (currentPx || 1);
+
+    if (totalCapitalNotional <= 0) {
+      toast.error('Invalid investment amount');
+      return;
+    }
+
+    const hasBalance = await validateBalance(totalCapitalNotional, symbol, isSpot);
+    if (!hasBalance) {
+      toast.error(`Insufficient balance in account to cover estimated investment of $${totalCapitalNotional.toFixed(2)}`);
+      return;
+    }
+
     runningRef.current = true;
     setStatus('RUNNING');
     setExecutedOrders(0);
@@ -337,7 +362,7 @@ export const DcaBot: React.FC = () => {
       await executeDcaOrder();
       scheduleNextRef.current();
     })();
-  }, [executeDcaOrder, addLog, condition, dipPercent]);
+  }, [executeDcaOrder, addLog, condition, dipPercent, amountPerOrder, maxOrders, fetchPrices, symbol, isSpot]);
 
   useEffect(() => () => {
     runningRef.current = false;

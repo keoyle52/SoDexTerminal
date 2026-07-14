@@ -16,6 +16,7 @@ import {
   fetchOrderStatus,
   placeOrder,
   batchCancelOrders,
+  validateBalance,
 } from '../api/services';
 import { useBotStore } from '../store/botStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -400,6 +401,18 @@ export const MarketMakerBot: React.FC = () => {
 
   const startBot = useCallback(async () => {
     if (mm.status === 'RUNNING') return;
+
+    const budgetVal = parseFloat(mm.budgetUsdt);
+    if (isNaN(budgetVal) || budgetVal <= 0) {
+      toast.error('Invalid budget amount');
+      return;
+    }
+
+    const hasBalance = await validateBalance(budgetVal, mm.symbol, true);
+    if (!hasBalance) {
+      toast.error(`Insufficient balance in account to cover budget of $${budgetVal.toFixed(2)}`);
+      return;
+    }
     
     sessionIdRef.current = Math.random().toString(36).slice(2, 8);
     setField('status', 'RUNNING');
@@ -407,7 +420,7 @@ export const MarketMakerBot: React.FC = () => {
     isRunningRef.current = true;
     void reconcileRef.current();
     pollTimerRef.current = setInterval(() => { void reconcileRef.current(); }, RECONCILE_INTERVAL_MS);
-  }, [mm.status, isDemoMode, privateKey, budget, orderSize, overBudget, setField]);
+  }, [mm.status, mm.budgetUsdt, mm.symbol, isDemoMode, privateKey, budget, orderSize, overBudget, setField]);
 
   // Auto-cleanup if the page unmounts while the bot is running.
   useEffect(() => {

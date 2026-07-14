@@ -10,7 +10,7 @@ import { StatCard } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { useSettingsStore } from '../store/settingsStore';
-import { placeOrder, fetchBookTickers, fetchFeeRate, fetchOrderStatus, cancelOrder, normalizeSymbol } from '../api/services';
+import { placeOrder, fetchBookTickers, fetchFeeRate, fetchOrderStatus, cancelOrder, normalizeSymbol, validateBalance } from '../api/services';
 import type { FeeRateInfo } from '../api/services';
 import { recommendTwapBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
@@ -217,7 +217,7 @@ export const TwapBot: React.FC = () => {
     }
   }, [symbol, side, isSpot, orderType, limitOffsetBps, maxBuyPrice, minSellPrice, addLog, isDemoMode]);
 
-  const doStart = useCallback(() => {
+  const doStart = useCallback(async () => {
     if (runningRef.current) return;
 
     const total = parseFloat(totalAmount);
@@ -226,6 +226,29 @@ export const TwapBot: React.FC = () => {
 
     if (isNaN(total) || isNaN(numSlices) || isNaN(interval) || total <= 0 || numSlices < 1 || interval < 1) {
       toast.error('Invalid parameters');
+      return;
+    }
+
+    let currentPx = 0;
+    const market: 'spot' | 'perps' = isSpot ? 'spot' : 'perps';
+    try {
+      const tickers = await fetchBookTickers(market);
+      const arr = Array.isArray(tickers) ? tickers : [];
+      const normalizedSym = normalizeSymbol(symbol, market);
+      const ticker = arr.find((t) => (t as Record<string, unknown>).symbol === normalizedSym) as Record<string, unknown> | undefined;
+      if (ticker) {
+        const bid = parseFloat(String(ticker.bidPrice ?? ticker.bid ?? '0'));
+        const ask = parseFloat(String(ticker.askPrice ?? ticker.ask ?? '0'));
+        currentPx = (bid + ask) / 2;
+      }
+    } catch {
+      // ignore
+    }
+    const investmentUsd = total * (currentPx || 1);
+
+    const hasBalance = await validateBalance(investmentUsd, symbol, isSpot);
+    if (!hasBalance) {
+      toast.error(`Insufficient balance in account to cover estimated investment of $${investmentUsd.toFixed(2)}`);
       return;
     }
 
@@ -247,7 +270,6 @@ export const TwapBot: React.FC = () => {
 
     let currentSlice = 0;
     let cumulativeQty = 0;
-    const market: 'spot' | 'perps' = isSpot ? 'spot' : 'perps';
 
     const runSlice = async () => {
       if (!runningRef.current || currentSlice >= numSlices) {

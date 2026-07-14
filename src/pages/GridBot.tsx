@@ -13,6 +13,7 @@ import {
   getPerpsSymbolMeta,
   type PerpsSymbolMeta,
   fetchPositions,
+  validateBalance,
 } from '../api/services';
 import { recommendGridBot } from '../api/aiAutoConfig';
 import { AutoConfigureButton } from '../components/common/AutoConfigureButton';
@@ -435,6 +436,18 @@ export const GridBot: React.FC = () => {
 
     if (isNaN(lower) || isNaN(upper) || isNaN(count) || isNaN(amount) || lower >= upper || count < 2 || amount <= 0) {
       toast.error('Invalid grid parameters');
+      return;
+    }
+
+    const investment = parseFloat(s.amountUsdt);
+    if (isNaN(investment) || investment <= 0) {
+      toast.error('Invalid investment amount');
+      return;
+    }
+
+    const hasBalance = await validateBalance(investment, s.symbol, s.isSpot);
+    if (!hasBalance) {
+      toast.error(`Insufficient balance in account to cover investment of $${investment.toFixed(2)}`);
       return;
     }
 
