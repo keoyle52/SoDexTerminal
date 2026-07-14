@@ -2071,6 +2071,29 @@ export async function fetchPositionHistory(
   return Array.isArray(data) ? data : (data.positions ?? []);
 }
 
+const COLLATERAL_WEIGHTS: Record<string, number> = {
+  USD: 1.0,
+  USDT: 1.0,
+  USDC: 1.0,
+  BTC: 0.95,
+  ETH: 0.90,
+  SOL: 0.85,
+  SOSO: 0.50,
+  WSOSO: 0.50,
+  BNB: 0.85,
+  ARB: 0.75,
+  AVAX: 0.80,
+  DOGE: 0.70,
+  LINK: 0.80,
+  MATIC: 0.75,
+  OP: 0.75,
+};
+
+function getCollateralWeight(coin: string): number {
+  const upper = coin.toUpperCase().replace(/^V/, '');
+  return COLLATERAL_WEIGHTS[upper] ?? 0.70;
+}
+
 /**
  * Validate if the user has sufficient available balance in their account
  * for the requested investment amount.
@@ -2081,51 +2104,77 @@ export async function validateBalance(
   isSpot: boolean,
 ): Promise<boolean> {
   try {
-    const [balances, rawPrices] = await Promise.all([
-      fetchBalances(isSpot ? 'spot' : 'perps'),
-      fetchMarkPrices().catch(() => []),
-    ]);
-
+    const balances = await fetchBalances(isSpot ? 'spot' : 'perps');
     if (!balances || !Array.isArray(balances) || balances.length === 0) {
       return false;
     }
 
-    // Parse prices
-    const priceMap: Record<string, number> = {};
-    const pricesArr = Array.isArray(rawPrices) ? rawPrices : [];
-    for (const p of pricesArr) {
-      const parsedPrice = parseFloat(p.markPrice ?? p.price ?? 0);
-      priceMap[p.symbol] = isNaN(parsedPrice) ? 0 : parsedPrice;
-    }
+    if (isSpot) {
+      // Spot: strictly check availability of quote currency (e.g. USDC/USDT)
+      const upperSym = symbol.toUpperCase().replace('_', '-');
+      let quoteCoin = 'USDC';
+      if (upperSym.includes('-')) {
+        const parts = upperSym.split('-');
+        quoteCoin = parts[parts.length - 1];
+      } else if (upperSym.endsWith('USDT')) {
+        quoteCoin = 'USDT';
+      } else if (upperSym.endsWith('USDC')) {
+        quoteCoin = 'USDC';
+      } else if (upperSym.endsWith('USD')) {
+        quoteCoin = 'USD';
+      }
+      
+      const baseQuoteCoin = quoteCoin.replace(/^V/, '');
+      let availableBalance = 0;
+      for (const b of balances) {
+        const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? '').toUpperCase().replace(/^V/, '');
+        if (coin === baseQuoteCoin) {
+          availableBalance = parseFloat(b.available ?? b.balance ?? b.total ?? 0);
+          break;
+        }
+      }
+      return availableBalance >= investmentAmount;
+    } else {
+      // Perp: calculate total weighted available collateral value in USD (exact same as Account & Risk page)
+      const rawPrices = await fetchMarkPrices().catch(() => []);
+      const priceMap: Record<string, number> = {};
+      const pricesArr = Array.isArray(rawPrices) ? rawPrices : [];
+      for (const p of pricesArr) {
+        const parsedPrice = parseFloat(p.markPrice ?? p.price ?? 0);
+        priceMap[p.symbol] = isNaN(parsedPrice) ? 0 : parsedPrice;
+      }
 
-    // Sum up available balance of ALL collateral assets in USD equivalent value
-    let totalAvailableUsd = 0;
-    for (const b of balances) {
-      const amt = parseFloat(b.available ?? b.balance ?? b.total ?? 0);
-      if (isNaN(amt) || amt <= 0) continue;
+      let totalWeightedCollateral = 0;
+      for (const b of balances) {
+        // Use available quantity for checking if bot can be started
+        const amt = parseFloat(b.available ?? b.balance ?? b.total ?? 0);
+        if (isNaN(amt) || amt <= 0) continue;
 
-      const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? 'USDT').toUpperCase();
-      const baseCoin = coin.replace(/^V/, '');
+        const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? 'USDT').toUpperCase();
+        const baseCoin = coin.replace(/^V/, '');
 
-      let price = parseFloat(b.price ?? 0);
-      if (isNaN(price) || price <= 0) {
-        if (['USD', 'USDT', 'USDC'].includes(baseCoin)) {
-          price = 1.0;
-        } else {
-          // Look up mark price — try multiple key formats
-          price = priceMap[`${baseCoin}-USD`] 
-            ?? priceMap[`${baseCoin}USDT`] 
-            ?? priceMap[baseCoin] 
-            ?? 0;
+        let price = parseFloat(b.price ?? 0);
+        if (isNaN(price) || price <= 0) {
+          if (['USD', 'USDT', 'USDC'].includes(baseCoin)) {
+            price = 1.0;
+          } else {
+            price = priceMap[`${baseCoin}-USD`] 
+              ?? priceMap[`${baseCoin}USDT`] 
+              ?? priceMap[baseCoin] 
+              ?? 0;
+          }
+        }
+
+        if (price > 0) {
+          const weight = getCollateralWeight(coin);
+          const rawValue = amt * price;
+          const effectiveValue = rawValue * weight;
+          totalWeightedCollateral += effectiveValue;
         }
       }
 
-      if (price > 0) {
-        totalAvailableUsd += amt * price;
-      }
+      return totalWeightedCollateral >= investmentAmount;
     }
-
-    return totalAvailableUsd >= investmentAmount;
   } catch (err) {
     console.warn('Balance validation failed:', err);
     return false;
