@@ -58,6 +58,7 @@ A completely new feature allowing users to mirror the trades of top-performing w
 ### 6. 🚥 Pre-Flight Risk Setup (`BotRiskSetupModal.tsx`)
 All automated bots now undergo a compulsory "Pre-Flight Check" prior to deployment:
 *   **AI Risk Override Limit:** Pauses bot execution if real-time sentiment risk exceeds a specific score.
+*   **AI Trailing Stop Loss:** Dynamically adjusts the bot's stop-loss price based on local ATR volatility metrics to lock in profits as market prices move in the trade's favor.
 *   **Fee Drag Protection:** Automatically restricts orders where estimated transaction fees (SoDEX 0.08% roundtrip) would eat up the projected profit.
 *   **Bot Auto-Kill (Max Loss Switch):** Shuts down the bot instantly if losses hit a user-configured limit (in USD or % equity).
 *   **Flash-Crash Slippage Limit:** Restricts execution during liquidity dry-ups.
@@ -71,6 +72,8 @@ Simulate quantitative strategies before deploying live capital:
 ### 8. 🎨 Premium UI/UX Overhaul & Bloat Cleanup
 *   **Sleek Navigation:** Replaced the heavy sidebar navigation with a unified, professional floating **Header Dock** matching modern trading terminals.
 *   **Ticker Tape Marquee:** Shows live asset pricing, SSI sentiment indicators, and portfolio VaR.
+*   **Real-Time Network Latency Indicator:** Displays connection roundtrip time directly in the header dock with color-coded status alerts (Green/Yellow/Red) to inform traders of network performance.
+*   **React Error Boundary:** Robust fallback rendering catches unexpected runtime errors gracefully, showing clear debugging info and a reload option instead of crashing into a blank screen.
 *   **Bloat Reduction:** Cleaned up 20,000+ lines of legacy code, unused packages, and inactive features (like Telegram integration and news bot templates) to guarantee sub-second page loads.
 
 ---
