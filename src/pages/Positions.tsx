@@ -83,6 +83,8 @@ interface CollateralEntry {
 export const Positions: React.FC = () => {
   const store = useSettingsStore();
   const { confirmOrders } = store;
+  const botStore = useBotStore();
+  const wave3Store = useWave3Store();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const queryTab = searchParams.get('tab');
@@ -125,7 +127,8 @@ export const Positions: React.FC = () => {
       const priceMap: Record<string, number> = {};
       const pricesArr = Array.isArray(rawPrices) ? rawPrices : [];
       for (const p of pricesArr) {
-        priceMap[p.symbol] = parseFloat(p.markPrice ?? p.price ?? 0);
+        const parsedPrice = parseFloat(p.markPrice ?? p.price ?? 0);
+        priceMap[p.symbol] = isNaN(parsedPrice) ? 0 : parsedPrice;
       }
 
       // Parse balance with weighted collateral calculation
@@ -135,13 +138,13 @@ export const Positions: React.FC = () => {
       
       for (const b of balancesArr) {
         const amt = parseFloat(b.total ?? b.balance ?? b.available ?? b.totalBalance ?? 0);
-        if (amt <= 0) continue; // skip zero balances
+        if (isNaN(amt) || amt <= 0) continue; // skip zero balances
         
         const coin = String(b.coin ?? b.asset ?? b.currency ?? b.symbol ?? 'USDT').toUpperCase();
         const baseCoin = coin.replace(/^V/, '');
         
         let price = parseFloat(b.price ?? 0);
-        if (price <= 0) {
+        if (isNaN(price) || price <= 0) {
           if (['USD', 'USDT', 'USDC'].includes(baseCoin)) {
             price = 1.0;
           } else {
@@ -154,7 +157,7 @@ export const Positions: React.FC = () => {
         }
 
         // Skip coins with no price data — don't use hardcoded fallbacks
-        if (price <= 0) continue;
+        if (isNaN(price) || price <= 0) continue;
 
         const weight = getCollateralWeight(coin);
         const rawValue = amt * price;
@@ -181,13 +184,24 @@ export const Positions: React.FC = () => {
       const positionsArr = Array.isArray(rawPositions) ? rawPositions : [];
       const mapped: PositionRow[] = positionsArr.map((pos: Record<string, unknown>) => {
         const rawSize = parseFloat(String(pos.size ?? pos.quantity ?? 0));
-        const size = Math.abs(rawSize);
-        const entryPrice = parseFloat(String(pos.avgEntryPrice ?? pos.entryPrice ?? pos.avgPrice ?? 0));
+        const size = isNaN(rawSize) ? 0 : Math.abs(rawSize);
+        
+        const parsedEntry = parseFloat(String(pos.avgEntryPrice ?? pos.entryPrice ?? pos.avgPrice ?? 0));
+        const entryPrice = isNaN(parsedEntry) ? 0 : parsedEntry;
+        
         const symbol = String(pos.symbol ?? '');
-        const markPrice = priceMap[symbol] ?? parseFloat(String(pos.markPrice ?? 0));
-        const liquidationPrice = parseFloat(String(pos.liquidationPrice ?? pos.liqPrice ?? 0));
-        const margin = parseFloat(String(pos.initialMargin ?? pos.margin ?? 0));
-        const leverage = parseFloat(String(pos.leverage ?? 0));
+        
+        const parsedMark = priceMap[symbol] ?? parseFloat(String(pos.markPrice ?? 0));
+        const markPrice = isNaN(parsedMark) ? 0 : parsedMark;
+        
+        const parsedLiq = parseFloat(String(pos.liquidationPrice ?? pos.liqPrice ?? 0));
+        const liquidationPrice = isNaN(parsedLiq) ? 0 : parsedLiq;
+        
+        const parsedMargin = parseFloat(String(pos.initialMargin ?? pos.margin ?? 0));
+        const margin = isNaN(parsedMargin) ? 0 : parsedMargin;
+        
+        const parsedLeverage = parseFloat(String(pos.leverage ?? 0));
+        const leverage = isNaN(parsedLeverage) ? 0 : parsedLeverage;
 
         const side = (pos.side === 'LONG' || (pos.side !== 'SHORT' && rawSize >= 0))
           ? 'LONG' : 'SHORT';
@@ -712,9 +726,6 @@ export const Positions: React.FC = () => {
             <div className="overflow-auto flex-1 p-4 space-y-4">
               {/* Bot Cards List */}
               {(() => {
-                const botStore = useBotStore();
-                const wave3Store = useWave3Store();
-                
                 const activeBotsList = [
                   {
                     name: 'Wave 3 Autonomous Agent',
