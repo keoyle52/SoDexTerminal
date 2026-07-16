@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { 
   Play, Square, Radio, Settings2, Target, Zap, Activity, X, 
@@ -864,7 +865,7 @@ export const SignalBot: React.FC = () => {
     const combinedSandbox = [...activeTech, ...simulatedResults];
     const decision = resolveSignals(combinedSandbox, state.combineMode);
 
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-50 bg-[#080B0E] flex flex-col font-sans select-none overflow-hidden animate-fade-in">
         {/* Studio Header */}
         <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#101317]">
@@ -874,7 +875,7 @@ export const SignalBot: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary hover:text-text-primary text-xs font-bold transition-all cursor-pointer"
             >
               <ChevronLeft size={16} />
-              <span>Back to Dashboard</span>
+              <span>Back to Signal Bot</span>
             </button>
             <div className="h-6 w-px bg-border hidden sm:block" />
             <div>
@@ -1394,7 +1395,8 @@ export const SignalBot: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
