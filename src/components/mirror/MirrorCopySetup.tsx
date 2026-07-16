@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { cn } from '../../lib/utils';
 import { Wallet, Shield, Loader2, X, Zap } from 'lucide-react';
 import { startCopySession } from '../../api/mirrorClient';
+import { useSettingsStore } from '../../store/settingsStore';
 
 interface MirrorCopySetupProps {
   sourceAccountId: string;
@@ -11,6 +12,7 @@ interface MirrorCopySetupProps {
 }
 
 export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountId, network, suggested, onClose }) => {
+  const isDemoMode = useSettingsStore(s => s.isDemoMode);
   const [step, setStep] = useState<1 | 2>(1);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -87,7 +89,7 @@ export const MirrorCopySetup: React.FC<MirrorCopySetupProps> = ({ sourceAccountI
       const res = await startCopySession({
         userAccountId: walletAddress, sourceAccountId,
         agentPrivateKey, agentApiKeyName: agentAddress || walletAddress,
-        network, config,
+        network, isDemoMode, config,
       });
       setResult(res.sessionId ? 'started' : res.error ?? 'unknown error');
     } catch (err: any) {

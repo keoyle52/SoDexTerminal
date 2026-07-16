@@ -82,7 +82,7 @@ mirrorRouter.get('/wallet/resolve', async (req: Request, res: Response) => {
 mirrorRouter.post('/copy/start', async (req: Request, res: Response) => {
   try {
     const { userAccountId, sourceAccountId, agentPrivateKey, agentApiKeyName, isDemoMode, config } = req.body;
-    if (!userAccountId || !sourceAccountId || !agentPrivateKey || !isDemoMode) {
+    if (!userAccountId || !sourceAccountId || !agentPrivateKey || typeof isDemoMode !== 'boolean') {
       res.status(400).json({ error: 'Missing required fields' });
       return;
     }
